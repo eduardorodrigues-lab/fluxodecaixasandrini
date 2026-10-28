@@ -1,30 +1,46 @@
 import { addDays, dateRange, daysInMonth, ym } from "../dates";
 import { macroCurrency, roundCents } from "../money";
 import type {
-  Category, Committed, Day, Effectivation, Expense, FlowResult, Item, Params, Payment, Planned, Profile, Receipt, ScenarioData, Supplier, Warning,
+  Category, Committed, Day, Effectivation, Expense, FlowResult, Item, MonthTarget, Params, Payment, Planned, Platform, Profile, Receipt, ScenarioData, Supplier, Warning,
 } from "./types";
 
 const isNum = (t: number | null | undefined): t is number => t !== null && t !== undefined && Number.isFinite(t);
 
-// ---------- Regra A/B: estimativa diária ----------
-export function dailyEstimate(p: Params, targets: Record<string, number>, date: string) {
-  const ref = addDays(date, -p.lagDays);
+// ---------- Regra A/B: estimativa diária com configuração MENSAL versionada ----------
+// Parâmetros gerais (Params) são apenas default para meses NOVOS; um mês configurado usa só seus próprios valores.
+export function defaultMonthTarget(p: Params, gross: number): MonthTarget {
+  return { gross, legacyReducer: p.legacyReducer, divisorLegado: p.divisorLegado, webR1: p.webR1, webR2: p.webR2, r2Base: "apos_r1", divisorWeb: p.divisorWeb, lagDays: p.lagDays, version: 1, history: [] };
+}
+export function monthTarget(p: Params, targets: Record<string, number>, cfgs: Record<string, MonthTarget> | undefined, month: string): MonthTarget | null {
+  const c = cfgs?.[month];
+  if (c) return c;
+  const g = targets[month];
+  return g == null ? null : defaultMonthTarget(p, g); // dado antigo sem override: mesmo resultado dos parâmetros gerais
+}
+export function lagFor(p: Params, cfgs: Record<string, MonthTarget> | undefined, date: string) {
+  return cfgs?.[ym(date)]?.lagDays ?? p.lagDays;
+}
+export function dailyEstimate(p: Params, targets: Record<string, number>, date: string, cfgs?: Record<string, MonthTarget>) {
+  const lag = lagFor(p, cfgs, date);
+  const ref = addDays(date, -lag);
   const month = ym(ref);
-  const meta = targets[month];
-  if (meta == null) return { value: 0, exact: 0, month, missing: true, liquid: 0, divisor: 0 };
+  const cfg = monthTarget(p, targets, cfgs, month);
+  if (!cfg) return { value: 0, exact: 0, month, missing: true, liquid: 0, divisor: 0, r1: 0, r2: 0, lag, ref, gross: 0 };
+  const meta = cfg.gross;
   const dim = daysInMonth(ref);
-  let liquid: number, divisor: number;
+  let liquid: number, divisor: number, r1: number, r2 = 0;
   if (p.profile === "legado") {
-    liquid = meta * (1 - p.legacyReducer);
-    divisor = p.divisorLegado === "30" ? 30 : dim;
+    r1 = meta * cfg.legacyReducer;
+    liquid = meta - r1;
+    divisor = cfg.divisorLegado === "30" ? 30 : dim;
   } else {
-    const r1 = meta * p.webR1;
-    const r2 = (meta - r1) * p.webR2;
+    r1 = meta * cfg.webR1;
+    r2 = (cfg.r2Base === "bruto" ? meta : meta - r1) * cfg.webR2;
     liquid = meta - r1 - r2;
-    divisor = p.divisorWeb === "30" ? 30 : dim;
+    divisor = cfg.divisorWeb === "30" ? 30 : dim;
   }
   const exact = liquid / divisor;
-  return { value: roundCents(exact), exact, month, missing: false, liquid, divisor };
+  return { value: roundCents(exact), exact, month, missing: false, liquid, divisor, r1, r2, lag, ref, gross: meta };
 }
 
 // ---------- Arredondamento (Regra I / item 10 aprovado) ----------
@@ -48,6 +64,22 @@ export function receiptInformed(r: Receipt) {
   return { sum, present, platSum, doubleCount, confirmedZero: present && sum === 0 };
 }
 
+// ---------- Plataformas: vigência e repasse residual ----------
+export const platformActiveOn = (pf: Platform, date: string) => date >= pf.start && (!pf.end || date <= pf.end);
+export function receiptPlatformIssues(platforms: Platform[], r: Receipt): Warning[] {
+  const out: Warning[] = [];
+  for (const [id, v] of Object.entries(r.platforms)) {
+    if (!isNum(v)) continue;
+    const pf = platforms.find((x) => x.id === id);
+    if (!pf) { out.push({ code: "PLAT_DESCONHECIDA", severity: "erro", refId: r.id, date: r.date, message: `Recebimento ${r.date}: plataforma "${id}" não cadastrada — conciliar (valor mantido).` }); continue; }
+    if (platformActiveOn(pf, r.date)) continue;
+    const res = r.residual?.[id];
+    if (pf.end && r.date > pf.end && res?.note) out.push({ code: "PLAT_RESIDUAL", severity: "info", refId: r.id, date: r.date, message: `Recebimento ${r.date}: repasse residual de "${pf.name}" após inativação (${res.note}).` });
+    else out.push({ code: "PLAT_FORA_VIGENCIA", severity: "alerta", refId: r.id, date: r.date, message: `Recebimento ${r.date}: "${pf.name}" fora de vigência nesta data${pf.end && r.date > pf.end ? " — marque como repasse residual com nota" : ""}. Valor mantido, não ocultado.` });
+  }
+  return out;
+}
+
 // ---------- Pagamentos por título ----------
 export type PayState = "Em aberto" | "Parcial" | "Pago" | "Cancelado";
 export function titleStatus(value: number, status: string, payments: Payment[]) {
@@ -66,7 +98,7 @@ export interface PlannedDist {
   parcels: { date: string; amount: number; exact: number; term: number | null }[];
   count: number; P: number; Q: number; R: number;
   health: "ok" | "abatimento_ausente" | "erro";
-  roundingDiff: number; macroValue: number; linked: number;
+  roundingDiff: number; macroValue: number; linked: number; legacyAbated?: number;
   effectivated: number; remaining: number; mode: "padrao" | "restante_confirmado" | "encerrado";
   warnings: Warning[];
 }
@@ -110,16 +142,16 @@ export function distributePlanned(pl: Planned, sup: Supplier | undefined, commit
     P = value / used.length;
     if (!pl.purchaseCode && !myEffs.length)
       warnings.push({ code: "PLAN_SEM_CODIGO", severity: "alerta", refId: pl.id, message: `Planejada sem código de compra e sem efetivação vinculada: sem abatimento — risco de dupla contagem.` });
-    if (myEffs.length && linkedList.length) {
-      warnings.push({ code: "PLAN_DUPLO_MECANISMO", severity: "alerta", refId: pl.id, message: `Planejada ${pl.purchaseCode}: possui efetivações vinculadas; ${linkedList.length} efetuada(s) legadas com mesmo código NÃO são abatidas via M para evitar abatimento duplo. Conciliar.` });
-    } else {
-      const missing = linkedList.filter((c) => c.legacyAbatement === null);
-      Q = linkedList.reduce((a, c) => a + (c.legacyAbatement ?? 0), 0) / used.length;
-      if (missing.length) {
-        health = "abatimento_ausente";
-        warnings.push({ code: "PLAN_M_AUSENTE", severity: "erro", refId: pl.id, message: `Planejada ${pl.purchaseCode}: ${missing.length} efetuada(s) vinculada(s) por código sem "base de abatimento legado" (M). Saldo não confiável.` });
-      }
+    // Títulos legados DISTINTOS (sem vínculo de efetivação) continuam abatidos via M, mesmo havendo novas efetivações.
+    // Um título legado que representa a MESMA compra de uma efetivação deve ser vinculado (linkLegacyTitle), saindo desta lista.
+    const missing = linkedList.filter((c) => c.legacyAbatement === null);
+    Q = linkedList.reduce((a, c) => a + (c.legacyAbatement ?? 0), 0) / used.length;
+    if (missing.length) {
+      health = "abatimento_ausente";
+      warnings.push({ code: "PLAN_M_AUSENTE", severity: "erro", refId: pl.id, message: `Planejada ${pl.purchaseCode}: ${missing.length} efetuada(s) vinculada(s) por código sem "base de abatimento legado" (M). Saldo não confiável — conciliação pendente.` });
     }
+    if (myEffs.length && linkedList.length)
+      warnings.push({ code: "PLAN_MISTO", severity: "info", refId: pl.id, message: `Planejada ${pl.purchaseCode}: ${myEffs.length} efetivação(ões) + ${linkedList.length} título(s) legado(s) distinto(s) abatidos via M. Se algum legado for a mesma compra de uma efetivação, vincule-o (não duplica).` });
   }
   const R = P - Q;
   if (R < 0)
@@ -135,7 +167,7 @@ export function distributePlanned(pl: Planned, sup: Supplier | undefined, commit
   }
   if (residual)
     warnings.push({ code: "ARRED", severity: "info", refId: pl.id, message: `Planejada ${pl.purchaseCode}: ajuste de ${residual} centavo(s) aplicado na última parcela para fechar o total.` });
-  return { parcels, count: used.length, P, Q, R, health, roundingDiff: residual, macroValue: macroCurrency(R), linked: linkedList.length, effectivated, remaining: target, mode: "padrao", warnings };
+  return { parcels, count: used.length, P, Q, R, health, roundingDiff: residual, macroValue: macroCurrency(R), linked: linkedList.length, legacyAbated: roundCents(Q * used.length), effectivated, remaining: target, mode: "padrao", warnings };
 }
 
 // ---------- Datas efetivas: prorrogação CONFIRMADA altera a programação oficial (item 7) ----------
@@ -210,6 +242,7 @@ export function computeFlow(data: ScenarioData, opt: FlowOptions): FlowResult {
     const inf = receiptInformed(r);
     if (inf.doubleCount)
       warnings.push({ code: "REC_DUPLA", severity: "alerta", refId: r.id, date: r.date, message: `Recebimento ${r.date}: geral e plataformas preenchidos. A regra original soma ambos — possível dupla contagem (não corrigido).` });
+    for (const w of receiptPlatformIssues(data.platforms ?? [], r)) warnings.push(w);
     const cur = recByDate.get(r.date) ?? { sum: 0, present: false, items: [] };
     cur.sum += inf.sum;
     cur.present ||= inf.present;
@@ -230,7 +263,7 @@ export function computeFlow(data: ScenarioData, opt: FlowOptions): FlowResult {
       items.push({ source: "ajuste", amount: adj.value, label: `Saldo substituído manualmente (dif. ${adj.value - ini})`, note: adj.note });
       ini = adj.value;
     }
-    const est = dailyEstimate(p, data.targets, d);
+    const est = dailyEstimate(p, data.targets, d, data.targetConfigs);
     const rec = recByDate.get(d);
     const recInformado = rec?.sum ?? 0;
     // Evolução aprovada: qualquer valor informado (inclusive ZERO confirmado) substitui a estimativa; ausente usa estimativa.
@@ -254,7 +287,7 @@ export function computeFlow(data: ScenarioData, opt: FlowOptions): FlowResult {
     days.push({ date: d, saldoInicial: ini, ajuste, recInformado, recInformadoPresente: !!rec?.present, recEstimado: est.value, recEstimadoExato: est.exact, usouInformado, recUsado, planejada, comprometida, despesa, byCat, saidas, entradasTotal: ini + recUsado, saldoFinal, items });
     carried = saldoFinal;
   }
-  const missingMonths = new Set(days.filter((x) => !x.usouInformado).map((x) => ym(addDays(x.date, -p.lagDays))).filter((m) => data.targets[m] == null));
+  const missingMonths = new Set(days.filter((x) => !x.usouInformado).map((x) => ym(addDays(x.date, -lagFor(p, data.targetConfigs, x.date)))).filter((m) => !monthTarget(p, data.targets, data.targetConfigs, m)));
   if (missingMonths.size) warnings.push({ code: "META_AUSENTE", severity: "erro", message: `Meta ausente para ${[...missingMonths].join(", ")}: estimativa = 0 nesses dias (não é valor saudável).` });
   const outside = [...byDate.keys()].filter((d) => d < p.startDate).length;
   if (outside) warnings.push({ code: "ANTES_INICIO", severity: "alerta", message: `${outside} data(s) com saídas em aberto antes da data inicial do fluxo — não entram no saldo (verificar vencidos).` });
