@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { computeFlow, distributePlanned, paymentsFor, titleStatus } from "./engine";
-import { confirmExtension, effectivate, normalizeData, registerPayment, reverseEffectivation, reversePayment, suggestEffectivation } from "./actions";
+import { closePlanned, confirmExtension, effectivate, linkLegacyTitle, normalizeData, plannedRemaining, plannedSummary, registerPayment, reverseEffectivation, reversePayment, setPlannedRemaining, suggestEffectivation } from "./actions";
 import { computeDashboard } from "./dashboard";
 import { diffData } from "../diff";
 import { editDraft } from "../store";
@@ -54,13 +54,53 @@ describe("Efetivação de compra/pedido", () => {
     expect(dist.parcels.reduce((a, p) => a + p.amount, 0)).toBe(400000);
     expect(computeFlow(d, { start: "2026-10-01", end: "2027-01-31" }).kpis.saidas).toBe(1000000);
   });
-  it("não abate duas vezes: M legado com mesmo código é ignorado quando há vínculo explícito", () => {
+  it("misto: título legado DISTINTO (M=3000) + nova efetivação 2000 → restante 5000; total 10000", () => {
     const d = scen();
-    d.committed.push({ ...normalizeData({ committed: [{}] }).committed[0]!, id: "leg", supplierId: "s", purchaseCode: "PC1", document: "NF", value: 300000, dueDate: "2026-11-01", legacyAbatement: 300000, origin: "legado", status: "ativo" });
+    d.committed.push({ ...normalizeData({ committed: [{}] }).committed[0]!, id: "leg", supplierId: "s", purchaseCode: "PC1", document: "NF-LEG", value: 300000, dueDate: "2026-11-01", legacyAbatement: 300000, origin: "legado", status: "ativo" });
+    effectivate(d, { id: "a", plannedId: "p", kind: "parcial", at: "1", installments: [{ value: 200000, date: "2026-11-05", document: "" }] });
+    expect(plannedRemaining(d, "p").value).toBe(500000);
+    const days = computeFlow(d, { start: "2026-10-01", end: "2027-01-31" }).days;
+    expect(days.reduce((a, x) => a + x.comprometida, 0)).toBe(500000);
+    expect(days.reduce((a, x) => a + x.planejada, 0)).toBe(500000);
+    expect(days.reduce((a, x) => a + x.saidas, 0)).toBe(1000000);
+    const sm = plannedSummary(d, "p");
+    expect([sm.original, sm.effectivated, sm.legacyAbated, sm.remaining]).toEqual([1000000, 200000, 300000, 500000]);
+  });
+  it("mesmo título: vincular legado existente reclassifica sem duplicar nem abater duas vezes", () => {
+    const d = scen();
+    d.committed.push({ ...normalizeData({ committed: [{}] }).committed[0]!, id: "leg", supplierId: "s", purchaseCode: "PC1", document: "NF-LEG", value: 300000, dueDate: "2026-11-01", legacyAbatement: 300000, origin: "legado", status: "ativo" });
+    linkLegacyTitle(d, { id: "lk", plannedId: "p", committedId: "leg", at: "1" });
+    linkLegacyTitle(d, { id: "lk", plannedId: "p", committedId: "leg", at: "1" }); // idempotente
+    expect(d.committed).toHaveLength(1);
+    expect(d.effectivations).toHaveLength(1);
+    expect(plannedRemaining(d, "p").value).toBe(700000);
+    expect(computeFlow(d, { start: "2026-10-01", end: "2027-01-31" }).kpis.saidas).toBe(1000000);
+    expect(() => linkLegacyTitle(d, { id: "lk2", plannedId: "p", committedId: "leg", at: "2" })).toThrow();
+    reverseEffectivation(d, "lk", "vínculo errado", "t");
+    expect(d.committed[0]!.status).toBe("ativo");
+    expect(d.committed[0]!.origin).toBe("legado");
+    expect(plannedRemaining(d, "p").value).toBe(700000); // volta a abater via M
+  });
+  it("M ausente bloqueia efetivação (conciliação pendente, sem total saudável)", () => {
+    const d = scen();
+    d.committed.push({ ...normalizeData({ committed: [{}] }).committed[0]!, id: "leg", supplierId: "s", purchaseCode: "PC1", document: "NF", value: 300000, dueDate: "2026-11-01", legacyAbatement: null, origin: "legado", status: "ativo" });
+    expect(plannedRemaining(d, "p").health).toBe("abatimento_ausente");
+    expect(() => effectivate(d, { id: "a", plannedId: "p", kind: "parcial", at: "1", installments: [{ value: 1, date: "2026-11-01", document: "" }] })).toThrow(/Conciliação pendente/);
+  });
+  it("efetivações independentes 3000 e 2000 mantêm 5000 previsto; reversão de uma não exige reverter a outra; encerramento separado", () => {
+    const d = scen();
     effectivate(d, { id: "a", plannedId: "p", kind: "parcial", at: "1", installments: [{ value: 300000, date: "2026-11-01", document: "" }] });
-    const dist = distributePlanned(d.planned[0]!, sup(d), d.committed, "legado", d.effectivations);
-    expect(dist.Q).toBe(0);
-    expect(dist.warnings.some((w) => w.code === "PLAN_DUPLO_MECANISMO")).toBe(true);
+    effectivate(d, { id: "b", plannedId: "p", kind: "parcial", at: "2", installments: [{ value: 150000, date: "2026-11-10", document: "" }, { value: 50000, date: "2026-12-10", document: "" }] });
+    expect(plannedRemaining(d, "p").value).toBe(500000);
+    expect(d.planned[0]!.status).toBe("ativo");
+    reverseEffectivation(d, "a", "pedido cancelado", "t");
+    expect(plannedRemaining(d, "p").value).toBe(800000);
+    expect(d.committed.filter((c) => c.status === "ativo").map((c) => c.value)).toEqual([150000, 50000]);
+    setPlannedRemaining(d, "p", 450000, ["2027-02-01"]);
+    expect(computeFlow(d, { start: "2026-10-01", end: "2027-02-28" }).kpis.saidas).toBe(650000);
+    expect(() => closePlanned(d, "p", "")).toThrow();
+    closePlanned(d, "p", "pedido final recebido");
+    expect(computeFlow(d, { start: "2026-10-01", end: "2027-02-28" }).kpis.saidas).toBe(200000);
   });
   it("reversão auditada restaura previsão e cancela parcelas; bloqueada se houver pagamento ativo", () => {
     const d = scen();
@@ -111,20 +151,40 @@ describe("Pagamentos", () => {
     expect(d.committed[0]!.extensionHistory).toEqual([{ from: null, to: "2026-12-01", at: "t", note: "negociado" }]);
     expect(outflows(d)).toEqual([["2026-10-20", 0, 200000, 0], ["2026-12-01", 0, 400000, 0]]);
   });
-  it("dashboard: aberto exclui quitados/cancelados/previsão; vencido não é inferido como pago", () => {
+  it("dashboard: aberto exclui quitados/cancelados/previsão; vencido não é inferido como pago; sem vencimento incluído", () => {
     const d = withTitle();
     d.expenses.push({ ...normalizeData({ expenses: [{}] }).expenses[0]!, id: "x", supplierId: "s", document: "D", value: 50000, baseDate: "2026-10-01", termDays: 0, status: "ativo" });
     d.expenses.push({ ...d.expenses[0]!, id: "y", value: 70000 });
+    d.expenses.push({ ...d.expenses[0]!, id: "z", value: 9000, termDays: null });
     registerPayment(d, { id: "q", titleKind: "expense", titleId: "y", date: "2026-10-01", amount: 70000, note: "" });
     d.planned.push({ ...d.planned[0]!, id: "p2", status: "ativo", purchaseCode: "PC2" });
     const flow = computeFlow(d, { start: "2026-10-01", end: "2026-12-31" });
-    const k = computeDashboard(d, flow, "2026-10-28");
-    expect(k.totalOpen).toBe(650000);
-    expect(k.overdue).toBe(50000);
-    expect(k.committedOpen).toBe(600000);
-    expect(k.plannedRemaining).toBe(1000000);
-    expect(k.top?.open).toBe(650000);
-    expect(k.due30).toBe(600000);
+    const k = computeDashboard(d, flow, "2026-10-28", { start: "2026-10-01", end: "2026-12-31" });
+    const c = (key: string) => k.cards.find((x) => x.key === key)!;
+    expect(c("total").value).toBe(659000);
+    expect(c("nodue").value).toBe(9000);
+    expect(c("overdue").value).toBe(50000);
+    expect(c("committed").value).toBe(600000);
+    expect(c("planned").value).toBe(1000000);
+    expect(c("top").value).toBe(659000);
+    expect(c("d30").value).toBe(600000);
+    expect(c("d30").titles!.map((t) => t.id)).toEqual(["a-1"]);
+    for (const x of k.cards.filter((x) => x.kind === "titles")) expect(x.titles!.reduce((a, t) => a + t.open, 0)).toBe(x.value); // drilldown reconcilia
+    expect(c("planned").parcels!.reduce((a, p) => a + p.amount, 0)).toBe(c("planned").value);
+  });
+  it("dashboard respeita período e filtros fornecedor/grupo", () => {
+    const d = withTitle();
+    d.suppliers.push({ id: "s2", name: "Outro", group: "H", terms: [10, null, null, null, null, null, null, null, null, null] });
+    d.expenses.push({ ...normalizeData({ expenses: [{}] }).expenses[0]!, id: "x", supplierId: "s2", document: "D", value: 50000, baseDate: "2027-03-01", termDays: 0, status: "ativo" });
+    const flow = computeFlow(d, { start: "2026-10-01", end: "2026-12-31" });
+    const all = computeDashboard(d, flow, "2026-10-28", { start: "2026-10-01", end: "2026-12-31" });
+    expect(all.cards.find((x) => x.key === "period")!.value).toBe(600000); // despesa de 03/2027 fora do período
+    expect(all.cards.find((x) => x.key === "total")!.value).toBe(650000); // estoque independe do período
+    const g = computeDashboard(d, flow, "2026-10-28", { start: "2026-10-01", end: "2026-12-31", group: "H" });
+    expect(g.cards.find((x) => x.key === "total")!.value).toBe(50000);
+    expect(g.ranking.map((r) => r.supplier)).toEqual(["Outro"]);
+    const s1 = computeDashboard(d, flow, "2026-10-28", { start: "2026-10-01", end: "2026-12-31", supplierId: "s" });
+    expect(s1.cards.find((x) => x.key === "total")!.value).toBe(600000);
   });
 });
 
