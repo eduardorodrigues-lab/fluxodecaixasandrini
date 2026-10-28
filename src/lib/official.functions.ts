@@ -19,7 +19,7 @@ export const getOfficial = createServerFn({ method: "GET" })
     const m = await myOrg(context.supabase, context.userId);
     const { data, error } = await context.supabase.from("official_data").select("data, version, updated_at").eq("org_id", m.org_id).single();
     if (error || !data) throw new Error("Falha ao ler base oficial.");
-    return { orgId: m.org_id, orgName: m.organizations?.name ?? "", role: m.role, version: data.version, updatedAt: data.updated_at, data: normalizeData(data.data) as unknown as Record<string, unknown> };
+    return { orgId: m.org_id, orgName: m.organizations?.name ?? "", role: m.role, version: data.version, updatedAt: data.updated_at, dataJson: JSON.stringify(normalizeData(data.data)) };
   });
 
 export const listAudit = createServerFn({ method: "GET" })
@@ -28,13 +28,13 @@ export const listAudit = createServerFn({ method: "GET" })
     const m = await myOrg(context.supabase, context.userId);
     const { data, error } = await context.supabase.from("audit_log").select("id, at, user_email, version_from, version_to, summary, changes").eq("org_id", m.org_id).order("at", { ascending: false }).limit(200);
     if (error) throw new Error("Falha ao ler auditoria.");
-    return (data ?? []).map((r) => ({ ...r, changes: r.changes as unknown as Record<string, unknown>[] }));
+    return (data ?? []).map((r) => ({ id: r.id, at: r.at, user_email: r.user_email, version_from: r.version_from, version_to: r.version_to, summary: r.summary, changesJson: JSON.stringify(r.changes) }));
   });
 
 export const commitOfficial = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: { expectedVersion: number; requestId: string; data: Record<string, unknown> }) => {
-    if (!Number.isInteger(i?.expectedVersion) || typeof i.requestId !== "string" || !/^[0-9a-f-]{36}$/i.test(i.requestId) || typeof i.data !== "object") throw new Error("Entrada inválida.");
+  .inputValidator((i: { expectedVersion: number; requestId: string; dataJson: string }) => {
+    if (!Number.isInteger(i?.expectedVersion) || typeof i.requestId !== "string" || !/^[0-9a-f-]{36}$/i.test(i.requestId) || typeof i.dataJson !== "string" || i.dataJson.length > 20_000_000) throw new Error("Entrada inválida.");
     return i;
   })
   .handler(async ({ data: input, context }) => {
@@ -43,7 +43,9 @@ export const commitOfficial = createServerFn({ method: "POST" })
     const { data: cur, error } = await context.supabase.from("official_data").select("data, version").eq("org_id", m.org_id).single();
     if (error || !cur) throw new Error("Falha ao ler base oficial.");
     if (cur.version !== input.expectedVersion) return { status: "conflict" as const, version: cur.version, summary: "" };
-    const next: ScenarioData = normalizeData(input.data);
+    let parsed: unknown;
+    try { parsed = JSON.parse(input.dataJson); } catch { throw new Error("Dados inválidos."); }
+    const next: ScenarioData = normalizeData(parsed);
     const changes = diffData(normalizeData(cur.data), next);
     if (!changes.length) return { status: "noop" as const, version: cur.version, summary: "sem alterações" };
     const summary = summarize(changes);

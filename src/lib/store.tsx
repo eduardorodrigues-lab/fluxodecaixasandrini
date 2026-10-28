@@ -22,7 +22,7 @@ export interface Scenario { id: string; name: string; isBase: boolean; data: Sce
 
 const KEY = "fluxo-sandrini:v2";
 export const uid = () => Math.random().toString(36).slice(2, 10);
-const uuid = () => (globalThis.crypto?.randomUUID ? crypto.randomUUID() : "00000000-0000-4000-8000-" + Date.now().toString(16).padStart(12, "0").slice(-12));
+const uuid = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : "00000000-0000-4000-8000-" + Date.now().toString(16).padStart(12, "0").slice(-12));
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 const initialLocal = (): LocalState => ({ v: 2, mode: "demo", activeId: "base", demo: { data: demoData(), version: 0, audit: [] }, sims: { demo: [], oficial: [] } });
 
@@ -86,7 +86,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const mode = local.mode;
   const offQ = useQuery({ queryKey: ["official", user?.id], queryFn: () => fetchOfficial(), enabled: hydrated && mode === "oficial" && !!user, staleTime: 30_000, refetchOnWindowFocus: false });
   const auditQ = useQuery({ queryKey: ["official", "audit", user?.id], queryFn: () => fetchAudit(), enabled: hydrated && mode === "oficial" && !!user });
-  const offData = useMemo(() => (offQ.data ? normalizeData(offQ.data.data) : null), [offQ.data]);
+  const offData = useMemo(() => (offQ.data ? normalizeData(JSON.parse(offQ.data.dataJson)) : null), [offQ.data]);
 
   const official: Ctx["official"] = !user ? { status: "signed_out", orgName: "", role: "", version: -1, error: "" }
     : offQ.isError ? { status: "error", orgName: "", role: "", version: -1, error: (offQ.error as Error).message }
@@ -136,7 +136,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
     try {
-      const r = await commitFn({ data: { expectedVersion: baseVersion, requestId, data: draft as unknown as Record<string, unknown> } });
+      const r = await commitFn({ data: { expectedVersion: baseVersion, requestId, dataJson: JSON.stringify(draft) } });
       if (r.status === "ok" || r.status === "duplicate" || r.status === "noop") {
         await qc.invalidateQueries({ queryKey: ["official"] });
         setDraft(null); setRequestId(""); setSaveState("saved");
@@ -159,7 +159,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     createSim: (name) => { if (!baseData) return; const id = uid(); mutLocal((s) => { s.sims[mode].push({ id, name, createdAt: new Date().toISOString(), data: clone(baseData), baseVersion }); s.activeId = id; }); },
     discardSim: (id) => { if (!baseData) return; mutLocal((s) => { const x = s.sims[mode].find((i) => i.id === id); if (x) { x.data = clone(baseData); x.baseVersion = baseVersion; } }); },
     deleteSim: (id) => mutLocal((s) => { s.sims[mode] = s.sims[mode].filter((x) => x.id !== id); if (s.activeId === id) s.activeId = "base"; }),
-    audit: mode === "demo" ? local.demo.audit : ((auditQ.data ?? []) as unknown as AuditEntry[]),
+    audit: mode === "demo" ? local.demo.audit : (auditQ.data ?? []).map((r) => ({ ...r, changes: JSON.parse(r.changesJson) as Change[] })),
     resetDemo: () => mutLocal((s) => { s.demo = { data: demoData(), version: 0, audit: [] }; s.sims.demo = []; s.activeId = "base"; }),
   };
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;
