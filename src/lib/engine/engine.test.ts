@@ -50,10 +50,10 @@ describe("Regra C — recebimentos", () => {
       { id: "b", date: "2026-10-03", platforms: {}, general: 0, notes: "" },
     ];
     const r = computeFlow(d, { start: "2026-10-01", end: "2026-10-03" });
-    expect(r.days[1].recUsado).toBe(100000);
-    expect(r.days[1].usouInformado).toBe(true);
-    expect(r.days[2].recUsado).toBe(r.days[2].recEstimado);
-    expect(r.days[2].recInformadoPresente).toBe(true);
+    expect(r.days[1]!.recUsado).toBe(100000);
+    expect(r.days[1]!.usouInformado).toBe(true);
+    expect(r.days[2]!.recUsado).toBe(r.days[2]!.recEstimado);
+    expect(r.days[2]!.recInformadoPresente).toBe(true);
   });
   it("geral + plataformas: soma ambos e alerta dupla contagem", () => {
     const rec = { id: "x", date: "2026-10-02", platforms: { A: 100, B: 50 }, general: 300, notes: "" };
@@ -121,10 +121,10 @@ describe("Regra G — saldo", () => {
     d.expenses = [{ id: "e", supplierId: "s4", document: "", value: 500000, baseDate: "2026-10-02", termDays: 0, extensionDate: null, categoryId: "", notes: "", status: "ativo" }];
     d.adjustments = [{ date: "2026-10-04", value: 0, note: "" }];
     const r = computeFlow(d, { start: "2026-10-01", end: "2026-10-05" });
-    expect(r.days[2].saldoFinal).toBe(d.params.saldoInicial - 500000);
-    expect(r.days[3].saldoInicial).toBe(0);
-    expect(r.days[3].ajuste?.diff).toBe(-(d.params.saldoInicial - 500000));
-    expect(r.days[4].saldoFinal).toBe(0);
+    expect(r.days[2]!.saldoFinal).toBe(d.params.saldoInicial - 500000);
+    expect(r.days[3]!.saldoInicial).toBe(0);
+    expect(r.days[3]!.ajuste?.diff).toBe(-(d.params.saldoInicial - 500000));
+    expect(r.days[4]!.saldoFinal).toBe(0);
   });
 });
 
@@ -143,9 +143,9 @@ describe("Cenários e visões", () => {
     const rows = buildRows(res, d.categories);
     const vert = toVertical(rows, res.days);
     for (const r of rows.filter((r) => r.totalMode === "sum"))
-      expect(vert.reduce((a, v) => a + v.cells[r.key], 0)).toBe(r.total);
+      expect(vert.reduce((a, v) => a + (v.cells[r.key] ?? 0), 0)).toBe(r.total);
     const sf = rows.find((r) => r.key === "saldo_fim")!;
-    expect(vert.at(-1)!.cells.saldo_fim).toBe(sf.total);
+    expect(vert.at(-1)!.cells["saldo_fim"]).toBe(sf.total);
     expect(sf.total).toBe(res.kpis.saldoFinal);
     // saldo não é somado como movimentação
     for (const day of res.days) expect(day.saldoFinal).toBe(day.saldoInicial + day.recUsado - day.saidas);

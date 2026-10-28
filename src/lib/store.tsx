@@ -55,7 +55,7 @@ export function AppProvider({ children, adapter = localAdapter }: { children: Re
   }, [state, hydrated, adapter]);
 
   const mut = useCallback((fn: (s: AppState) => void) => setState((s) => { const n = clone(s); fn(n); return n; }), []);
-  const active = state.scenarios.find((s) => s.id === state.activeId) ?? state.scenarios[0];
+  const active = (state.scenarios.find((s) => s.id === state.activeId) ?? state.scenarios[0])!;
   const base = state.scenarios.find((s) => s.isBase)!;
 
   const value = useMemo<Ctx>(() => ({

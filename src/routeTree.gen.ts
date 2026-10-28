@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as LancamentosRouteImport } from './routes/lancamentos'
 import { Route as RecebimentosRouteImport } from './routes/recebimentos'
 import { Route as ReferenciasRouteImport } from './routes/referencias'
+import { Route as RegrasRouteImport } from './routes/regras'
 import { Route as SimulacoesRouteImport } from './routes/simulacoes'
 
 const IndexRoute = IndexRouteImport.update({
@@ -35,6 +36,11 @@ const ReferenciasRoute = ReferenciasRouteImport.update({
   path: '/referencias',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RegrasRoute = RegrasRouteImport.update({
+  id: '/regras',
+  path: '/regras',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SimulacoesRoute = SimulacoesRouteImport.update({
   id: '/simulacoes',
   path: '/simulacoes',
@@ -46,6 +52,7 @@ export interface FileRoutesByFullPath {
   '/lancamentos': typeof LancamentosRoute
   '/recebimentos': typeof RecebimentosRoute
   '/referencias': typeof ReferenciasRoute
+  '/regras': typeof RegrasRoute
   '/simulacoes': typeof SimulacoesRoute
 }
 export interface FileRoutesByTo {
@@ -53,6 +60,7 @@ export interface FileRoutesByTo {
   '/lancamentos': typeof LancamentosRoute
   '/recebimentos': typeof RecebimentosRoute
   '/referencias': typeof ReferenciasRoute
+  '/regras': typeof RegrasRoute
   '/simulacoes': typeof SimulacoesRoute
 }
 export interface FileRoutesById {
@@ -61,20 +69,33 @@ export interface FileRoutesById {
   '/lancamentos': typeof LancamentosRoute
   '/recebimentos': typeof RecebimentosRoute
   '/referencias': typeof ReferenciasRoute
+  '/regras': typeof RegrasRoute
   '/simulacoes': typeof SimulacoesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/lancamentos' | '/recebimentos' | '/referencias' | '/simulacoes'
+    | '/'
+    | '/lancamentos'
+    | '/recebimentos'
+    | '/referencias'
+    | '/regras'
+    | '/simulacoes'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/lancamentos' | '/recebimentos' | '/referencias' | '/simulacoes'
+  to:
+    | '/'
+    | '/lancamentos'
+    | '/recebimentos'
+    | '/referencias'
+    | '/regras'
+    | '/simulacoes'
   id:
     | '__root__'
     | '/'
     | '/lancamentos'
     | '/recebimentos'
     | '/referencias'
+    | '/regras'
     | '/simulacoes'
   fileRoutesById: FileRoutesById
 }
@@ -83,6 +104,7 @@ export interface RootRouteChildren {
   LancamentosRoute: typeof LancamentosRoute
   RecebimentosRoute: typeof RecebimentosRoute
   ReferenciasRoute: typeof ReferenciasRoute
+  RegrasRoute: typeof RegrasRoute
   SimulacoesRoute: typeof SimulacoesRoute
 }
 
@@ -116,6 +138,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReferenciasRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/regras': {
+      id: '/regras'
+      path: '/regras'
+      fullPath: '/regras'
+      preLoaderRoute: typeof RegrasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/simulacoes': {
       id: '/simulacoes'
       path: '/simulacoes'
@@ -131,6 +160,7 @@ const rootRouteChildren: RootRouteChildren = {
   LancamentosRoute: LancamentosRoute,
   RecebimentosRoute: RecebimentosRoute,
   ReferenciasRoute: ReferenciasRoute,
+  RegrasRoute: RegrasRoute,
   SimulacoesRoute: SimulacoesRoute,
 }
 export const routeTree = rootRouteImport

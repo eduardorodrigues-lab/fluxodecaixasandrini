@@ -72,7 +72,7 @@ function Page() {
         <section className="card p-3">
           <div className="lbl mb-2">Metas mensais (bruto, antes de redutores)</div>
           <table className="tbl"><tbody>{Object.keys(d.targets).sort().map((m) => (
-            <tr key={m}><td>{fmtMonth(m)}</td><td><MoneyInput value={d.targets[m]} onChange={(v) => update((x) => { if (v === null) delete x.targets[m]; else x.targets[m] = v; })} /></td></tr>
+            <tr key={m}><td>{fmtMonth(m)}</td><td><MoneyInput value={d.targets[m] ?? null} onChange={(v) => update((x) => { if (v === null) delete x.targets[m]; else x.targets[m] = v; })} /></td></tr>
           ))}</tbody></table>
           <div className="mt-2 flex gap-1"><input className="inp w-24" placeholder="aaaa-mm" value={newMonth} onChange={(e) => setNewMonth(e.target.value)} /><button className="btn" onClick={() => { if (/^\d{4}-\d{2}$/.test(newMonth)) { update((x) => { x.targets[newMonth] ??= 0; }); setNewMonth(""); } }}>+ Mês</button></div>
           <p className="mt-1 text-[11px] text-muted-foreground">Apagar o valor remove a meta (estimativa 0 com alerta).</p>
@@ -81,8 +81,8 @@ function Page() {
           <div className="mb-2 flex justify-between"><span className="lbl">Ajustes manuais de saldo</span><button className="btn" onClick={() => update((x) => { x.adjustments.push({ date: x.params.startDate, value: 0, note: "" }); })}>+</button></div>
           <table className="tbl"><tbody>{d.adjustments.map((a, i) => (
             <tr key={i}>
-              <td><DateInput value={a.date} onChange={(v) => v && update((x) => { x.adjustments[i].date = v; })} /></td>
-              <td><MoneyInput value={a.value} onChange={(v) => update((x) => { x.adjustments[i].value = v; })} /></td>
+              <td><DateInput value={a.date} onChange={(v) => v && update((x) => { x.adjustments[i]!.date = v; })} /></td>
+              <td><MoneyInput value={a.value} onChange={(v) => update((x) => { x.adjustments[i]!.value = v; })} /></td>
               <td><button className="btn btn-danger" onClick={() => update((x) => { x.adjustments.splice(i, 1); })}>×</button></td>
             </tr>
           ))}</tbody></table>

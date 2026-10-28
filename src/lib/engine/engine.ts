@@ -201,14 +201,14 @@ export function computeFlow(data: ScenarioData, opt: FlowOptions): FlowResult {
   const outside = [...byDate.keys()].filter((d) => d < p.startDate).length;
   if (outside) warnings.push({ code: "ANTES_INICIO", severity: "alerta", message: `${outside} data(s) com saídas antes da data inicial do fluxo — não entram no saldo.` });
   const slice = days.filter((d) => d.date >= opt.start && d.date <= opt.end);
-  let menor = slice[0];
-  for (const d of slice) if (d.saldoFinal < menor.saldoFinal) menor = d;
+  let menor: Day | undefined = slice[0];
+  for (const d of slice) if (!menor || d.saldoFinal < menor.saldoFinal) menor = d;
   return {
     days: slice, warnings, filtered,
     kpis: {
       saldoFinal: slice.at(-1)?.saldoFinal ?? 0,
       menorSaldo: menor?.saldoFinal ?? 0,
-      menorSaldoData: menor?.date ?? "",
+      menorSaldoData: menor ? menor.date : "",
       entradasSemSaldo: slice.reduce((a, d) => a + d.recUsado, 0),
       saidas: slice.reduce((a, d) => a + d.saidas, 0),
     },

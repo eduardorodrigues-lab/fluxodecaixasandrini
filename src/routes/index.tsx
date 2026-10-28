@@ -87,7 +87,7 @@ function FluxoPage() {
         {sel && (
           <div className="card w-80 shrink-0 self-start p-3">
             <div className="mb-2 flex justify-between"><b className="text-xs">{sel.row.label} · {fmtDate(res.days[sel.i]?.date)}</b><button className="text-xs" onClick={() => setSel(null)}>✕</button></div>
-            <div className="num mb-2 text-base font-semibold">{fmtBRL(sel.row.values[sel.i])}</div>
+            <div className="num mb-2 text-base font-semibold">{fmtBRL(sel.row.values[sel.i] ?? 0)}</div>
             {sel.row.match ? (
               <ul className="space-y-1 text-xs">
                 {res.days[sel.i]?.items.filter(sel.row.match).map((it, j) => <li key={j} className="flex justify-between gap-2 border-b border-border py-1"><span>{it.label}{it.note && <span className="block text-muted-foreground">{it.note}</span>}</span><span className="num">{fmtBRL(it.amount)}</span></li>)}
@@ -128,7 +128,7 @@ function Vertical({ rows, res, onPick, update, receipts, adjustments }: VProps) 
               <td>{fmtDate(v.date)} <span className="text-muted-foreground">{weekday(v.date)}</span></td>
               <td className="num"><MoneyInput value={adjustments.find((a) => a.date === v.date)?.value ?? null} onChange={(x) => setAdj(v.date, x)} /></td>
               <td className="num"><MoneyInput value={receipts.find((r) => r.date === v.date)?.general ?? null} onChange={(x) => setGeneral(v.date, x)} /></td>
-              {cols.map((c) => <td key={c.key} onClick={() => onPick(c, i)} className={`num cursor-pointer hover:bg-accent ${v.cells[c.key] < 0 ? "neg" : ""} ${c.emphasis ? "font-semibold" : ""}`}>{fmtNum(v.cells[c.key])}</td>)}
+              {cols.map((c) => <td key={c.key} onClick={() => onPick(c, i)} className={`num cursor-pointer hover:bg-accent ${(v.cells[c.key] ?? 0) < 0 ? "neg" : ""} ${c.emphasis ? "font-semibold" : ""}`}>{fmtNum(v.cells[c.key])}</td>)}
             </tr>
           ))}
           <tr className="bg-muted font-semibold"><td>Total</td><td /><td />{cols.map((c) => <td key={c.key} className="num">{fmtNum(c.total)}</td>)}</tr>
