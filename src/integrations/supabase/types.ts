@@ -14,13 +14,157 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      audit_log: {
+        Row: {
+          at: string
+          changes: Json
+          id: string
+          org_id: string
+          request_id: string
+          snapshot_before: Json | null
+          summary: string
+          user_email: string | null
+          user_id: string
+          version_from: number
+          version_to: number
+        }
+        Insert: {
+          at?: string
+          changes: Json
+          id?: string
+          org_id: string
+          request_id: string
+          snapshot_before?: Json | null
+          summary: string
+          user_email?: string | null
+          user_id: string
+          version_from: number
+          version_to: number
+        }
+        Update: {
+          at?: string
+          changes?: Json
+          id?: string
+          org_id?: string
+          request_id?: string
+          snapshot_before?: Json | null
+          summary?: string
+          user_email?: string | null
+          user_id?: string
+          version_from?: number
+          version_to?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_log_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      official_data: {
+        Row: {
+          data: Json
+          org_id: string
+          updated_at: string
+          updated_by: string | null
+          version: number
+        }
+        Insert: {
+          data?: Json
+          org_id: string
+          updated_at?: string
+          updated_by?: string | null
+          version?: number
+        }
+        Update: {
+          data?: Json
+          org_id?: string
+          updated_at?: string
+          updated_by?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "official_data_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      org_members: {
+        Row: {
+          created_at: string
+          org_id: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          org_id: string
+          role: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          org_id?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_members_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organizations: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      commit_official: {
+        Args: {
+          _changes: Json
+          _data: Json
+          _email: string
+          _expected: number
+          _org: string
+          _request: string
+          _summary: string
+          _user: string
+        }
+        Returns: Json
+      }
+      is_org_member: { Args: { _org: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never
