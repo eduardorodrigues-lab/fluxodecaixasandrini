@@ -12,10 +12,11 @@ export function defaultMonthTarget(p: Params, gross: number): MonthTarget {
   return { gross, legacyReducer: p.legacyReducer, divisorLegado: p.divisorLegado, webR1: p.webR1, webR2: p.webR2, r2Base: "apos_r1", divisorWeb: p.divisorWeb, lagDays: p.lagDays, version: 1, history: [] };
 }
 export function monthTarget(p: Params, targets: Record<string, number>, cfgs: Record<string, MonthTarget> | undefined, month: string): MonthTarget | null {
-  const c = cfgs?.[month];
-  if (c) return c;
+  // Bruto: espelho `targets` (sempre sincronizado por setMonthTarget); parâmetros: configuração própria do mês.
   const g = targets[month];
-  return g == null ? null : defaultMonthTarget(p, g); // dado antigo sem override: mesmo resultado dos parâmetros gerais
+  if (g == null) return null;
+  const c = cfgs?.[month];
+  return c ? (c.gross === g ? c : { ...c, gross: g }) : defaultMonthTarget(p, g); // sem override: mesmo resultado dos parâmetros gerais
 }
 export function lagFor(p: Params, cfgs: Record<string, MonthTarget> | undefined, date: string) {
   return cfgs?.[ym(date)]?.lagDays ?? p.lagDays;

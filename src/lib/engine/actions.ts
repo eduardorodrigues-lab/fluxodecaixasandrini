@@ -18,7 +18,7 @@ export function normalizeData(raw: unknown): ScenarioData {
   d.targetConfigs ??= {};
   // Migração: mês com meta e sem configuração própria recebe SNAPSHOT dos parâmetros atuais (mesmo resultado de antes).
   for (const [m, g] of Object.entries(d.targets as Record<string, number>)) if (g != null && !d.targetConfigs[m]) d.targetConfigs[m] = defaultMonthTarget(d.params, g);
-  for (const [m, c] of Object.entries(d.targetConfigs as Record<string, MonthTarget>)) d.targets[m] = c.gross;
+  for (const [m, c] of Object.entries(d.targetConfigs as Record<string, MonthTarget>)) { if (d.targets[m] == null) delete d.targetConfigs[m]; else c.gross = d.targets[m]; }
   // Migração de plataformas: rótulos antigos (texto) viram cadastro com ID estável; recebimentos passam a referenciar o ID.
   if (d.platforms.some((x: unknown) => typeof x === "string")) {
     const map = new Map<string, string>();
