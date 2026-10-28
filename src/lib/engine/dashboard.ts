@@ -30,7 +30,7 @@ export interface Card {
   key: string; label: string; value: number; count: number; scope: string; explanation: string;
   titles?: OpenTitle[]; parcels?: PlannedParcel[]; day?: Day | null; curve?: { date: string; saldo: number }[];
   ranking?: { supplierId: string; supplier: string; open: number; titles: OpenTitle[] }[];
-  kind: "titles" | "parcels" | "day" | "ranking"; tone?: "neg" | "warn";
+  kind: "titles" | "parcels" | "day" | "ranking"; tone?: "neg" | "warn" | undefined;
 }
 const sum = (xs: { open: number }[]) => xs.reduce((a, t) => a + t.open, 0);
 
