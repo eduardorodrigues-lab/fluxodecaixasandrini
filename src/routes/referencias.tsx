@@ -50,7 +50,7 @@ function Page() {
             <tr key={s.id}>
               <td><input className="inp w-44" defaultValue={s.name} onBlur={(e) => update((x) => { x.suppliers.find((i) => i.id === s.id)!.name = e.target.value; })} /></td>
               <td><input className="inp w-28" defaultValue={s.group} onBlur={(e) => update((x) => { x.suppliers.find((i) => i.id === s.id)!.group = e.target.value; })} /></td>
-              {Array.from({ length: 10 }, (_, i) => <td key={i}><IntInput value={s.terms[i] ?? null} onChange={(v) => update((x) => { x.suppliers.find((k) => k.id === s.id)!.terms[i] = v; })} /></td>)}
+              {Array.from({ length: 10 }, (_, i) => <td key={i} className="num"><IntInput value={s.terms[i] ?? null} onChange={(v) => update((x) => { x.suppliers.find((k) => k.id === s.id)!.terms[i] = v; })} /></td>)}
             </tr>
           ))}</tbody></table>
       </section>
