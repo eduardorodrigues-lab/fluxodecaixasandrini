@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { DateInput, IntInput, MoneyInput, PageHeader, ProfileBadge } from "@/components/kit";
 import { committedDate, distributePlanned, expenseDate, paymentsFor, splitCents, titleStatus } from "@/lib/engine/engine";
-import { confirmExtension, effectivate, isoToday, registerPayment, reverseEffectivation, reversePayment, suggestEffectivation } from "@/lib/engine/actions";
+import { closePlanned, confirmExtension, effectivate, linkLegacyTitle, plannedSummary, registerPayment, reopenPlanned, reverseEffectivation, reversePayment, setPlannedRemaining, suggestEffectivation, todaySP } from "@/lib/engine/actions";
 import type { Committed, Expense, Planned, ScenarioData } from "@/lib/engine/types";
 import { addDays, fmtDate, parseBRDate } from "@/lib/dates";
 import { fmtBRL } from "@/lib/money";
@@ -25,12 +25,17 @@ const TABS: { k: Tab; l: string }[] = [{ k: "planned", l: "Previsões de compra 
 const now = () => new Date().toISOString();
 
 function Page() {
-  const { active, update } = useApp();
+  const { active, update, changes } = useApp();
   const d = active.data;
   const [tab, setTab] = useState<Tab>("planned");
   const [err, setErr] = useState("");
   const [open, setOpen] = useState<{ kind: string; id: string } | null>(null);
   const act = (fn: (x: ScenarioData) => void) => { const e = update(fn); setErr(e ?? ""); return !e; };
+  // Cada efetivação/vínculo/encerramento é revisado e confirmado INDIVIDUALMENTE (sem lote misturando pedidos).
+  const actAlone = (fn: (x: ScenarioData) => void, what: string) => {
+    if (active.isBase && changes.length) { setErr(`Há outras alterações no rascunho. Confirme ou descarte antes de ${what}: cada efetivação é revisada sozinha.`); return false; }
+    const ok = act(fn); if (ok && active.isBase) setErr(`${what[0]!.toUpperCase()}${what.slice(1)} no rascunho — revise e confirme na barra superior (ou cancele).`); return ok;
+  };
   const sup = (id: string) => d.suppliers.find((s) => s.id === id);
   const cats = (kind: string) => d.categories.filter((c) => c.kind === kind);
   type K = "planned" | "committed" | "expenses";
@@ -68,7 +73,7 @@ function Page() {
                   <td><SupSel v={p.supplierId} on={(v) => set("planned", p.id, { supplierId: v })} /></td>
                   <td><Txt v={p.purchaseCode} on={(v) => set("planned", p.id, { purchaseCode: v })} /></td>
                   <td><Txt v={p.document} on={(v) => set("planned", p.id, { document: v })} /></td>
-                  <td><MoneyInput value={p.value} onChange={(v) => set("planned", p.id, { value: v ?? 0 })} /></td>
+                  <td className="num"><MoneyInput value={p.value} onChange={(v) => set("planned", p.id, { value: v ?? 0 })} /></td>
                   <td><DateInput value={p.baseDate} onChange={(v) => v && set("planned", p.id, { baseDate: v })} /></td>
                   <td><CatSel v={p.categoryId} kind="planejada" on={(v) => set("planned", p.id, { categoryId: v })} /></td>
                   <td className="text-[11px]">
@@ -78,12 +83,13 @@ function Page() {
                   </td>
                   <td><StSel v={p.status} on={(v) => set("planned", p.id, { status: v })} /></td>
                   <td className="space-x-1 whitespace-nowrap">
-                    {p.status === "ativo" && <button className="btn btn-primary" onClick={() => toggle("eff", p.id)}>Efetivar compra/pedido</button>}
+                    <button className="btn" aria-expanded={isOpen("tl", p.id)} onClick={() => toggle("tl", p.id)}>Detalhes ({effs.length})</button>
+                    {p.status === "ativo" && <button className="btn btn-primary" disabled={r.health !== "ok"} title={r.health !== "ok" ? "Conciliação pendente (M ausente/prazos) — resolva antes" : ""} onClick={() => toggle("eff", p.id)}>Efetivar compra/pedido</button>}
                     <button className="btn btn-danger" onClick={() => confirm("Excluir previsão? (recuperável pelo histórico após confirmar)") && del("planned", p.id)}>Excluir</button>
                   </td>
                 </tr>,
-                effs.length > 0 && <tr key={p.id + "-e"}><td colSpan={9} className="bg-muted text-[11px]">{effs.map((e) => <div key={e.id} className="flex items-center gap-2">Efetivação {e.kind} em {fmtDate(e.at.slice(0, 10))}: {fmtBRL(e.value)} em {e.committedIds.length} parcela(s) {e.reversedAt ? <span className="tag tag-err">revertida {fmtDate(e.reversedAt.slice(0, 10))}: {e.reversalNote}</span> : <button className="btn" onClick={() => { const n = prompt("Motivo da reversão (auditado):"); if (n) act((x) => reverseEffectivation(x, e.id, n, now())); }}>Reverter</button>}</div>)}</td></tr>,
-                isOpen("eff", p.id) && <tr key={p.id + "-f"}><td colSpan={9}><EffectivateForm data={d} planned={p} onDone={(fn) => { if (act(fn)) setOpen(null); }} /></td></tr>,
+                isOpen("tl", p.id) && <tr key={p.id + "-e"}><td colSpan={9} className="bg-muted"><Timeline d={d} p={p} act={actAlone} /></td></tr>,
+                isOpen("eff", p.id) && <tr key={p.id + "-f"}><td colSpan={9}><EffectivateForm data={d} planned={p} onDone={(fn) => { if (actAlone(fn, "a efetivação")) setOpen(null); }} /></td></tr>,
               ];
             })}</tbody></table>
         )}
@@ -97,7 +103,7 @@ function Page() {
                   <td><SupSel v={c.supplierId} on={(v) => set("committed", c.id, { supplierId: v })} /></td>
                   <td><Txt v={c.purchaseCode} on={(v) => set("committed", c.id, { purchaseCode: v })} /></td>
                   <td><Txt v={c.document} on={(v) => set("committed", c.id, { document: v })} /></td>
-                  <td><MoneyInput value={c.value} onChange={(v) => set("committed", c.id, { value: v ?? 0 })} /></td>
+                  <td className="num"><MoneyInput value={c.value} onChange={(v) => set("committed", c.id, { value: v ?? 0 })} /></td>
                   <td><DateInput value={c.dueDate} onChange={(v) => v && set("committed", c.id, { dueDate: v })} /></td>
                   <td>{fmtDate(committedDate(c))}{c.extensionDate && <div className="tag tag-warn">prorrogado ({c.extensionHistory.length})</div>}</td>
                   <td className="text-[11px]">{c.origin === "efetivacao" ? <>efetivação de <b>{pl?.purchaseCode ?? c.plannedId}</b></> : c.origin === "legado" ? "legado (vínculo por código + M)" : "manual"}</td>
@@ -124,9 +130,9 @@ function Page() {
                 <tr key={e.id}>
                   <td><SupSel v={e.supplierId} on={(v) => set("expenses", e.id, { supplierId: v })} /></td>
                   <td><Txt v={e.document} on={(v) => set("expenses", e.id, { document: v })} /></td>
-                  <td><MoneyInput value={e.value} onChange={(v) => set("expenses", e.id, { value: v ?? 0 })} /></td>
+                  <td className="num"><MoneyInput value={e.value} onChange={(v) => set("expenses", e.id, { value: v ?? 0 })} /></td>
                   <td><DateInput value={e.baseDate} onChange={(v) => v && set("expenses", e.id, { baseDate: v })} /></td>
-                  <td><IntInput value={e.termDays} onChange={(v) => set("expenses", e.id, { termDays: v })} /></td>
+                  <td className="num"><IntInput value={e.termDays} onChange={(v) => set("expenses", e.id, { termDays: v })} /></td>
                   <td>{dt ? fmtDate(dt) : <span className="tag tag-warn">não distribuída</span>}{e.extensionDate && <div className="tag tag-warn">prorrogado</div>}</td>
                   <td><CatSel v={e.categoryId} kind="despesa" on={(v) => set("expenses", e.id, { categoryId: v })} /></td>
                   <td className="text-[11px]"><span className={`tag ${ts.state === "Pago" ? "tag-ok" : ts.state === "Parcial" ? "tag-warn" : ""}`}>{ts.state}</span> aberto {fmtBRL(ts.open)}</td>
@@ -159,7 +165,7 @@ function Page() {
 
 function PayForm({ open, onSave }: { open: number; onSave: (amount: number, date: string, note: string) => void }) {
   const [amount, setAmount] = useState<number | null>(open);
-  const [date, setDate] = useState<string | null>(isoToday());
+  const [date, setDate] = useState<string | null>(todaySP());
   const [note, setNote] = useState("");
   return <div className="flex flex-wrap items-end gap-2 bg-muted p-2 text-xs"><b>Registrar pagamento</b> Valor <MoneyInput value={amount} onChange={setAmount} /> Data real <DateInput value={date} onChange={setDate} /> <input className="inp w-48" placeholder="observação" value={note} onChange={(e) => setNote(e.target.value)} />
     <button className="btn btn-primary" disabled={!amount || !date} onClick={() => amount && date && onSave(amount, date, note)}>Adicionar ao rascunho</button><span className="text-muted-foreground">saldo pendente {fmtBRL(open)}</span></div>;
@@ -179,7 +185,7 @@ function EffectivateForm({ data, planned, onDone }: { data: ScenarioData; planne
   const [base, setBase] = useState<string | null>(planned.baseDate);
   const [terms, setTerms] = useState(base0.suggestedTerms.join(", "));
   const [inst, setInst] = useState<{ value: number; date: string; document: string }[]>([]);
-  const [kind, setKind] = useState<"parcial" | "concluida">("concluida");
+  const [kind, setKind] = useState<"auto" | "parcial" | "concluida">("auto");
   const [rem, setRem] = useState<number | null>(null);
   const [remDates, setRemDates] = useState("");
   const [sent, setSent] = useState(false);
@@ -190,7 +196,6 @@ function EffectivateForm({ data, planned, onDone }: { data: ScenarioData; planne
     setInst(days.map((t, i) => ({ value: parts[i]!, date: addDays(base, t), document: "" })));
     const s = suggestEffectivation(data, planned.id, total);
     setRem(s.remainingValue); setRemDates(s.remainingDates.map(fmtDate).join(", "));
-    if (s.remainingValue > 0) setKind("parcial");
   };
   const effTotal = inst.reduce((a, i) => a + i.value, 0);
   const dates = remDates.split(/[,;\s]+/).filter(Boolean).map(parseBRDate);
@@ -200,15 +205,48 @@ function EffectivateForm({ data, planned, onDone }: { data: ScenarioData; planne
       <b>Efetivar compra/pedido da previsão {planned.purchaseCode}</b> — restante previsto atual {fmtBRL(base0.remainingValue)}. Valores e vencimentos podem diferir totalmente da previsão.
       <div className="flex flex-wrap items-end gap-2">Valor efetivado <MoneyInput value={total} onChange={setTotal} /> Data base <DateInput value={base} onChange={setBase} /> Prazos (dias, sugeridos do fornecedor) <input className="inp w-32" value={terms} onChange={(e) => setTerms(e.target.value)} /><button className="btn" onClick={gen}>Gerar parcelas</button></div>
       {inst.length > 0 && <>
-        <table className="tbl w-auto"><thead><tr><th>#</th><th className="num">Valor</th><th>Vencimento</th><th>Documento</th></tr></thead><tbody>{inst.map((i, n) => <tr key={n}><td>{n + 1}</td><td><MoneyInput value={i.value} onChange={(v) => setInst(inst.map((x, k) => (k === n ? { ...x, value: v ?? 0 } : x)))} /></td><td><DateInput value={i.date} onChange={(v) => v && setInst(inst.map((x, k) => (k === n ? { ...x, date: v } : x)))} /></td><td><input className="inp w-28" value={i.document} onChange={(e) => setInst(inst.map((x, k) => (k === n ? { ...x, document: e.target.value } : x)))} /></td></tr>)}</tbody></table>
+        <table className="tbl w-auto"><thead><tr><th>#</th><th className="num">Valor</th><th>Vencimento</th><th>Documento</th></tr></thead><tbody>{inst.map((i, n) => <tr key={n}><td>{n + 1}</td><td className="num"><MoneyInput value={i.value} onChange={(v) => setInst(inst.map((x, k) => (k === n ? { ...x, value: v ?? 0 } : x)))} /></td><td><DateInput value={i.date} onChange={(v) => v && setInst(inst.map((x, k) => (k === n ? { ...x, date: v } : x)))} /></td><td><input className="inp w-28" value={i.document} onChange={(e) => setInst(inst.map((x, k) => (k === n ? { ...x, document: e.target.value } : x)))} /></td></tr>)}</tbody></table>
         <div>Total efetivado {fmtBRL(effTotal)} {inst.length > 1 && splitCents(effTotal, inst.length).residual !== 0 && "(resíduo na última parcela)"}</div>
         <div className="flex flex-wrap items-end gap-3">
+          <label><input type="radio" checked={kind === "auto"} onChange={() => setKind("auto")} /> Parcial — restante continua previsto automaticamente ({fmtBRL(rem ?? base0.remainingValue)} nos prazos da previsão)</label>
+          <label><input type="radio" checked={kind === "parcial"} onChange={() => setKind("parcial")} /> Parcial — definir restante:</label>
           <label><input type="radio" checked={kind === "concluida"} onChange={() => setKind("concluida")} /> Concluída — encerra o saldo previsto restante</label>
-          <label><input type="radio" checked={kind === "parcial"} onChange={() => setKind("parcial")} /> Parcial — manter restante:</label>
           {kind === "parcial" && <>Valor <MoneyInput value={rem} onChange={setRem} /> Datas próprias <input className={`inp w-64 ${datesOk ? "" : "ring-1 ring-destructive"}`} placeholder="dd/mm/aaaa, dd/mm/aaaa" value={remDates} onChange={(e) => setRemDates(e.target.value)} /></>}
         </div>
-        <button className="btn btn-primary" disabled={sent || !effTotal || (kind === "parcial" && (!datesOk || rem === null))} onClick={() => { setSent(true); onDone((x) => effectivate(x, { id, plannedId: planned.id, kind, at: new Date().toISOString(), installments: inst, remaining: kind === "parcial" ? { value: rem ?? 0, dates: dates as string[] } : null })); }}>Adicionar efetivação ao rascunho</button>
+        <button className="btn btn-primary" disabled={sent || !effTotal || (kind === "parcial" && (!datesOk || rem === null))} onClick={() => { setSent(true); onDone((x) => effectivate(x, { id, plannedId: planned.id, kind: kind === "concluida" ? "concluida" : "parcial", at: new Date().toISOString(), installments: inst, remaining: kind === "parcial" ? { value: rem ?? 0, dates: dates as string[] } : null })); }}>Adicionar esta efetivação ao rascunho</button>
       </>}
+    </div>
+  );
+}
+
+function Timeline({ d, p, act }: { d: ScenarioData; p: Planned; act: (fn: (x: ScenarioData) => void, what: string) => boolean }) {
+  const s = plannedSummary(d, p.id);
+  const [remV, setRemV] = useState<number | null>(s.remaining);
+  const [remD, setRemD] = useState(s.remainingDates.map(fmtDate).join(", "));
+  const [link, setLink] = useState("");
+  const dates = remD.split(/[,;\s]+/).filter(Boolean).map(parseBRDate);
+  const at = () => new Date().toISOString();
+  const K = ({ l, v, neg }: { l: string; v: number; neg?: boolean }) => <div><div className="lbl">{l}</div><div className={`num font-semibold ${neg ? "neg" : ""}`}>{fmtBRL(v)}</div></div>;
+  return (
+    <div className="space-y-2 p-1 text-xs">
+      <div className="grid grid-cols-3 gap-2 md:grid-cols-7">
+        <K l="Original (histórico)" v={s.original} /><K l="Efetivado" v={s.effectivated} /><K l="Abatido legado (M)" v={s.legacyAbated} />
+        <K l="Restante previsto" v={s.remaining} neg={s.remaining < 0} /><K l="Pago" v={s.paid} /><K l="Aberto" v={s.open} />
+        <div><div className="lbl">Situação</div><span className={`tag ${s.health === "ok" ? "tag-ok" : "tag-err"}`}>{s.status} · {s.health === "ok" ? "conciliado" : "conciliação pendente"}</span></div>
+      </div>
+      <p className="text-[11px] text-muted-foreground">Original + efetivações não somam de novo: fluxo = efetivados (títulos) + restante previsto. Conferência: efetivado {fmtBRL(s.effectivated)} + legado {fmtBRL(s.legacyAbated)} + restante {fmtBRL(s.remaining)} = {fmtBRL(s.effectivated + s.legacyAbated + s.remaining)}{s.status === "ativo" && !p.remainingOverride && s.effectivated + s.legacyAbated + s.remaining !== s.original ? " ⚠ diverge do original" : ""}.</p>
+      <table className="tbl"><thead><tr><th>Evento</th><th>Data</th><th>Título</th><th>Vencimento</th><th className="num">Valor</th><th className="num">Pago</th><th className="num">Aberto</th><th>Situação</th><th>Ação</th></tr></thead>
+        <tbody>
+          {s.timeline.flatMap(({ e, titles }) => titles.length ? titles.map((t, i) => <tr key={e.id + t.c.id}><td>{i === 0 ? `Efetivação ${e.linkedLegacy ? "(título legado vinculado)" : e.kind}` : ""}</td><td>{i === 0 ? fmtDate(e.at.slice(0, 10)) : ""}</td><td>{t.c.document}</td><td>{fmtDate(committedDate(t.c))}</td><td className="num">{fmtBRL(t.c.value)}</td><td className="num">{fmtBRL(t.paid)}</td><td className="num">{fmtBRL(Math.max(0, t.open))}</td><td>{e.reversedAt ? <span className="tag tag-err">revertida: {e.reversalNote}</span> : t.state}</td><td>{i === 0 && !e.reversedAt && <button className="btn" onClick={() => { const n = prompt("Motivo da reversão (auditado):"); if (n) act((x) => reverseEffectivation(x, e.id, n, at()), "a reversão"); }}>Reverter</button>}</td></tr>) : [])}
+          {s.legacy.map((t) => <tr key={t.c.id}><td>Título legado distinto (M)</td><td>—</td><td>{t.c.document}</td><td>{fmtDate(committedDate(t.c))}</td><td className="num">{fmtBRL(t.c.value)}</td><td className="num">{fmtBRL(t.paid)}</td><td className="num">{fmtBRL(Math.max(0, t.open))}</td><td>{t.c.legacyAbatement === null ? <span className="tag tag-err">M ausente</span> : `M ${fmtBRL(t.c.legacyAbatement)}`}</td><td /></tr>)}
+          {s.remainingDates.map((dt, i) => <tr key={"r" + i}><td>{i === 0 ? "Restante previsto" : ""}</td><td /><td>previsão</td><td>{fmtDate(dt)}</td><td className="num" colSpan={1}>{i === 0 ? fmtBRL(s.remaining) : ""}</td><td /><td /><td>{i === 0 ? `${s.remainingDates.length} data(s)` : ""}</td><td /></tr>)}
+        </tbody></table>
+      {p.status === "ativo" ? <div className="flex flex-wrap items-end gap-3">
+        <span>Restante: valor <MoneyInput value={remV} onChange={setRemV} /> datas <input className="inp w-56" value={remD} onChange={(e) => setRemD(e.target.value)} /></span>
+        <button className="btn" disabled={remV === null || !dates.length || !dates.every(Boolean)} onClick={() => act((x) => setPlannedRemaining(x, p.id, remV ?? 0, dates as string[]), "a edição do restante")}>Definir restante</button>
+        <button className="btn btn-danger" onClick={() => { const n = prompt("Motivo do encerramento do restante previsto:"); if (n) act((x) => closePlanned(x, p.id, n), "o encerramento"); }}>Encerrar restante</button>
+        {s.legacy.length > 0 && <span>Mesmo título que uma efetivação? <select className="inp" value={link} onChange={(e) => setLink(e.target.value)}><option value="">— título legado —</option>{s.legacy.map((t) => <option key={t.c.id} value={t.c.id}>{t.c.document} · {fmtBRL(t.c.value)}</option>)}</select> <button className="btn" disabled={!link} onClick={() => act((x) => linkLegacyTitle(x, { id: "lk" + uid(), plannedId: p.id, committedId: link, at: at() }), "o vínculo do título legado")}>Vincular (sem duplicar)</button></span>}
+      </div> : p.status === "encerrado" && <button className="btn" onClick={() => { const n = prompt("Motivo da reabertura:"); if (n) act((x) => reopenPlanned(x, p.id, n), "a reabertura"); }}>Reabrir previsão</button>}
     </div>
   );
 }

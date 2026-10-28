@@ -7,6 +7,7 @@ import { fmtDate } from "@/lib/dates";
 import { fmtNum } from "@/lib/money";
 import { classify, FIELDS, mapRows, parseCSV, suggestMapping, toCSV, type Cell, type Entity, type ParsedRow } from "@/lib/importer";
 import { uid, useApp } from "@/lib/store";
+import { setMonthTarget } from "@/lib/engine/actions";
 
 export const Route = createFileRoute("/regras")({
   head: () => ({
@@ -116,8 +117,8 @@ function Page() {
         if (entity === "expenses") x.expenses.push({ id, supplierId: sid, document: String(v.document), value: v.value, baseDate: v.baseDate, termDays: v.termDays ?? null, extensionDate: null, extensionHistory: [], categoryId: catOf(), notes: "importado", status: "ativo", importOrigin: origin });
         if (entity === "suppliers") { const r0 = resolveByName(x.suppliers, String(v.name)); if (!("missing" in r0)) { skipped.push(`linha ${r.line}: fornecedor "${v.name}" já existe — não sobrescrito (conflito)`); continue; } }
         if (entity === "suppliers") x.suppliers.push({ id, name: String(v.name), group: String(v.group ?? ""), terms: Array.from({ length: 10 }, (_, i) => (v[`t${i + 1}`] as number | null) ?? null) });
-        if (entity === "receipts") { const plats: Record<string, number | null> = {}; ["p1", "p2", "p3"].forEach((k, i) => { if (v[k] != null) plats[x.platforms[i] ?? `Plataforma ${i + 1}`] = v[k]; }); x.receipts.push({ id, date: v.date, platforms: plats, general: v.general ?? null, notes: `importado ${origin.sheet}:${origin.row}` }); }
-        if (entity === "targets") x.targets[v.month] = v.meta;
+        if (entity === "receipts") { const plats: Record<string, number | null> = {}; ["p1", "p2", "p3"].forEach((k, i) => { if (v[k] != null) plats[x.platforms[i]?.id ?? `importado-${i + 1}`] = v[k]; }); x.receipts.push({ id, date: v.date, platforms: plats, general: v.general ?? null, notes: `importado ${origin.sheet}:${origin.row}`, residual: {} }); }
+        if (entity === "targets") setMonthTarget(x, v.month, { gross: v.meta }, `importado ${origin.sheet}:${origin.row}`, at);
         x.importLog.push({ entity, key: r.key, hash: r.hash, refId: entity === "targets" ? v.month : id, at, origin });
       }
     });
@@ -128,6 +129,10 @@ function Page() {
   const download = (name: string, csv: string) => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" })); a.download = name; a.click(); };
   const sname = (id: string) => d.suppliers.find((s) => s.id === id)?.name ?? "";
   const exportFlow = () => download("fluxo.csv", toCSV(["Data", "Saldo inicial", "Recebimento usado", "Informado?", "Planejadas", "Efetivadas", "Despesas", "Saídas", "Saldo final"], res.days.map((x) => [fmtDate(x.date), fmtNum(x.saldoInicial), fmtNum(x.recUsado), x.usouInformado ? "sim" : "não", fmtNum(x.planejada), fmtNum(x.comprometida), fmtNum(x.despesa), fmtNum(x.saidas), fmtNum(x.saldoFinal)])));
+  const exportPlat = () => download("plataformas_recebimentos.csv", toCSV(["Tipo", "ID plataforma", "Nome", "Início", "Inativação", "Código importado", "Data", "Valor", "Residual", "Nota residual"], [
+    ...d.platforms.map((p) => ["plataforma", p.id, p.name, fmtDate(p.start), fmtDate(p.end), p.importedCode ?? "", "", "", "", ""]),
+    ...d.receipts.flatMap((r) => Object.entries(r.platforms).filter(([, v]) => v != null).map(([id, v]) => ["recebimento", id, d.platforms.find((p) => p.id === id)?.name ?? "(não cadastrada)", "", "", "", fmtDate(r.date), fmtNum(v!), r.residual?.[id] ? "sim" : "não", r.residual?.[id]?.note ?? ""])),
+  ]));
   const exportLanc = () => download("lancamentos.csv", toCSV(["Tipo", "Fornecedor", "Código", "Documento", "Valor", "Data no fluxo", "Estado"], [
     ...d.planned.map((p) => ["previsão", sname(p.supplierId), p.purchaseCode, p.document, fmtNum(p.value), fmtDate(p.baseDate) + " (base)", p.status]),
     ...d.committed.map((c) => ["efetivado", sname(c.supplierId), c.purchaseCode, c.document, fmtNum(c.value), fmtDate(committedDate(c)), c.status]),
@@ -199,7 +204,7 @@ function Page() {
           </>}
         </section>
       )}
-      <section className="card flex gap-2 p-3"><button className="btn" onClick={exportFlow}>Exportar fluxo do período (CSV)</button><button className="btn" onClick={exportLanc}>Exportar lançamentos (CSV)</button></section>
+      <section className="card flex gap-2 p-3"><button className="btn" onClick={exportFlow}>Exportar fluxo do período (CSV)</button><button className="btn" onClick={exportLanc}>Exportar lançamentos (CSV)</button><button className="btn" onClick={exportPlat}>Exportar plataformas e recebimentos (CSV)</button></section>
     </div>
   );
 }
@@ -209,7 +214,7 @@ function TargetsPanel({ rows, file, sheet }: { rows: Cell[][]; file: string; she
   const a = useMemo(() => adaptTargets(rows), [rows]);
   const [msg, setMsg] = useState("");
   const st = (t: (typeof a.rows)[number]) => t.errors.length || t.faturamento === null ? "inválido" : active.data.targets[t.month] === undefined ? "novo" : active.data.targets[t.month] === t.faturamento ? "idêntico" : "conflito";
-  const confirmT = () => { const novos = a.rows.filter((t) => st(t) === "novo"); const at = new Date().toISOString(); const e = update((x) => { for (const t of novos) { x.targets[t.month] = t.faturamento!; x.importLog.push({ entity: "targets", key: `targets|${t.month}`, hash: String(t.faturamento), refId: t.month, at, origin: { file, sheet, row: 3 } }); } }); setMsg(e ? `Erro: ${e}` : `${novos.length} meta(s) no RASCUNHO — confirme na barra superior. Conflitos não sobrescritos: ${a.rows.filter((t) => st(t) === "conflito").length}.`); };
+  const confirmT = () => { const novos = a.rows.filter((t) => st(t) === "novo"); const at = new Date().toISOString(); const e = update((x) => { for (const t of novos) { setMonthTarget(x, t.month, { gross: t.faturamento! }, `importado ${sheet} col ${t.column + 1}`, at); x.importLog.push({ entity: "targets", key: `targets|${t.month}`, hash: String(t.faturamento), refId: t.month, at, origin: { file, sheet, row: 3 } }); } }); setMsg(e ? `Erro: ${e}` : `${novos.length} meta(s) no RASCUNHO — confirme na barra superior. Conflitos não sobrescritos: ${a.rows.filter((t) => st(t) === "conflito").length}.`); };
   if (!a.ok) return <p className="text-xs text-destructive">{a.message}</p>;
   return <div className="mb-2 text-xs"><p className="mb-1">{a.message} Meta bruta candidata = linha 3 (faturamento, valor CACHEADO); linha 2 (líquido) exibida para conferência do redutor implícito. Confirme que a linha 3 é a meta bruta antes de gravar.</p>
     <div className="max-h-64 overflow-auto"><table className="tbl"><thead><tr><th>Mês</th><th className="num">Faturamento (L3)</th><th className="num">Líquido (L2)</th><th className="num">Redução implícita</th><th>Componentes</th><th>Estado</th></tr></thead>

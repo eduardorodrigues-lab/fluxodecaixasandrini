@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { DateInput, IntInput, MoneyInput, PageHeader, ProfileBadge } from "@/components/kit";
 import type { Params } from "@/lib/engine/types";
@@ -23,7 +23,6 @@ function Page() {
   const d = active.data;
   const p = d.params;
   const setP = (patch: Partial<Params>) => update((x) => { Object.assign(x.params, patch); });
-  const [newMonth, setNewMonth] = useState("");
   return (
     <div className="space-y-3">
       <PageHeader title="Referências" sub={`Editando o cenário "${active.name}". Na base, alterações vão para rascunho e exigem confirmação.`}><ProfileBadge /></PageHeader>
@@ -32,12 +31,12 @@ function Page() {
         <div className="lbl mb-2">Parâmetros de cálculo</div>
         <div className="flex flex-wrap gap-4 text-xs">
           <label>Perfil<br /><select className="inp" value={p.profile} onChange={(e) => setP({ profile: e.target.value as Params["profile"] })}><option value="legado">Excel legado (padrão)</option><option value="web">Web</option></select></label>
-          <label>Redutor legado B2 (%)<br /><input className="inp num w-16" type="number" value={pct(p.legacyReducer)} onChange={(e) => setP({ legacyReducer: Number(e.target.value) / 100 })} /></label>
+          <label>Default redutor legado B2 (%)<br /><input className="inp num w-16" type="number" value={pct(p.legacyReducer)} onChange={(e) => setP({ legacyReducer: Number(e.target.value) / 100 })} /></label>
           <label>Divisor legado<br /><select className="inp" value={p.divisorLegado} onChange={(e) => setP({ divisorLegado: e.target.value as "30" | "dias" })}><option value="30">÷30 (fórmula conferida)</option><option value="dias">dias reais</option></select></label>
-          <label>Redutor web 1 (%)<br /><input className="inp num w-16" type="number" value={pct(p.webR1)} onChange={(e) => setP({ webR1: Number(e.target.value) / 100 })} /></label>
-          <label>Redutor web 2 (%)<br /><input className="inp num w-16" type="number" value={pct(p.webR2)} onChange={(e) => setP({ webR2: Number(e.target.value) / 100 })} /></label>
+          <label>Default r1 web (%)<br /><input className="inp num w-16" type="number" value={pct(p.webR1)} onChange={(e) => setP({ webR1: Number(e.target.value) / 100 })} /></label>
+          <label>Default r2 web (%)<br /><input className="inp num w-16" type="number" value={pct(p.webR2)} onChange={(e) => setP({ webR2: Number(e.target.value) / 100 })} /></label>
           <label>Divisor web<br /><select className="inp" value={p.divisorWeb} onChange={(e) => setP({ divisorWeb: e.target.value as "30" | "dias" })}><option value="dias">dias reais (fonte web)</option><option value="30">÷30</option></select></label>
-          <label>Defasagem (dias corridos)<br /><IntInput value={p.lagDays} onChange={(v) => setP({ lagDays: v ?? 0 })} /></label>
+          <label>Default defasagem (dias)<br /><IntInput value={p.lagDays} onChange={(v) => setP({ lagDays: v ?? 0 })} /></label>
           <label>Início do fluxo<br /><DateInput value={p.startDate} onChange={(v) => v && setP({ startDate: v })} /></label>
           <label>Saldo inicial<br /><MoneyInput value={p.saldoInicial} onChange={(v) => setP({ saldoInicial: v ?? 0 })} /></label>
         </div>
@@ -68,19 +67,15 @@ function Page() {
           ))}</tbody></table>
         </section>
         <section className="card p-3">
-          <div className="lbl mb-2">Metas mensais (bruto, antes de redutores)</div>
-          <table className="tbl"><tbody>{Object.keys(d.targets).sort().map((m) => (
-            <tr key={m}><td>{fmtMonth(m)}</td><td><MoneyInput value={d.targets[m] ?? null} onChange={(v) => update((x) => { if (v === null) delete x.targets[m]; else x.targets[m] = v; })} /></td></tr>
-          ))}</tbody></table>
-          <div className="mt-2 flex gap-1"><input className="inp w-24" placeholder="aaaa-mm" value={newMonth} onChange={(e) => setNewMonth(e.target.value)} /><button className="btn" onClick={() => { if (/^\d{4}-\d{2}$/.test(newMonth)) { update((x) => { x.targets[newMonth] ??= 0; }); setNewMonth(""); } }}>+ Mês</button></div>
-          <p className="mt-1 text-[11px] text-muted-foreground">Apagar o valor remove a meta (estimativa 0 com alerta).</p>
+          <div className="lbl mb-2">Metas mensais</div>
+          <p className="text-xs">Faturamento, redutores, bases, divisor e defasagem são configurados POR MÊS na página <Link to="/metas" className="underline">Meta de Faturamento</Link> ({Object.keys(d.targetConfigs).length} mês(es) configurados). Os parâmetros gerais acima são apenas default para meses novos.</p>
         </section>
         <section className="card p-3">
           <div className="mb-2 flex justify-between"><span className="lbl">Ajustes manuais de saldo</span><button className="btn" onClick={() => update((x) => { x.adjustments.push({ date: x.params.startDate, value: 0, note: "" }); })}>+</button></div>
           <table className="tbl"><tbody>{d.adjustments.map((a, i) => (
             <tr key={i}>
               <td><DateInput value={a.date} onChange={(v) => v && update((x) => { x.adjustments[i]!.date = v; })} /></td>
-              <td><MoneyInput value={a.value} onChange={(v) => update((x) => { x.adjustments[i]!.value = v; })} /></td>
+              <td className="num"><MoneyInput value={a.value} onChange={(v) => update((x) => { x.adjustments[i]!.value = v; })} /></td>
               <td><button className="btn btn-danger" onClick={() => update((x) => { x.adjustments.splice(i, 1); })}>×</button></td>
             </tr>
           ))}</tbody></table>

@@ -32,7 +32,8 @@ export function PageHeader({ title, sub, children }: { title: string; sub?: stri
 export function ProfileBadge() {
   const { active } = useApp();
   const p = active.data.params;
-  return <span className="tag tag-ok" title="Perfil de cálculo ativo — não implica homologação">Perfil: {p.profile === "legado" ? `Excel legado (redutor ${p.legacyReducer * 100}%, ÷${p.divisorLegado === "30" ? "30" : "dias"})` : `Web (${p.webR1 * 100}% + ${p.webR2 * 100}%, ÷${p.divisorWeb === "30" ? "30" : "dias"})`} · defasagem {p.lagDays}d</span>;
+  const n = Object.keys(active.data.targetConfigs).length;
+  return <span className="tag tag-ok" title="Perfil de cálculo ativo — não implica homologação. Redutores/divisor/defasagem por mês na página Meta de Faturamento.">Perfil: {p.profile === "legado" ? "Excel legado" : "Web"} · redutores/divisor/defasagem por mês ({n} mês(es))</span>;
 }
 export function WarningList({ items, max = 50 }: { items: Warning[]; max?: number }) {
   if (!items.length) return <p className="text-xs text-muted-foreground">Nenhum alerta.</p>;

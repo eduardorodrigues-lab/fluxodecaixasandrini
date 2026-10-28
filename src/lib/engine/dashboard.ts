@@ -1,54 +1,85 @@
 import { addDays } from "../dates";
 import { committedDate, distributePlanned, expenseDate, paymentsFor, titleStatus } from "./engine";
-import type { FlowResult, ScenarioData } from "./types";
+import type { Day, FlowResult, ScenarioData } from "./types";
 
-export interface OpenTitle { kind: "committed" | "expense"; id: string; supplierId: string; supplier: string; document: string; due: string; value: number; paid: number; open: number; state: string }
+export interface OpenTitle { kind: "committed" | "expense"; id: string; supplierId: string; supplier: string; group: string; document: string; due: string | null; value: number; paid: number; open: number; state: string }
+export interface DashScope { start: string; end: string; supplierId?: string; group?: string }
 
 // Aberto = títulos efetivados/despesas − pagamentos ativos. Vencimento passado NÃO implica pago. Previsão fica separada.
-export function openTitles(d: ScenarioData): OpenTitle[] {
-  const sn = (id: string) => d.suppliers.find((s) => s.id === id)?.name ?? "(sem fornecedor)";
+// Despesa sem vencimento (prazo G vazio) ENTRA no aberto com due=null (seção "sem vencimento"), nunca em janelas de datas.
+export function openTitles(d: ScenarioData, scope?: Pick<DashScope, "supplierId" | "group">): OpenTitle[] {
+  const sup = (id: string) => d.suppliers.find((s) => s.id === id);
+  const pass = (id: string) => (!scope?.supplierId || id === scope.supplierId) && (!scope?.group || sup(id)?.group === scope.group);
   const out: OpenTitle[] = [];
+  const base = (supplierId: string) => ({ supplierId, supplier: sup(supplierId)?.name ?? "(sem fornecedor)", group: sup(supplierId)?.group ?? "" });
   for (const c of d.committed) {
-    if (c.status === "cancelado") continue;
+    if (c.status === "cancelado" || !pass(c.supplierId)) continue;
     const t = titleStatus(c.value, c.status, paymentsFor(d, "committed", c.id));
-    if (t.open > 0) out.push({ kind: "committed", id: c.id, supplierId: c.supplierId, supplier: sn(c.supplierId), document: c.document, due: committedDate(c), value: c.value, paid: t.paid, open: t.open, state: t.state });
+    if (t.open > 0) out.push({ kind: "committed", id: c.id, ...base(c.supplierId), document: c.document, due: committedDate(c), value: c.value, paid: t.paid, open: t.open, state: t.state });
   }
   for (const e of d.expenses) {
-    if (e.status === "cancelado") continue;
-    const due = expenseDate(e);
-    if (!due) continue;
+    if (e.status === "cancelado" || !pass(e.supplierId)) continue;
     const t = titleStatus(e.value, e.status, paymentsFor(d, "expense", e.id));
-    if (t.open > 0) out.push({ kind: "expense", id: e.id, supplierId: e.supplierId, supplier: sn(e.supplierId), document: e.document, due, value: e.value, paid: t.paid, open: t.open, state: t.state });
+    if (t.open > 0) out.push({ kind: "expense", id: e.id, ...base(e.supplierId), document: e.document, due: expenseDate(e), value: e.value, paid: t.paid, open: t.open, state: t.state });
   }
-  return out.sort((a, b) => a.due.localeCompare(b.due));
+  return out.sort((a, b) => (a.due ?? "9999").localeCompare(b.due ?? "9999"));
 }
 
-export function computeDashboard(d: ScenarioData, flow: FlowResult, today: string) {
-  const titles = openTitles(d);
-  const sum = (xs: OpenTitle[]) => xs.reduce((a, t) => a + t.open, 0);
+export interface PlannedParcel { plannedId: string; supplier: string; code: string; date: string; amount: number }
+export interface Card {
+  key: string; label: string; value: number; count: number; scope: string; explanation: string;
+  titles?: OpenTitle[]; parcels?: PlannedParcel[]; day?: Day | null; curve?: { date: string; saldo: number }[];
+  ranking?: { supplierId: string; supplier: string; open: number; titles: OpenTitle[] }[];
+  kind: "titles" | "parcels" | "day" | "ranking"; tone?: "neg" | "warn" | undefined;
+}
+const sum = (xs: { open: number }[]) => xs.reduce((a, t) => a + t.open, 0);
+
+export function computeDashboard(d: ScenarioData, flow: FlowResult, today: string, scope: DashScope) {
+  const filt = scope.supplierId || scope.group ? ` · filtro ${scope.supplierId ? "fornecedor" : ""}${scope.group ? ` grupo ${scope.group}` : ""}` : "";
+  const stockScope = `Estoque em aberto na data-base ${today} (independe do período)${filt}`;
+  const perScope = `Vencimentos no período ${scope.start} a ${scope.end}${filt}`;
+  const all = openTitles(d, scope);
+  const dated = all.filter((t) => t.due);
+  const noDue = all.filter((t) => !t.due);
   const bySup = new Map<string, { supplierId: string; supplier: string; open: number; titles: OpenTitle[] }>();
-  for (const t of titles) {
+  for (const t of all) {
     const cur = bySup.get(t.supplierId) ?? { supplierId: t.supplierId, supplier: t.supplier, open: 0, titles: [] };
     cur.open += t.open; cur.titles.push(t); bySup.set(t.supplierId, cur);
   }
   const ranking = [...bySup.values()].sort((a, b) => b.open - a.open);
-  const within = (n: number) => titles.filter((t) => t.due >= today && t.due <= addDays(today, n));
-  let plannedRemaining = 0;
+  const within = (n: number) => dated.filter((t) => t.due! >= today && t.due! <= addDays(today, n));
+  const inPeriod = dated.filter((t) => t.due! >= scope.start && t.due! <= scope.end);
+  const supName = (id: string) => d.suppliers.find((s) => s.id === id)?.name ?? "(sem fornecedor)";
+  const parcels: PlannedParcel[] = [];
   for (const pl of d.planned) {
     if (pl.status !== "ativo") continue;
-    plannedRemaining += distributePlanned(pl, d.suppliers.find((s) => s.id === pl.supplierId), d.committed, d.params.profile, d.effectivations).parcels.reduce((a, p) => a + p.amount, 0);
+    if (scope.supplierId && pl.supplierId !== scope.supplierId) continue;
+    if (scope.group && d.suppliers.find((s) => s.id === pl.supplierId)?.group !== scope.group) continue;
+    for (const p of distributePlanned(pl, d.suppliers.find((s) => s.id === pl.supplierId), d.committed, d.params.profile, d.effectivations).parcels)
+      if (p.date >= scope.start && p.date <= scope.end) parcels.push({ plannedId: pl.id, supplier: supName(pl.supplierId), code: pl.purchaseCode, date: p.date, amount: p.amount });
   }
-  const firstNeg = flow.days.find((x) => x.saldoFinal < 0);
-  return {
-    titles, ranking, top: ranking[0] ?? null,
-    overdue: sum(titles.filter((t) => t.due < today)), overdueCount: titles.filter((t) => t.due < today).length,
-    due7: sum(within(7)), due15: sum(within(15)), due30: sum(within(30)),
-    committedOpen: sum(titles.filter((t) => t.kind === "committed")),
-    expenseOpen: sum(titles.filter((t) => t.kind === "expense")),
-    totalOpen: sum(titles),
-    plannedRemaining,
-    minBalance: flow.kpis.menorSaldo, minBalanceDate: flow.kpis.menorSaldoData,
-    firstNegative: firstNeg?.date ?? null,
-    cashNeed: Math.max(0, -flow.kpis.menorSaldo),
-  };
+  parcels.sort((a, b) => a.date.localeCompare(b.date));
+  const days = flow.days;
+  const minDay = days.find((x) => x.date === flow.kpis.menorSaldoData) ?? null;
+  const firstNeg = days.find((x) => x.saldoFinal < 0) ?? null;
+  const curve = days.map((x) => ({ date: x.date, saldo: x.saldoFinal }));
+  const top = ranking[0];
+  const T = (key: string, label: string, titles: OpenTitle[], sc: string, explanation: string, tone?: Card["tone"]): Card => ({ key, label, value: sum(titles), count: titles.length, scope: sc, explanation, titles, kind: "titles", tone });
+  const cards: Card[] = [
+    { key: "top", label: "Maior fornecedor em aberto", value: top?.open ?? 0, count: top?.titles.length ?? 0, scope: stockScope, explanation: top ? `${top.supplier}: soma do aberto dos seus títulos.` : "Nenhum título em aberto no escopo.", titles: top?.titles ?? [], ranking, kind: "ranking" },
+    T("total", "Total em aberto", all, stockScope, `Efetivados + despesas − pagamentos ativos. Inclui ${noDue.length} despesa(s) sem vencimento.`),
+    T("overdue", "Vencidos", dated.filter((t) => t.due! < today), stockScope, "Vencimento anterior a hoje e saldo em aberto. Vencimento passado não significa pago.", "neg"),
+    T("d7", "A vencer 7 dias", within(7), `De ${today} a ${addDays(today, 7)}${filt}`, "Saldo em aberto com vencimento nos próximos 7 dias."),
+    T("d15", "A vencer 15 dias", within(15), `De ${today} a ${addDays(today, 15)}${filt}`, "Saldo em aberto com vencimento nos próximos 15 dias."),
+    T("d30", "A vencer 30 dias", within(30), `De ${today} a ${addDays(today, 30)}${filt}`, "Saldo em aberto com vencimento nos próximos 30 dias."),
+    T("period", "Vencimentos do período", inPeriod, perScope, "Títulos em aberto com vencimento dentro do período selecionado."),
+    T("committed", "Efetivado pendente", all.filter((t) => t.kind === "committed"), stockScope, "Compras/pedidos efetivados ainda não pagos (total ou parcial)."),
+    T("expense", "Despesas pendentes", all.filter((t) => t.kind === "expense"), stockScope, "Despesas não pagas, incluindo as sem vencimento."),
+    T("nodue", "Sem vencimento (pendência)", noDue, stockScope, "Despesas com prazo G vazio: entram no aberto, mas não em janelas de data nem no fluxo. Informe o prazo.", noDue.length ? "warn" : undefined),
+    { key: "planned", label: "Previsão restante (não é aberto)", value: parcels.reduce((a, p) => a + p.amount, 0), count: parcels.length, scope: `Parcelas previstas no período ${scope.start} a ${scope.end}${filt}`, explanation: "Saldo previsto (planejado) após efetivações e abatimento legado. Não é título em aberto.", parcels, kind: "parcels" },
+    { key: "min", label: "Saldo mínimo", value: flow.kpis.menorSaldo, count: minDay ? 1 : 0, scope: `Fluxo do período ${scope.start} a ${scope.end}${filt}`, explanation: minDay ? `Menor saldo final do período, em ${minDay.date}.` : "Sem dias no período.", day: minDay, curve, kind: "day", tone: flow.kpis.menorSaldo < 0 ? "neg" : undefined },
+    { key: "neg", label: "Primeiro saldo negativo", value: firstNeg?.saldoFinal ?? 0, count: firstNeg ? 1 : 0, scope: `Fluxo do período ${scope.start} a ${scope.end}${filt}`, explanation: firstNeg ? `Primeiro dia com saldo final negativo: ${firstNeg.date}.` : "Nenhum dia negativo no período.", day: firstNeg, curve, kind: "day", tone: firstNeg ? "neg" : undefined },
+    { key: "need", label: "Necessidade de caixa", value: Math.max(0, -flow.kpis.menorSaldo), count: flow.kpis.menorSaldo < 0 ? 1 : 0, scope: `Fluxo do período ${scope.start} a ${scope.end}${filt}`, explanation: flow.kpis.menorSaldo < 0 ? `Valor para cobrir o saldo mínimo (${minDay?.date}): −(saldo mínimo).` : "Saldo mínimo não negativo: sem necessidade no período.", day: minDay, curve, kind: "day" },
+  ];
+  return { cards, titles: all, ranking, noDue, today };
 }

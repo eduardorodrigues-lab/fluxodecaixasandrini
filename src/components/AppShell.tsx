@@ -19,7 +19,7 @@ const NAV = [
 ] as const;
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { orgs, setOrgId, mode, setMode, user, signOut, official, active, sims, setActive, draft, changes, saveState, saveMsg } = useApp();
+  const { orgs, setOrgId, mode, setMode, user, signOut, official, active, sims, setActive, draft, changes, saveState, saveMsg, baseMoved, draftBaseVersion } = useApp();
   const [review, setReview] = useState(false);
   return (
     <div className="flex min-h-screen">
@@ -51,7 +51,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {sims.map((s) => <option key={s.id} value={s.id}>Simulação: {s.name}</option>)}
           </select>
           {mode === "oficial" ? (
-            user ? <p className="leading-snug opacity-80">{user.email}<br />{official.status === "ready" ? `Versão ${official.version} · papel ${official.role}` : official.status === "error" ? official.error : "Carregando base…"}<br /><button className="underline" onClick={() => signOut()}>Sair</button></p>
+            user ? <p className="leading-snug opacity-80">{user.email}<br />{official.status === "ready" ? `Versão ${official.version} · papel ${official.role}` : official.status === "error" ? official.error : "Carregando base…"}<br /><button className="underline" onClick={() => { if (!draft || confirm("Há rascunho não confirmado. Sair descarta o rascunho e remove as simulações oficiais deste navegador. Continuar?")) signOut(); }}>Sair</button></p>
               : <p className="leading-snug">Base oficial exige login. <Link to="/auth" className="underline">Entrar</Link></p>
           ) : <p className="leading-snug opacity-80">Dados DEMONSTRATIVOS salvos só neste navegador. Não são a base oficial.</p>}
         </div>
@@ -62,7 +62,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         {!active.isBase && <div className="sticky top-0 z-30 border-b-2 border-destructive bg-destructive px-4 py-1.5 text-xs font-semibold text-destructive-foreground">SIMULAÇÃO "{active.name}" — exclusivamente visual, local a este navegador. Nada aqui altera a base {mode === "demo" ? "demo" : "oficial"}, marca pagamentos ou é promovido.</div>}
         {active.isBase && draft && (
           <div className="sticky top-0 z-30 flex flex-wrap items-center gap-2 border-b-2 border-warning bg-warning-soft px-4 py-1.5 text-xs text-warning-foreground">
-            <b>Rascunho com {changes.length} alteração(ões) NÃO gravada(s).</b>
+            <b>Rascunho com {changes.length} alteração(ões) NÃO gravada(s){mode === "oficial" && draftBaseVersion !== null ? ` · iniciado na versão ${draftBaseVersion}` : ""}.</b>
+            {baseMoved && <span className="tag tag-err">A base mudou para a versão {official.version} desde o início do rascunho: a gravação será recusada como conflito (nada sobrescrito).</span>}
             <button className="btn btn-primary" onClick={() => setReview(true)}>Revisar e confirmar</button>
             {saveMsg && <span>{saveMsg}</span>}
           </div>
