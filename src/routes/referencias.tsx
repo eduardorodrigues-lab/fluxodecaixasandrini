@@ -23,7 +23,6 @@ function Page() {
   const d = active.data;
   const p = d.params;
   const setP = (patch: Partial<Params>) => update((x) => { Object.assign(x.params, patch); });
-  const [newMonth, setNewMonth] = useState("");
   return (
     <div className="space-y-3">
       <PageHeader title="Referências" sub={`Editando o cenário "${active.name}". Na base, alterações vão para rascunho e exigem confirmação.`}><ProfileBadge /></PageHeader>
