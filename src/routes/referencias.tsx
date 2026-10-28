@@ -19,15 +19,14 @@ export const Route = createFileRoute("/referencias")({
 
 const pct = (v: number) => +(v * 100).toFixed(4);
 function Page() {
-  const { active, update, saveRefVersion, restoreRefVersion } = useApp();
+  const { active, update } = useApp();
   const d = active.data;
   const p = d.params;
   const setP = (patch: Partial<Params>) => update((x) => { Object.assign(x.params, patch); });
-  const [note, setNote] = useState("");
   const [newMonth, setNewMonth] = useState("");
   return (
     <div className="space-y-3">
-      <PageHeader title="Referências" sub={`Editando o cenário "${active.name}". Salve versões para simular sem perder o histórico.`}><ProfileBadge /></PageHeader>
+      <PageHeader title="Referências" sub={`Editando o cenário "${active.name}". Na base, alterações vão para rascunho e exigem confirmação.`}><ProfileBadge /></PageHeader>
 
       <section className="card p-3">
         <div className="lbl mb-2">Parâmetros de cálculo</div>
@@ -41,7 +40,6 @@ function Page() {
           <label>Defasagem (dias corridos)<br /><IntInput value={p.lagDays} onChange={(v) => setP({ lagDays: v ?? 0 })} /></label>
           <label>Início do fluxo<br /><DateInput value={p.startDate} onChange={(v) => v && setP({ startDate: v })} /></label>
           <label>Saldo inicial<br /><MoneyInput value={p.saldoInicial} onChange={(v) => setP({ saldoInicial: v ?? 0 })} /></label>
-          <label className="flex items-center gap-1 self-end"><input type="checkbox" checked={p.webExpenseUseExtension} onChange={(e) => setP({ webExpenseUseExtension: e.target.checked })} />Web: aplicar prorrogação em despesas (diverge da fonte)</label>
         </div>
         <p className="mt-2 text-[11px] text-muted-foreground">Legado aplica só o redutor B2; o segundo redutor web nunca é aplicado ao legado. Perfil ativo não significa homologação.</p>
       </section>
@@ -90,15 +88,7 @@ function Page() {
         </section>
       </div>
 
-      <section className="card p-3">
-        <div className="lbl mb-2">Versões das referências deste cenário</div>
-        <div className="mb-2 flex gap-2"><input className="inp w-72" placeholder="Nota da versão" value={note} onChange={(e) => setNote(e.target.value)} /><button className="btn btn-primary" onClick={() => { saveRefVersion(note || "sem nota"); setNote(""); }}>Salvar versão</button></div>
-        {active.refHistory.length === 0 ? <p className="text-xs text-muted-foreground">Nenhuma versão salva.</p> : (
-          <table className="tbl"><tbody>{[...active.refHistory].reverse().map((v) => (
-            <tr key={v.version}><td>v{v.version}</td><td>{fmtDate(v.at.slice(0, 10))} {v.at.slice(11, 16)}</td><td>{v.note}</td><td><button className="btn" onClick={() => confirm(`Restaurar referências v${v.version}? Lançamentos não são alterados.`) && restoreRefVersion(v.version)}>Restaurar</button></td></tr>
-          ))}</tbody></table>
-        )}
-      </section>
+      <p className="text-[11px] text-muted-foreground">Versionamento: cada confirmação na base gera versão auditada (Histórico / Auditoria) com antes/depois; para testar referências sem alterar a base, use Simulações.</p>
     </div>
   );
 }
