@@ -59,18 +59,18 @@ function FluxoPage() {
             <div className="card max-h-[70vh] overflow-auto">
               <table className="tbl">
                 <thead><tr>
-                  <th className="sticky left-0 z-20 w-24 min-w-24">Natureza</th>
-                  <th className="sticky left-24 z-20 w-24 min-w-24">Grupo</th>
-                  <th className="sticky left-48 z-20 w-56 min-w-56 border-r border-border">Descrição</th>
-                  <th className="num">Total período</th>
-                  {res.days.map((d) => <th key={d.date} className="num">{fmtDate(d.date).slice(0, 5)}<div className="font-normal text-muted-foreground">{weekday(d.date)}</div></th>)}
+                  <th className="col-fix sticky left-0 z-20 w-24 min-w-24 max-w-24">Natureza</th>
+                  <th className="col-fix sticky left-24 z-20 w-28 min-w-28 max-w-28">Grupo</th>
+                  <th className="col-fix sticky left-52 z-20 w-64 min-w-64 max-w-64 border-r border-border">Descrição</th>
+                  <th className="num min-w-28">Total período</th>
+                  {res.days.map((d) => <th key={d.date} className="num min-w-24">{fmtDate(d.date).slice(0, 5)}<div className="font-normal text-muted-foreground">{weekday(d.date)}</div></th>)}
                 </tr></thead>
                 <tbody>
                   {visible.map((r) => (
                     <tr key={r.key} className={r.emphasis ? "bg-muted font-semibold" : ""}>
-                      <td className="sticky left-0 z-[5] bg-card">{r.nature}</td>
-                      <td className="sticky left-24 z-[5] bg-card">{r.group}</td>
-                      <td className="sticky left-48 z-[5] border-r border-border bg-card" style={{ paddingLeft: 8 + r.level * 12 }}>
+                      <td className={`col-fix sticky left-0 z-[5] w-24 min-w-24 max-w-24 ${r.emphasis ? "bg-muted" : "bg-card"}`} title={r.nature}>{r.nature}</td>
+                      <td className={`col-fix sticky left-24 z-[5] w-28 min-w-28 max-w-28 ${r.emphasis ? "bg-muted" : "bg-card"}`} title={r.group}>{r.group}</td>
+                      <td className={`col-fix sticky left-52 z-[5] w-64 min-w-64 max-w-64 border-r border-border ${r.emphasis ? "bg-muted" : "bg-card"}`} title={r.label} style={{ paddingLeft: 8 + r.level * 12 }}>
                         {hasKids(r.key) ? <button className="mr-1 w-3 text-primary" onClick={() => toggle(r.key)}>{open.has(r.key) ? "▾" : "▸"}</button> : <span className="mr-1 inline-block w-3" />}{r.label}
                       </td>
                       <td className={`num ${r.total < 0 ? "neg" : ""}`}>{fmtNum(r.total)}</td>
@@ -121,17 +121,17 @@ function Vertical({ rows, res, onPick, update, receipts, adjustments }: VProps) 
   return (
     <div className="card max-h-[70vh] overflow-auto">
       <table className="tbl">
-        <thead><tr><th>Data</th><th className="num">Ajuste saldo (substitui)</th><th className="num">Receb. geral informado</th>{cols.map((c) => <th key={c.key} className="num">{c.label}</th>)}</tr></thead>
+        <thead><tr><th className="sticky left-0 z-20 min-w-28">Data</th><th className="num">Ajuste saldo (substitui)</th><th className="num">Receb. geral informado</th>{cols.map((c) => <th key={c.key} className="num">{c.label}</th>)}</tr></thead>
         <tbody>
           {vert.map((v, i) => (
             <tr key={v.date}>
-              <td>{fmtDate(v.date)} <span className="text-muted-foreground">{weekday(v.date)}</span></td>
+              <td className="sticky left-0 z-[5] bg-card">{fmtDate(v.date)} <span className="text-muted-foreground">{weekday(v.date)}</span></td>
               <td className="num"><MoneyInput value={adjustments.find((a) => a.date === v.date)?.value ?? null} onChange={(x) => setAdj(v.date, x)} /></td>
               <td className="num"><MoneyInput value={receipts.find((r) => r.date === v.date)?.general ?? null} onChange={(x) => setGeneral(v.date, x)} /></td>
               {cols.map((c) => <td key={c.key} onClick={() => onPick(c, i)} className={`num cursor-pointer hover:bg-accent ${(v.cells[c.key] ?? 0) < 0 ? "neg" : ""} ${c.emphasis ? "font-semibold" : ""}`}>{fmtNum(v.cells[c.key])}</td>)}
             </tr>
           ))}
-          <tr className="bg-muted font-semibold"><td>Total</td><td /><td />{cols.map((c) => <td key={c.key} className="num">{fmtNum(c.total)}</td>)}</tr>
+          <tr className="bg-muted font-semibold"><td className="sticky left-0 z-[5] bg-muted">Total</td><td /><td />{cols.map((c) => <td key={c.key} className="num">{fmtNum(c.total)}</td>)}</tr>
         </tbody>
       </table>
     </div>

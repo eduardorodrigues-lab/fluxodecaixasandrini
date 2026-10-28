@@ -136,6 +136,14 @@
   .tbl th { @apply sticky top-0 z-10 border-b border-border bg-secondary px-2 py-1 text-left font-semibold text-secondary-foreground whitespace-nowrap; }
   .tbl td { @apply border-b border-border px-2 py-1 whitespace-nowrap; }
   .num { @apply text-right tabular-nums; font-family: var(--font-mono); }
+  /* Alinhamento header/body: colunas monetárias à direita também no cabeçalho (vence .tbl th text-left). */
+  .tbl th.num, .tbl td.num { @apply text-right; }
+  .tbl th { vertical-align: bottom; }
+  .tbl td { vertical-align: middle; }
+  .tbl tfoot td { @apply border-t-2 border-border bg-secondary font-semibold; }
+  .tbl td.num .inp, .tbl td.num input { @apply text-right; }
+  /* Colunas fixas da visão CEO: largura travada para os offsets left-* baterem. */
+  .col-fix { @apply overflow-hidden text-ellipsis whitespace-nowrap; }
   .neg { @apply text-negative; }
   .tag { @apply inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide; }
   .tag-warn { @apply bg-warning-soft text-warning-foreground; }
