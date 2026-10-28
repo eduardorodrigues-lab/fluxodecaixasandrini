@@ -10,33 +10,102 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as LancamentosRouteImport } from './routes/lancamentos'
+import { Route as RecebimentosRouteImport } from './routes/recebimentos'
+import { Route as ReferenciasRouteImport } from './routes/referencias'
+import { Route as RegrasRouteImport } from './routes/regras'
+import { Route as SimulacoesRouteImport } from './routes/simulacoes'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LancamentosRoute = LancamentosRouteImport.update({
+  id: '/lancamentos',
+  path: '/lancamentos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RecebimentosRoute = RecebimentosRouteImport.update({
+  id: '/recebimentos',
+  path: '/recebimentos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReferenciasRoute = ReferenciasRouteImport.update({
+  id: '/referencias',
+  path: '/referencias',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RegrasRoute = RegrasRouteImport.update({
+  id: '/regras',
+  path: '/regras',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SimulacoesRoute = SimulacoesRouteImport.update({
+  id: '/simulacoes',
+  path: '/simulacoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/lancamentos': typeof LancamentosRoute
+  '/recebimentos': typeof RecebimentosRoute
+  '/referencias': typeof ReferenciasRoute
+  '/regras': typeof RegrasRoute
+  '/simulacoes': typeof SimulacoesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/lancamentos': typeof LancamentosRoute
+  '/recebimentos': typeof RecebimentosRoute
+  '/referencias': typeof ReferenciasRoute
+  '/regras': typeof RegrasRoute
+  '/simulacoes': typeof SimulacoesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/lancamentos': typeof LancamentosRoute
+  '/recebimentos': typeof RecebimentosRoute
+  '/referencias': typeof ReferenciasRoute
+  '/regras': typeof RegrasRoute
+  '/simulacoes': typeof SimulacoesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/lancamentos'
+    | '/recebimentos'
+    | '/referencias'
+    | '/regras'
+    | '/simulacoes'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/lancamentos'
+    | '/recebimentos'
+    | '/referencias'
+    | '/regras'
+    | '/simulacoes'
+  id:
+    | '__root__'
+    | '/'
+    | '/lancamentos'
+    | '/recebimentos'
+    | '/referencias'
+    | '/regras'
+    | '/simulacoes'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  LancamentosRoute: typeof LancamentosRoute
+  RecebimentosRoute: typeof RecebimentosRoute
+  ReferenciasRoute: typeof ReferenciasRoute
+  RegrasRoute: typeof RegrasRoute
+  SimulacoesRoute: typeof SimulacoesRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +117,51 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/lancamentos': {
+      id: '/lancamentos'
+      path: '/lancamentos'
+      fullPath: '/lancamentos'
+      preLoaderRoute: typeof LancamentosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/recebimentos': {
+      id: '/recebimentos'
+      path: '/recebimentos'
+      fullPath: '/recebimentos'
+      preLoaderRoute: typeof RecebimentosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/referencias': {
+      id: '/referencias'
+      path: '/referencias'
+      fullPath: '/referencias'
+      preLoaderRoute: typeof ReferenciasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/regras': {
+      id: '/regras'
+      path: '/regras'
+      fullPath: '/regras'
+      preLoaderRoute: typeof RegrasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/simulacoes': {
+      id: '/simulacoes'
+      path: '/simulacoes'
+      fullPath: '/simulacoes'
+      preLoaderRoute: typeof SimulacoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  LancamentosRoute: LancamentosRoute,
+  RecebimentosRoute: RecebimentosRoute,
+  ReferenciasRoute: ReferenciasRoute,
+  RegrasRoute: RegrasRoute,
+  SimulacoesRoute: SimulacoesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
