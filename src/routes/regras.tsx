@@ -71,7 +71,8 @@ function Page() {
     const log: typeof state.importLog = [];
     update((x) => {
       for (const r of novos) {
-        const v = r.values;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const v: any = r.values;
         let sup = x.suppliers.find((s) => s.name.toLowerCase() === String(v.supplier).toLowerCase());
         if (!sup) { sup = { id: uid(), name: String(v.supplier), group: "(importado)", terms: Array(10).fill(null) }; x.suppliers.push(sup); }
         const id = uid();

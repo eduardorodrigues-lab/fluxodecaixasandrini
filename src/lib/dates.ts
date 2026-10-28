@@ -1,6 +1,6 @@
 // Datas ISO "YYYY-MM-DD" em UTC; dias corridos, sem ajuste de fim de semana/feriado.
 const toD = (s: string) => {
-  const [y, m, d] = s.split("-").map(Number);
+  const [y = 1970, m = 1, d = 1] = s.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d));
 };
 const toS = (d: Date) => d.toISOString().slice(0, 10);
@@ -28,7 +28,7 @@ export function parseBRDate(s: string): string | null {
   const t = s.trim();
   let m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(t);
   if (m) {
-    const iso = `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+    const iso = `${m[3]}-${m[2]!.padStart(2, "0")}-${m[1]!.padStart(2, "0")}`;
     return toS(toD(iso)) === iso ? iso : null;
   }
   m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);

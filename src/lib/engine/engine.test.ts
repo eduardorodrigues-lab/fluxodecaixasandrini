@@ -132,8 +132,8 @@ describe("Cenários e visões", () => {
   it("cenário é cópia isolada da base", () => {
     const b = demoData();
     const sc: ScenarioData = JSON.parse(JSON.stringify(b));
-    sc.suppliers[0].terms[0] = 10; sc.targets["2026-10"] = 1;
-    expect(b.suppliers[0].terms[0]).toBe(30);
+    sc.suppliers[0]!.terms[0] = 10; sc.targets["2026-10"] = 1;
+    expect(b.suppliers[0]!.terms[0]).toBe(30);
     expect(computeFlow(b, { start: "2026-10-01", end: "2026-11-30" }).kpis.saldoFinal)
       .not.toBe(computeFlow(sc, { start: "2026-10-01", end: "2026-11-30" }).kpis.saldoFinal);
   });
