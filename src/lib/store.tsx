@@ -8,6 +8,7 @@ import { normalizeData } from "./engine/actions";
 import type { ScenarioData } from "./engine/types";
 import { commitOfficial, getOfficial, listAudit } from "./official.functions";
 import { listMyOrgs } from "./team.functions";
+import { baseMovedSince, editSession, migrateSims, purgeUser, scopeKey, visibleDraft, type DraftSession, type SimStore } from "./session";
 
 // DOIS ESPAÇOS SEPARADOS:
 //  - "oficial": base compartilhada na Lovable Cloud (login obrigatório, isolada por organização, gravação só via servidor com auditoria).
@@ -16,16 +17,16 @@ import { listMyOrgs } from "./team.functions";
 export type Mode = "demo" | "oficial";
 export interface Sim { id: string; name: string; createdAt: string; data: ScenarioData; baseVersion: number | null }
 export interface AuditEntry { id: string; at: string; user_email: string | null; version_from: number; version_to: number; summary: string; changes: Change[] }
-interface LocalState { v: 2; mode: Mode; activeId: string; demo: { data: ScenarioData; version: number; audit: AuditEntry[] }; sims: Record<Mode, Sim[]> }
+interface LocalState { v: 3; mode: Mode; activeId: string; demo: { data: ScenarioData; version: number; audit: AuditEntry[] }; sims: SimStore }
 export interface UiState { view: "vertical" | "horizontal"; start: string; end: string; supplierId: string; group: string }
 export type SaveState = "idle" | "saving" | "saved" | "conflict" | "error";
 export interface Scenario { id: string; name: string; isBase: boolean; data: ScenarioData }
 
-const KEY = "fluxo-sandrini:v2";
+const KEY = "fluxo-sandrini:v2"; // mesma chave; conteúdo migrado para v3 (simulações por usuário+org)
 export const uid = () => Math.random().toString(36).slice(2, 10);
 const uuid = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : "00000000-0000-4000-8000-" + Date.now().toString(16).padStart(12, "0").slice(-12));
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
-const initialLocal = (): LocalState => ({ v: 2, mode: "demo", activeId: "base", demo: { data: demoData(), version: 0, audit: [] }, sims: { demo: [], oficial: [] } });
+const initialLocal = (): LocalState => ({ v: 3, mode: "demo", activeId: "base", demo: { data: demoData(), version: 0, audit: [] }, sims: { demo: [] } });
 
 // Edição pura de rascunho: nunca altera a base recebida.
 export function editDraft(base: ScenarioData, draft: ScenarioData | null, fn: (d: ScenarioData) => void): ScenarioData {
@@ -43,7 +44,7 @@ interface Ctx {
   setUi: (p: Partial<UiState>) => void; setActive: (id: string) => void;
   canEdit: boolean;
   update: (fn: (d: ScenarioData) => void) => string | null;
-  draft: ScenarioData | null; changes: Change[]; discardDraft: () => void; commitDraft: () => Promise<void>;
+  draft: ScenarioData | null; draftBaseVersion: number | null; baseMoved: boolean; changes: Change[]; discardDraft: () => void; commitDraft: () => Promise<void>;
   saveState: SaveState; saveMsg: string; reloadOfficial: () => void;
   createSim: (name: string) => void; discardSim: (id: string) => void; deleteSim: (id: string) => void;
   audit: AuditEntry[];
@@ -55,8 +56,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [local, setLocal] = useState<LocalState>(initialLocal);
   const [hydrated, setHydrated] = useState(false);
   const [user, setUser] = useState<Ctx["user"]>(null);
-  const [draft, setDraft] = useState<ScenarioData | null>(null);
-  const [requestId, setRequestId] = useState<string>("");
+  const [session, setSession] = useState<DraftSession | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveMsg, setSaveMsg] = useState("");
   const [ui, setUiS] = useState<UiState>({ view: "horizontal", start: "2026-10-01", end: "2026-11-30", supplierId: "", group: "" });
@@ -72,7 +72,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const raw = localStorage.getItem(KEY);
       if (raw) {
         const s = JSON.parse(raw) as LocalState;
-        if (s.v === 2) setLocal({ ...s, demo: { ...s.demo, data: normalizeData(s.demo.data) }, sims: { demo: (s.sims?.demo ?? []).map((x) => ({ ...x, data: normalizeData(x.data) })), oficial: (s.sims?.oficial ?? []).map((x) => ({ ...x, data: normalizeData(x.data) })) } });
+        if (s.v === 2 || s.v === 3) {
+          const sims = migrateSims(s.sims);
+          for (const k of Object.keys(sims)) sims[k] = sims[k]!.map((x) => ({ ...x, data: normalizeData(x.data) }));
+          setLocal({ ...s, v: 3, demo: { ...s.demo, data: normalizeData(s.demo.data) }, sims, activeId: "base" });
+        }
       }
     } catch { /* ignora dados locais corrompidos */ }
     try { setOrgIdS(localStorage.getItem("fluxo.orgId")); } catch { /* sem storage */ }
@@ -80,9 +84,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     supabase.auth.getUser().then(({ data }) => setUser(data.user ? { id: data.user.id, email: data.user.email ?? "" } : null));
     const { data: sub } = supabase.auth.onAuthStateChange((ev, session) => {
       if (ev !== "SIGNED_IN" && ev !== "SIGNED_OUT" && ev !== "USER_UPDATED") return;
-      setUser(session?.user ? { id: session.user.id, email: session.user.email ?? "" } : null);
-      if (ev === "SIGNED_OUT") qc.removeQueries({ queryKey: ["official"] });
-      else qc.invalidateQueries({ queryKey: ["official"] });
+      const nu = session?.user ? { id: session.user.id, email: session.user.email ?? "" } : null;
+      setUser((prev) => {
+        // Troca de conta: nenhum cache oficial, rascunho ou simulação do usuário anterior é reutilizado.
+        if (prev?.id !== nu?.id) { qc.removeQueries({ queryKey: ["official"] }); setSession(null); if (prev) setLocal((l) => ({ ...l, sims: purgeUser(l.sims, prev.id), activeId: "base" })); }
+        return nu;
+      });
+      if (ev !== "SIGNED_OUT") qc.invalidateQueries({ queryKey: ["official"] });
     });
     return () => sub.subscription.unsubscribe();
   }, [qc]);
@@ -105,7 +113,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const baseData: ScenarioData | null = mode === "demo" ? local.demo.data : offData;
   const baseVersion = mode === "demo" ? local.demo.version : official.version;
-  const sims = local.sims[mode];
+  const scope = scopeKey(mode, user?.id, mode === "oficial" ? (offQ.data?.orgId ?? null) : null);
+  const sims = scope ? local.sims[scope] ?? [] : [];
+  const cur = visibleDraft(session, scope);
+  const draft = cur?.data ?? null;
   const sim = sims.find((s) => s.id === local.activeId) ?? null;
   const emptyBase = useMemo(() => normalizeData({}), []);
   const base: Scenario = { id: "base", name: mode === "demo" ? "Base DEMONSTRATIVA" : `Base OFICIAL${official.orgName ? " · " + official.orgName : ""}`, isBase: true, data: baseData ?? emptyBase };
@@ -120,18 +131,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       if (sim) {
         const next = editDraft(sim.data, null, fn);
-        mutLocal((s) => { const x = s.sims[mode].find((i) => i.id === sim.id); if (x) x.data = next; });
+        mutLocal((s) => { const x = scope ? s.sims[scope]?.find((i) => i.id === sim.id) : null; if (x) x.data = next; });
       } else {
-        if (!baseData) return "Base ainda não carregada.";
-        const next = editDraft(baseData, draft, fn);
-        if (!draft) setRequestId(uuid());
-        setDraft(next); setSaveState("idle"); setSaveMsg("");
+        if (!baseData || !scope) return "Base ainda não carregada.";
+        setSession(editSession(cur, scope, baseData, baseVersion, fn, uuid)); setSaveState("idle"); setSaveMsg("");
       }
       return null;
     } catch (e) { return (e as Error).message; }
   };
 
-  const discardDraft = () => { setDraft(null); setRequestId(""); setSaveState("idle"); setSaveMsg("Rascunho descartado — nada foi gravado."); };
+  const discardDraft = () => { setSession(null); setSaveState("idle"); setSaveMsg("Rascunho descartado — nada foi gravado."); };
 
   const commitDraft = async () => {
     if (!draft || !baseData || saveState === "saving") return;
@@ -142,36 +151,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
         s.demo.audit.unshift({ id: uuid(), at: new Date().toISOString(), user_email: "demo (navegador)", version_from: s.demo.version, version_to: s.demo.version + 1, summary: summarize(ch), changes: ch });
         s.demo.data = draft; s.demo.version += 1;
       });
-      setDraft(null); setRequestId(""); setSaveState("saved"); setSaveMsg("Salvo no espaço DEMO deste navegador (não é a base oficial).");
+      setSession(null); setSaveState("saved"); setSaveMsg("Salvo no espaço DEMO deste navegador (não é a base oficial).");
       return;
     }
     try {
-      const r = await commitFn({ data: { orgId: selOrg, expectedVersion: baseVersion, requestId, dataJson: JSON.stringify(draft) } });
+      // expectedVersion = versão SNAPSHOT do início do rascunho (não a versão recarregada).
+      const r = await commitFn({ data: { orgId: selOrg, expectedVersion: cur!.baseVersion, requestId: cur!.requestId, dataJson: JSON.stringify(draft) } });
       if (r.status === "ok" || r.status === "duplicate" || r.status === "noop") {
         await qc.invalidateQueries({ queryKey: ["official"] });
-        setDraft(null); setRequestId(""); setSaveState("saved");
+        setSession(null); setSaveState("saved");
         setSaveMsg(r.status === "noop" ? "Nada a gravar." : `Gravado na base oficial (versão ${r.version}).`);
       } else if (r.status === "conflict") {
         setSaveState("conflict");
-        setSaveMsg(`Conflito: a base oficial foi alterada por outra pessoa (agora versão ${r.version}; seu rascunho partiu da ${baseVersion}). Nada foi sobrescrito. Seu rascunho continua aqui; recarregue a base e refaça as alterações.`);
+        setSaveMsg(`Conflito: a base oficial foi alterada por outra pessoa (agora versão ${r.version}; seu rascunho partiu da ${cur!.baseVersion}). Nada foi sobrescrito. Seu rascunho continua aqui; recarregue a base e refaça as alterações.`);
       } else { setSaveState("error"); setSaveMsg("Sem permissão para gravar na base oficial."); }
     } catch (e) { setSaveState("error"); setSaveMsg(`Falha ao gravar (nada confirmado): ${(e as Error).message}. Tente novamente — o envio é idempotente.`); }
   };
 
   const value: Ctx = {
-    mode, setMode: (m) => { setDraft(null); setRequestId(""); setSaveState("idle"); setSaveMsg(""); mutLocal((s) => { s.mode = m; s.activeId = "base"; }); },
-    user, signOut: async () => { await qc.cancelQueries(); qc.removeQueries({ queryKey: ["official"] }); setDraft(null); await supabase.auth.signOut(); },
-    official, orgs, setOrgId: (id) => { setDraft(null); setRequestId(""); setSaveState("idle"); setSaveMsg(""); setOrgIdS(id); try { localStorage.setItem("fluxo.orgId", id); } catch { /* sem storage */ } mutLocal((s) => { s.sims.oficial = []; s.activeId = "base"; }); },
+    mode, setMode: (m) => { setSession(null); setSaveState("idle"); setSaveMsg(""); mutLocal((s) => { s.mode = m; s.activeId = "base"; }); },
+    user, signOut: async () => { await qc.cancelQueries(); qc.removeQueries({ queryKey: ["official"] }); setSession(null); if (user) mutLocal((s) => { s.sims = purgeUser(s.sims, user.id); s.activeId = "base"; }); await supabase.auth.signOut(); },
+    official, orgs, setOrgId: (id) => { setSession(null); setSaveState("idle"); setSaveMsg(""); setOrgIdS(id); try { localStorage.setItem("fluxo.orgId", id); } catch { /* sem storage */ } mutLocal((s) => { s.activeId = "base"; }); },
     base, active, sims, ui, canEdit,
     setUi: (p) => setUiS((u) => ({ ...u, ...p })),
     setActive: (id) => mutLocal((s) => { s.activeId = id; }),
-    update, draft, changes, discardDraft, commitDraft, saveState, saveMsg,
-    reloadOfficial: () => { setDraft(null); setRequestId(""); setSaveState("idle"); setSaveMsg(""); qc.invalidateQueries({ queryKey: ["official"] }); },
-    createSim: (name) => { if (!baseData) return; const id = uid(); mutLocal((s) => { s.sims[mode].push({ id, name, createdAt: new Date().toISOString(), data: clone(baseData), baseVersion }); s.activeId = id; }); },
-    discardSim: (id) => { if (!baseData) return; mutLocal((s) => { const x = s.sims[mode].find((i) => i.id === id); if (x) { x.data = clone(baseData); x.baseVersion = baseVersion; } }); },
-    deleteSim: (id) => mutLocal((s) => { s.sims[mode] = s.sims[mode].filter((x) => x.id !== id); if (s.activeId === id) s.activeId = "base"; }),
+    update, draft, draftBaseVersion: cur?.baseVersion ?? null, baseMoved: mode === "oficial" && baseMovedSince(cur, official.version), changes, discardDraft, commitDraft, saveState, saveMsg,
+    reloadOfficial: () => { setSession(null); setSaveState("idle"); setSaveMsg(""); qc.invalidateQueries({ queryKey: ["official"] }); },
+    createSim: (name) => { if (!baseData) return; const id = uid(); if (!scope) return; mutLocal((s) => { (s.sims[scope] ??= []).push({ id, name, createdAt: new Date().toISOString(), data: clone(baseData), baseVersion }); s.activeId = id; }); },
+    discardSim: (id) => { if (!baseData) return; mutLocal((s) => { const x = scope ? s.sims[scope]?.find((i) => i.id === id) : null; if (x) { x.data = clone(baseData); x.baseVersion = baseVersion; } }); },
+    deleteSim: (id) => mutLocal((s) => { if (scope) s.sims[scope] = (s.sims[scope] ?? []).filter((x) => x.id !== id); if (s.activeId === id) s.activeId = "base"; }),
     audit: mode === "demo" ? local.demo.audit : (auditQ.data ?? []).map((r) => ({ ...r, changes: JSON.parse(r.changesJson) as Change[] })),
-    resetDemo: () => mutLocal((s) => { s.demo = { data: demoData(), version: 0, audit: [] }; s.sims.demo = []; s.activeId = "base"; }),
+    resetDemo: () => mutLocal((s) => { s.demo = { data: demoData(), version: 0, audit: [] }; s.sims["demo"] = []; s.activeId = "base"; }),
   };
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;
 }
