@@ -129,7 +129,7 @@ function Page() {
           <>
             <div className="max-h-72 overflow-auto"><table className="tbl"><thead><tr><th>Linha</th><th>Situação</th>{FIELDS[entity].map((f) => <th key={f.key}>{f.label}</th>)}<th>Problemas</th></tr></thead>
               <tbody>{preview.map((r) => <tr key={r.line}><td>{r.line}</td><td><span className={`tag ${r.status === "novo" ? "tag-ok" : r.status === "idêntico" ? "" : r.status === "conflito" ? "tag-warn" : "tag-err"}`}>{r.status}</span></td>{FIELDS[entity].map((f) => <td key={f.key}>{f.type.startsWith("money") ? fmtNum(r.values[f.key] as number | null) : f.type.startsWith("date") ? fmtDate(r.values[f.key] as string | null) : String(r.values[f.key] ?? "")}</td>)}<td className="text-destructive">{r.errors.join("; ")}</td></tr>)}</tbody></table></div>
-            {entity === "committed" && preview.some((r) => r.values.legacyAbatement == null) && <p className="mt-1 text-xs text-warning-foreground">Linhas sem "Base de abatimento legado (M)": o abatimento das planejadas vinculadas ficará marcado como não confiável.</p>}
+            {entity === "committed" && preview.some((r) => r.values["legacyAbatement"] == null) && <p className="mt-1 text-xs text-warning-foreground">Linhas sem "Base de abatimento legado (M)": o abatimento das planejadas vinculadas ficará marcado como não confiável.</p>}
             <button className="btn btn-primary mt-2" disabled={!preview.some((r) => r.status === "novo")} onClick={confirmImport}>Confirmar importação de {preview.filter((r) => r.status === "novo").length} linha(s) nova(s)</button>
           </>
         )}
