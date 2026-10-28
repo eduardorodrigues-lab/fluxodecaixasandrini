@@ -1,12 +1,13 @@
+import { normalizeData } from "./engine/actions";
 import type { ScenarioData } from "./engine/types";
 
 // DADOS DEMONSTRATIVOS — fictícios, não importados dos arquivos reais.
 export function demoData(): ScenarioData {
-  return {
+  return normalizeData({
     params: {
       profile: "legado", legacyReducer: 0.25, webR1: 0.25, webR2: 0.18,
       divisorLegado: "30", divisorWeb: "dias", lagDays: 10,
-      startDate: "2026-10-01", saldoInicial: 18000000, webExpenseUseExtension: false,
+      startDate: "2026-10-01", saldoInicial: 18000000,
     },
     platforms: ["Plataforma A", "Plataforma B", "Plataforma C"],
     suppliers: [
@@ -30,7 +31,7 @@ export function demoData(): ScenarioData {
     ],
     committed: [
       { id: "e1", supplierId: "s1", purchaseCode: "DEMO-C100", document: "NF-5001", value: 3000000, dueDate: "2026-11-04", extensionDate: null, extensionInfo: "", legacyAbatement: 3000000, categoryId: "c2", notes: "", status: "ativo" },
-      { id: "e2", supplierId: "s3", purchaseCode: "DEMO-C300", document: "NF-7001", value: 1500000, dueDate: "2026-10-25", extensionDate: "2026-11-05", extensionInfo: "prorrogação simulada", legacyAbatement: null, categoryId: "c2", notes: "Sem M importado", status: "ativo" },
+      { id: "e2", supplierId: "s3", purchaseCode: "DEMO-C300", document: "NF-7001", value: 1500000, dueDate: "2026-10-25", extensionDate: "2026-11-05", extensionInfo: "informativo K", legacyAbatement: null, categoryId: "c2", notes: "Sem M importado", status: "ativo" },
     ],
     expenses: [
       { id: "d1", supplierId: "s4", document: "ALUGUEL-10", value: 1200000, baseDate: "2026-10-01", termDays: 9, extensionDate: null, categoryId: "c3", notes: "", status: "ativo" },
@@ -41,8 +42,9 @@ export function demoData(): ScenarioData {
       { id: "r1", date: "2026-10-02", platforms: { "Plataforma A": 250000, "Plataforma B": 180000 }, general: null, notes: "" },
       { id: "r2", date: "2026-10-03", platforms: {}, general: 600000, notes: "" },
       { id: "r3", date: "2026-10-05", platforms: { "Plataforma A": 120000 }, general: 300000, notes: "Exemplo dupla contagem" },
-      { id: "r4", date: "2026-10-06", platforms: {}, general: 0, notes: "Zero → usa estimativa" },
+      { id: "r4", date: "2026-10-06", platforms: {}, general: 0, notes: "Zero CONFIRMADO → não usa estimativa" },
     ],
     adjustments: [{ date: "2026-10-15", value: 15000000, note: "Conferência bancária (demo)" }],
-  };
+    payments: [{ id: "pg1", titleKind: "committed", titleId: "e1", date: "2026-10-20", amount: 1000000, note: "baixa parcial (demo)", reversedAt: null, reversalNote: "" }],
+  });
 }
