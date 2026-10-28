@@ -58,7 +58,7 @@ function Page() {
             const own = d.targetConfigs[m];
             const c = monthTarget(p, d.targets, d.targetConfigs, m);
             const dim = daysInMonth(`${m}-01`);
-            const ex = dailyEstimate({ ...p, lagDays: 0 }, {}, `${m}-01`, c ? { [m]: { ...c, lagDays: 0 } } : {});
+            const ex = dailyEstimate({ ...p, lagDays: 0 }, c ? { [m]: c.gross } : {}, `${m}-01`, c ? { [m]: { ...c, lagDays: 0 } } : {});
             const lag = own?.lagDays ?? p.lagDays;
             const impacted = [addDays(`${m}-01`, lag), addDays(`${m}-${String(dim).padStart(2, "0")}`, lag)];
             const div = legacy ? c?.divisorLegado : c?.divisorWeb;
