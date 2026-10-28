@@ -75,7 +75,7 @@ function Page() {
           <table className="tbl"><tbody>{d.adjustments.map((a, i) => (
             <tr key={i}>
               <td><DateInput value={a.date} onChange={(v) => v && update((x) => { x.adjustments[i]!.date = v; })} /></td>
-              <td><MoneyInput value={a.value} onChange={(v) => update((x) => { x.adjustments[i]!.value = v; })} /></td>
+              <td className="num"><MoneyInput value={a.value} onChange={(v) => update((x) => { x.adjustments[i]!.value = v; })} /></td>
               <td><button className="btn btn-danger" onClick={() => update((x) => { x.adjustments.splice(i, 1); })}>×</button></td>
             </tr>
           ))}</tbody></table>

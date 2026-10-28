@@ -73,7 +73,7 @@ function Page() {
                   <td><SupSel v={p.supplierId} on={(v) => set("planned", p.id, { supplierId: v })} /></td>
                   <td><Txt v={p.purchaseCode} on={(v) => set("planned", p.id, { purchaseCode: v })} /></td>
                   <td><Txt v={p.document} on={(v) => set("planned", p.id, { document: v })} /></td>
-                  <td><MoneyInput value={p.value} onChange={(v) => set("planned", p.id, { value: v ?? 0 })} /></td>
+                  <td className="num"><MoneyInput value={p.value} onChange={(v) => set("planned", p.id, { value: v ?? 0 })} /></td>
                   <td><DateInput value={p.baseDate} onChange={(v) => v && set("planned", p.id, { baseDate: v })} /></td>
                   <td><CatSel v={p.categoryId} kind="planejada" on={(v) => set("planned", p.id, { categoryId: v })} /></td>
                   <td className="text-[11px]">
@@ -103,7 +103,7 @@ function Page() {
                   <td><SupSel v={c.supplierId} on={(v) => set("committed", c.id, { supplierId: v })} /></td>
                   <td><Txt v={c.purchaseCode} on={(v) => set("committed", c.id, { purchaseCode: v })} /></td>
                   <td><Txt v={c.document} on={(v) => set("committed", c.id, { document: v })} /></td>
-                  <td><MoneyInput value={c.value} onChange={(v) => set("committed", c.id, { value: v ?? 0 })} /></td>
+                  <td className="num"><MoneyInput value={c.value} onChange={(v) => set("committed", c.id, { value: v ?? 0 })} /></td>
                   <td><DateInput value={c.dueDate} onChange={(v) => v && set("committed", c.id, { dueDate: v })} /></td>
                   <td>{fmtDate(committedDate(c))}{c.extensionDate && <div className="tag tag-warn">prorrogado ({c.extensionHistory.length})</div>}</td>
                   <td className="text-[11px]">{c.origin === "efetivacao" ? <>efetivação de <b>{pl?.purchaseCode ?? c.plannedId}</b></> : c.origin === "legado" ? "legado (vínculo por código + M)" : "manual"}</td>
@@ -130,9 +130,9 @@ function Page() {
                 <tr key={e.id}>
                   <td><SupSel v={e.supplierId} on={(v) => set("expenses", e.id, { supplierId: v })} /></td>
                   <td><Txt v={e.document} on={(v) => set("expenses", e.id, { document: v })} /></td>
-                  <td><MoneyInput value={e.value} onChange={(v) => set("expenses", e.id, { value: v ?? 0 })} /></td>
+                  <td className="num"><MoneyInput value={e.value} onChange={(v) => set("expenses", e.id, { value: v ?? 0 })} /></td>
                   <td><DateInput value={e.baseDate} onChange={(v) => v && set("expenses", e.id, { baseDate: v })} /></td>
-                  <td><IntInput value={e.termDays} onChange={(v) => set("expenses", e.id, { termDays: v })} /></td>
+                  <td className="num"><IntInput value={e.termDays} onChange={(v) => set("expenses", e.id, { termDays: v })} /></td>
                   <td>{dt ? fmtDate(dt) : <span className="tag tag-warn">não distribuída</span>}{e.extensionDate && <div className="tag tag-warn">prorrogado</div>}</td>
                   <td><CatSel v={e.categoryId} kind="despesa" on={(v) => set("expenses", e.id, { categoryId: v })} /></td>
                   <td className="text-[11px]"><span className={`tag ${ts.state === "Pago" ? "tag-ok" : ts.state === "Parcial" ? "tag-warn" : ""}`}>{ts.state}</span> aberto {fmtBRL(ts.open)}</td>
@@ -205,7 +205,7 @@ function EffectivateForm({ data, planned, onDone }: { data: ScenarioData; planne
       <b>Efetivar compra/pedido da previsão {planned.purchaseCode}</b> — restante previsto atual {fmtBRL(base0.remainingValue)}. Valores e vencimentos podem diferir totalmente da previsão.
       <div className="flex flex-wrap items-end gap-2">Valor efetivado <MoneyInput value={total} onChange={setTotal} /> Data base <DateInput value={base} onChange={setBase} /> Prazos (dias, sugeridos do fornecedor) <input className="inp w-32" value={terms} onChange={(e) => setTerms(e.target.value)} /><button className="btn" onClick={gen}>Gerar parcelas</button></div>
       {inst.length > 0 && <>
-        <table className="tbl w-auto"><thead><tr><th>#</th><th className="num">Valor</th><th>Vencimento</th><th>Documento</th></tr></thead><tbody>{inst.map((i, n) => <tr key={n}><td>{n + 1}</td><td><MoneyInput value={i.value} onChange={(v) => setInst(inst.map((x, k) => (k === n ? { ...x, value: v ?? 0 } : x)))} /></td><td><DateInput value={i.date} onChange={(v) => v && setInst(inst.map((x, k) => (k === n ? { ...x, date: v } : x)))} /></td><td><input className="inp w-28" value={i.document} onChange={(e) => setInst(inst.map((x, k) => (k === n ? { ...x, document: e.target.value } : x)))} /></td></tr>)}</tbody></table>
+        <table className="tbl w-auto"><thead><tr><th>#</th><th className="num">Valor</th><th>Vencimento</th><th>Documento</th></tr></thead><tbody>{inst.map((i, n) => <tr key={n}><td>{n + 1}</td><td className="num"><MoneyInput value={i.value} onChange={(v) => setInst(inst.map((x, k) => (k === n ? { ...x, value: v ?? 0 } : x)))} /></td><td><DateInput value={i.date} onChange={(v) => v && setInst(inst.map((x, k) => (k === n ? { ...x, date: v } : x)))} /></td><td><input className="inp w-28" value={i.document} onChange={(e) => setInst(inst.map((x, k) => (k === n ? { ...x, document: e.target.value } : x)))} /></td></tr>)}</tbody></table>
         <div>Total efetivado {fmtBRL(effTotal)} {inst.length > 1 && splitCents(effTotal, inst.length).residual !== 0 && "(resíduo na última parcela)"}</div>
         <div className="flex flex-wrap items-end gap-3">
           <label><input type="radio" checked={kind === "auto"} onChange={() => setKind("auto")} /> Parcial — restante continua previsto automaticamente ({fmtBRL(rem ?? base0.remainingValue)} nos prazos da previsão)</label>
