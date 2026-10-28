@@ -72,7 +72,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const raw = localStorage.getItem(KEY);
       if (raw) {
         const s = JSON.parse(raw) as LocalState;
-        if (s.v === 2 || s.v === 3) {
+        if ((s.v as number) === 2 || s.v === 3) {
           const sims = migrateSims(s.sims);
           for (const k of Object.keys(sims)) sims[k] = sims[k]!.map((x) => ({ ...x, data: normalizeData(x.data) }));
           setLocal({ ...s, v: 3, demo: { ...s.demo, data: normalizeData(s.demo.data) }, sims, activeId: "base" });
