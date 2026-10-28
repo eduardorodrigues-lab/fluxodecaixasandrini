@@ -15,10 +15,11 @@ const NAV = [
   { to: "/simulacoes", label: "Simulações" },
   { to: "/regras", label: "Regras e Conciliação" },
   { to: "/historico", label: "Histórico / Auditoria" },
+  { to: "/equipe", label: "Equipe e acesso" },
 ] as const;
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { mode, setMode, user, signOut, official, active, sims, setActive, draft, changes, saveState, saveMsg } = useApp();
+  const { orgs, setOrgId, mode, setMode, user, signOut, official, active, sims, setActive, draft, changes, saveState, saveMsg } = useApp();
   const [review, setReview] = useState(false);
   return (
     <div className="flex min-h-screen">
@@ -38,6 +39,12 @@ export function AppShell({ children }: { children: ReactNode }) {
             <option value="oficial">Base oficial (Cloud)</option>
             <option value="demo">Demonstrativo (navegador)</option>
           </select>
+          {mode === "oficial" && orgs.length > 1 && <>
+            <label className="block text-sidebar-primary">Organização</label>
+            <select className="w-full rounded bg-sidebar-accent px-1.5 py-1 text-xs" value={official.orgId} onChange={(e) => { if (!draft || confirm("Há rascunho não confirmado. Trocar de organização descarta o rascunho e as simulações oficiais. Continuar?")) setOrgId(e.target.value); }}>
+              {!official.orgId && <option value="">— selecione —</option>}
+              {orgs.map((o) => <option key={o.orgId} value={o.orgId}>{o.name} ({o.own ? "própria" : "convidada"} · {o.role})</option>)}
+            </select></>}
           <label className="block text-sidebar-primary">Cenário ativo</label>
           <select className="w-full rounded bg-sidebar-accent px-1.5 py-1 text-xs" value={active.id} onChange={(e) => setActive(e.target.value)}>
             <option value="base">{mode === "demo" ? "Base demo" : "Base oficial"}</option>

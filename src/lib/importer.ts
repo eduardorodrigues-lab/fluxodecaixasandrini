@@ -44,17 +44,18 @@ export interface FieldDef { key: string; label: string; type: "text" | "money" |
 export const FIELDS: Record<Entity, FieldDef[]> = {
   planned: [
     { key: "supplier", label: "Fornecedor", type: "text", required: true }, { key: "purchaseCode", label: "Código compra", type: "text", required: true },
-    { key: "document", label: "Documento", type: "text" }, { key: "value", label: "Valor orçado", type: "money", required: true }, { key: "baseDate", label: "Data base", type: "date", required: true },
+    { key: "document", label: "Documento", type: "text" }, { key: "value", label: "Valor orçado (E)", type: "money", required: true }, { key: "baseDate", label: "Data base", type: "date", required: true },
+    ...Array.from({ length: 10 }, (_, i) => ({ key: `t${i + 1}`, label: `Prazo ${i + 1}`, type: "int?" as const })),
   ],
   committed: [
     { key: "supplier", label: "Fornecedor", type: "text", required: true }, { key: "purchaseCode", label: "Código compra", type: "text" },
     { key: "document", label: "Documento", type: "text", required: true }, { key: "value", label: "Valor", type: "money", required: true },
-    { key: "dueDate", label: "Vencimento", type: "date", required: true }, { key: "extensionDate", label: "Prorrogação", type: "date?" },
+    { key: "baseDate", label: "Data faturamento", type: "date?" }, { key: "dueDate", label: "Vencimento", type: "date", required: true }, { key: "extensionDate", label: "Prorrogação", type: "date?" },
     { key: "legacyAbatement", label: "Base abatimento legado (M)", type: "money?" },
   ],
   expenses: [
-    { key: "supplier", label: "Fornecedor", type: "text", required: true }, { key: "document", label: "Documento", type: "text", required: true },
-    { key: "value", label: "Valor", type: "money", required: true }, { key: "baseDate", label: "Data base", type: "date", required: true }, { key: "termDays", label: "Prazo G (dias)", type: "int?" },
+    { key: "category", label: "Tipo (categoria)", type: "text" }, { key: "supplier", label: "Fornecedor", type: "text" }, { key: "document", label: "Descrição/Documento", type: "text", required: true },
+    { key: "value", label: "Valor", type: "money", required: true }, { key: "baseDate", label: "Data base", type: "date", required: true }, { key: "termDays", label: "Prazo G (dias)", type: "int?" }, { key: "group", label: "Grupo (L)", type: "text" },
   ],
   suppliers: [
     { key: "name", label: "Fornecedor", type: "text", required: true }, { key: "group", label: "Grupo", type: "text" },
@@ -68,7 +69,7 @@ export const FIELDS: Record<Entity, FieldDef[]> = {
 };
 // Sugestões de mapeamento por cabeçalho. "Base de abatimento legado (M)" NUNCA é sugerida automaticamente (ambígua: revisar).
 export const HINTS: Record<string, RegExp> = {
-  supplier: /fornec/i, purchaseCode: /c[oó]d/i, document: /doc|nf|nota|t[ií]tulo/i, value: /valor|vlr|or[cç]ado/i, baseDate: /data( base)?|emiss/i,
+  supplier: /fornec/i, category: /^tipo|categ/i, purchaseCode: /c[oó]d/i, document: /doc|nf|nota|t[ií]tulo/i, value: /valor|vlr|or[cç]ado/i, baseDate: /data( base)?|emiss/i,
   dueDate: /venc/i, extensionDate: /prorrog/i, termDays: /prazo/i, name: /fornec|nome/i, group: /grupo/i, date: /^data/i, general: /geral/i, month: /m[eê]s/i, meta: /meta|previs/i,
   ...Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`t${i + 1}`, new RegExp(`(prazo|p)\\s*0?${i + 1}$`, "i")])),
 };

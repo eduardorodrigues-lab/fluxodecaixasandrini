@@ -14,5 +14,8 @@
 - Money is stored as integer cents; rounding via `roundCents`/`splitCents` (residual on last installment, always reported) — no hidden cent loss.
 - Domain mutations (effectivate, pay, reverse, extend) are pure functions in `src/lib/engine/actions.ts` applied to a draft — keeps them testable and reviewable.
 - Official data is one JSON document per organization in `official_data`; writes only via `commitOfficial` server fn → service-role RPC `commit_official` (version check, idempotent request_id, audit before/after) — never grant direct table writes to clients.
+- Team access (invites, member removal, access log) goes only through service-role RPCs `team_*` that re-check owner role in SQL; invite tokens are stored as SHA-256 hashes only — keeps authorization in the database.
+- Server fns take an explicit `orgId`; org resolution never picks an arbitrary membership — prevents cross-org writes for invited users.
+- XLSX adapters use the verified CEO layout (header row 3, fixed columns) and block reconciliation when essential rows are missing — never report healthy numbers from guessed rows.
 - Every base mutation goes through `update()` in `src/lib/store.tsx` into a draft confirmed via the review dialog; simulations and the demo space stay local and are never promoted to the official base.
 - Business rules are documented in `docs/regras-fluxo.md` and covered by `src/lib/**/*.test.ts`; update both when a rule changes.

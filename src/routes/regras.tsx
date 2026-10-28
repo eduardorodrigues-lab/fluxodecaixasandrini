@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { PageHeader, WarningList } from "@/components/kit";
 import { committedDate, computeFlow, expenseDate } from "@/lib/engine/engine";
-import { readWorkbook, reconcile, type SheetInfo } from "@/lib/xlsxImport";
+import { adaptCategories, adaptTargets, layoutMapping, normName, readWorkbook, reconcile, resolveByName, type SheetInfo } from "@/lib/xlsxImport";
 import { fmtDate } from "@/lib/dates";
 import { fmtNum } from "@/lib/money";
 import { classify, FIELDS, mapRows, parseCSV, suggestMapping, toCSV, type Cell, type Entity, type ParsedRow } from "@/lib/importer";
@@ -51,6 +51,8 @@ function Page() {
   const [entity, setEntity] = useState<Entity>("planned");
   const [rows, setRows] = useState<Cell[][]>([]);
   const [headerIdx, setHeaderIdx] = useState(0);
+  const [special, setSpecial] = useState<"" | "targets" | "categorias">("");
+  const [fixed, setFixed] = useState(false);
   const [fileName, setFileName] = useState("");
   const [sheets, setSheets] = useState<SheetInfo[]>([]);
   const [sheet, setSheet] = useState("");
@@ -64,7 +66,8 @@ function Page() {
     const s = list.find((x) => x.name === name); if (!s) return;
     setSheet(name); setPreview(null); setRecon(null);
     setRows(s.rows); setHeaderIdx(s.headerRow);
-    if (s.kind !== "fluxo" && s.kind !== "nao_mapeada" && s.kind !== "desconhecida") { setEntity(s.kind); setMapping(suggestMapping(s.kind, s.rows[s.headerRow] ?? [])); }
+    setSpecial(s.kind === "targets" || s.kind === "categorias" ? s.kind : "");
+    if (s.kind !== "fluxo" && s.kind !== "categorias" && s.kind !== "desconhecida" && s.kind !== "targets") { const k = s.kind; setEntity(k); const lm = layoutMapping(k, s.rows, s.headerRow, (h) => suggestMapping(k, h)); setMapping(lm.map); setFixed(lm.fixed); }
   };
   const onFile = async (f: File) => {
     setPreview(null); setResult(""); setRecon(null); setFileName(f.name); setSheets([]); setSheet("");
@@ -73,7 +76,7 @@ function Page() {
         const list = readWorkbook(await f.arrayBuffer());
         setSheets(list);
         setFileMsg(`${f.name}: ${list.length} aba(s). Somente valores cacheados lidos; macros VBA não são executadas.`);
-        const first = list.find((s) => s.kind !== "desconhecida" && s.kind !== "fluxo" && s.kind !== "nao_mapeada");
+        const first = list.find((s) => s.kind !== "desconhecida" && s.kind !== "fluxo");
         if (first) pickSheet(list, first.name);
       } catch (e) { setFileMsg(`Falha ao ler planilha: ${(e as Error).message}. Nada importado.`); }
       return;
@@ -84,7 +87,7 @@ function Page() {
   };
   const existing = useMemo(() => {
     const k = new Set<string>();
-    for (const s of d.suppliers) k.add(`suppliers|${s.name.toLowerCase()}`);
+    for (const s of d.suppliers) k.add(`suppliers|${normName(s.name).toLowerCase()}`);
     for (const m of Object.keys(d.targets)) k.add(`targets|${m}`);
     for (const r of d.receipts) k.add(`receipts|${r.date}`);
     return k;
@@ -94,16 +97,24 @@ function Page() {
     if (!preview) return;
     const novos = preview.filter((r) => r.status === "novo");
     const at = new Date().toISOString();
+    const skipped: string[] = [];
     const err = update((x) => {
       for (const r of novos) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const v: any = r.values;
         const origin = { file: fileName, sheet: sheet || "CSV", row: r.line };
-        const supOf = () => { let s = x.suppliers.find((i) => i.name.toLowerCase() === String(v.supplier).toLowerCase()); if (!s) { s = { id: uid(), name: String(v.supplier), group: "(importado — revisar)", terms: Array(10).fill(null) }; x.suppliers.push(s); } return s.id; };
+        // Fornecedor resolvido por nome normalizado; nome duplicado = conflito (linha pulada), nunca escolha arbitrária.
+        const supOf = (): string | null => { if (v.supplier == null || String(v.supplier).trim() === "") return ""; const r0 = resolveByName(x.suppliers, String(v.supplier)); if ("id" in r0) return r0.id; if ("conflict" in r0) { skipped.push(`linha ${r.line}: fornecedor "${v.supplier}" ambíguo (${r0.conflict.length} cadastros)`); return null; } const s2 = { id: uid(), name: String(v.supplier).trim(), group: "(importado — revisar)", terms: Array(10).fill(null) }; x.suppliers.push(s2); return s2.id; };
+        const catOf = (): string => { if (!v.category) return ""; const r0 = resolveByName(x.categories, String(v.category)); if ("id" in r0) return r0.id; if ("conflict" in r0) return ""; const c2 = { id: uid(), name: String(v.category).trim(), kind: "despesa" as const, group: String(v.group ?? "(importado — revisar)") }; x.categories.push(c2); return c2.id; };
+        const rowTerms = Array.from({ length: 10 }, (_, i) => (v[`t${i + 1}`] as number | null) ?? null);
+        const needsSup = entity === "planned" || entity === "committed" || entity === "expenses";
+        const sid = needsSup ? supOf() : "";
+        if (sid === null) continue;
         const id = uid();
-        if (entity === "planned") x.planned.push({ id, supplierId: supOf(), purchaseCode: String(v.purchaseCode ?? ""), document: String(v.document ?? ""), value: v.value, baseDate: v.baseDate, categoryId: "", notes: "importado", status: "ativo", remainingOverride: null, origin });
-        if (entity === "committed") x.committed.push({ id, supplierId: supOf(), purchaseCode: String(v.purchaseCode ?? ""), document: String(v.document), value: v.value, dueDate: v.dueDate, extensionDate: v.extensionDate ?? null, extensionHistory: v.extensionDate ? [{ from: null, to: v.extensionDate, at, note: "importado" }] : [], extensionInfo: "", legacyAbatement: v.legacyAbatement ?? null, origin: v.legacyAbatement != null ? "legado" : "manual", plannedId: null, effectivationId: null, categoryId: "", notes: "importado", status: "ativo", importOrigin: origin });
-        if (entity === "expenses") x.expenses.push({ id, supplierId: supOf(), document: String(v.document), value: v.value, baseDate: v.baseDate, termDays: v.termDays ?? null, extensionDate: null, extensionHistory: [], categoryId: "", notes: "importado", status: "ativo", importOrigin: origin });
+        if (entity === "planned") x.planned.push({ id, supplierId: sid, terms: rowTerms.some((t) => t !== null) ? rowTerms : null, purchaseCode: String(v.purchaseCode ?? ""), document: String(v.document ?? ""), value: v.value, baseDate: v.baseDate, categoryId: "", notes: "importado", status: "ativo", remainingOverride: null, origin });
+        if (entity === "committed") x.committed.push({ id, supplierId: sid, purchaseCode: String(v.purchaseCode ?? ""), document: String(v.document), value: v.value, dueDate: v.dueDate, extensionDate: v.extensionDate ?? null, extensionHistory: v.extensionDate ? [{ from: null, to: v.extensionDate, at, note: "importado" }] : [], extensionInfo: "", legacyAbatement: v.legacyAbatement ?? null, origin: v.legacyAbatement != null ? "legado" : "manual", plannedId: null, effectivationId: null, categoryId: "", notes: "importado", status: "ativo", importOrigin: origin });
+        if (entity === "expenses") x.expenses.push({ id, supplierId: sid, document: String(v.document), value: v.value, baseDate: v.baseDate, termDays: v.termDays ?? null, extensionDate: null, extensionHistory: [], categoryId: catOf(), notes: "importado", status: "ativo", importOrigin: origin });
+        if (entity === "suppliers") { const r0 = resolveByName(x.suppliers, String(v.name)); if (!("missing" in r0)) { skipped.push(`linha ${r.line}: fornecedor "${v.name}" já existe — não sobrescrito (conflito)`); continue; } }
         if (entity === "suppliers") x.suppliers.push({ id, name: String(v.name), group: String(v.group ?? ""), terms: Array.from({ length: 10 }, (_, i) => (v[`t${i + 1}`] as number | null) ?? null) });
         if (entity === "receipts") { const plats: Record<string, number | null> = {}; ["p1", "p2", "p3"].forEach((k, i) => { if (v[k] != null) plats[x.platforms[i] ?? `Plataforma ${i + 1}`] = v[k]; }); x.receipts.push({ id, date: v.date, platforms: plats, general: v.general ?? null, notes: `importado ${origin.sheet}:${origin.row}` }); }
         if (entity === "targets") x.targets[v.month] = v.meta;
@@ -111,7 +122,7 @@ function Page() {
       }
     });
     const c = (s: string) => preview.filter((r) => r.status === s).length;
-    setResult(err ? `Erro: ${err}` : `${novos.length} linha(s) adicionadas ao RASCUNHO (ainda não gravadas — revise e confirme na barra superior). Idênticas ignoradas: ${c("idêntico")}. Conflitos não importados: ${c("conflito")}. Inválidas: ${c("inválido")}.`);
+    setResult(err ? `Erro: ${err}` : `${novos.length} linha(s) adicionadas ao RASCUNHO (ainda não gravadas — revise e confirme na barra superior). Idênticas ignoradas: ${c("idêntico")}. Conflitos não importados: ${c("conflito")}. Inválidas: ${c("inválido")}.${skipped.length ? ` Puladas por conflito: ${skipped.join("; ")}.` : ""}`);
     setPreview(null);
   };
   const download = (name: string, csv: string) => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" })); a.download = name; a.click(); };
@@ -146,13 +157,16 @@ function Page() {
         </div>
         {sheets.length > 0 && (
           <table className="tbl mb-2"><thead><tr><th>Aba</th><th>Reconhecida como</th><th>Linhas</th><th>Observação</th><th /></tr></thead>
-            <tbody>{sheets.map((s) => <tr key={s.name} className={s.name === sheet ? "bg-accent" : ""}><td>{s.name}</td><td>{s.kind}</td><td className="num">{s.rows.length}</td><td>{s.note}</td><td>{s.kind === "fluxo" ? <button className="btn" onClick={() => setRecon(reconcile(s.rows, res.days))}>Conciliar com motor</button> : s.kind !== "desconhecida" && s.kind !== "nao_mapeada" && <button className="btn" onClick={() => pickSheet(sheets, s.name)}>Mapear</button>}</td></tr>)}</tbody></table>
+            <tbody>{sheets.map((s) => <tr key={s.name} className={s.name === sheet ? "bg-accent" : ""}><td>{s.name}</td><td>{s.kind}</td><td className="num">{s.rows.length}</td><td>{s.note}</td><td>{s.kind === "fluxo" ? <button className="btn" onClick={() => setRecon(reconcile(s.rows, res.days))}>Conciliar com motor</button> : s.kind !== "desconhecida" && <button className="btn" onClick={() => pickSheet(sheets, s.name)}>Mapear</button>}</td></tr>)}</tbody></table>
         )}
-        {header.length > 0 && (
+        {special === "targets" && <TargetsPanel rows={rows} file={fileName} sheet={sheet} />}
+        {special === "categorias" && <CategoriesPanel rows={rows} />}
+        {fixed && !special && <p className="mb-1 text-[11px] text-muted-foreground">Layout CEO verificado (cabeçalho na linha 3, colunas fixas por letra). Revise antes de pré-visualizar; mapeamento e linha do cabeçalho continuam editáveis.</p>}
+        {header.length > 0 && !special && (
           <div className="mb-2 flex flex-wrap gap-3 text-xs">
             <label>Tipo de dado<br /><select className="inp" value={entity} onChange={(e) => { const en = e.target.value as Entity; setEntity(en); setMapping(suggestMapping(en, header)); setPreview(null); }}>
               <option value="planned">Previsões de compra</option><option value="committed">Compras efetivadas</option><option value="expenses">Despesas</option><option value="suppliers">Fornecedores/prazos</option><option value="receipts">Recebimentos</option><option value="targets">Metas mensais</option></select></label>
-            <label>Linha do cabeçalho<br /><input className="inp num w-14" type="number" min={1} value={headerIdx + 1} onChange={(e) => { const h = Math.max(0, Number(e.target.value) - 1); setHeaderIdx(h); setMapping(suggestMapping(entity, rows[h] ?? [])); }} /></label>
+            <label>Linha do cabeçalho<br /><input className="inp num w-14" type="number" min={1} value={headerIdx + 1} onChange={(e) => { const h = Math.max(0, Number(e.target.value) - 1); setHeaderIdx(h); setFixed(false); setMapping(suggestMapping(entity, rows[h] ?? [])); }} /></label>
             {FIELDS[entity].map((f) => (
               <label key={f.key}>{f.label}{f.required && " *"}<br />
                 <select className="inp" value={mapping[f.key] ?? -1} onChange={(e) => setMapping({ ...mapping, [f.key]: Number(e.target.value) })}><option value={-1}>— não mapear —</option>{header.map((h, i) => <option key={i} value={i}>{String(h ?? "") || `Coluna ${i + 1}`}</option>)}</select>
@@ -175,7 +189,9 @@ function Page() {
       {(fluxoSheet || recon) && (
         <section className="card p-3">
           <div className="lbl mb-2">Conciliação com valores cacheados da aba FLUXO DE CAIXA</div>
-          {!recon ? <p className="text-xs">Clique em "Conciliar com motor" na aba FLUXO DE CAIXA.</p> : !recon.ok ? <p className="text-xs text-destructive">{recon.message}</p> : <>
+          {!recon ? <p className="text-xs">Clique em "Conciliar com motor" na aba FLUXO DE CAIXA.</p> : !recon.ok ? <><p className="text-xs text-destructive">{recon.message}</p>{recon.labels.length > 0 && <p className="text-[11px]">Reconhecidas: {recon.labels.join(" · ")}</p>}</> : <>
+            {recon.blocked.length > 0 && <p className="text-[11px] text-warning-foreground">Ausências: {recon.blocked.join("; ")}</p>}
+            <p className="text-[11px] text-muted-foreground">Linha 1 = datas de referência (defasagem detectada: {recon.refOffsetDays ?? "—"} dia(s)), não usada como calendário. Aritmética interna do cache (inicial − saídas + receb. − final) com resíduo acima de R$ 0,01 em {recon.arithmetic.filter((a) => Math.abs(a.residual) > 0.01).length} dia(s); o cache tem precisão maior que centavos — diferenças abaixo de 1 centavo são arredondamento.</p>
             <p className="text-xs">{recon.message} Linhas: {recon.labels.join(" · ") || "nenhuma"}. Divergências: {reconDiffs.length} de {recon.rows.length} comparações.</p>
             <p className="mb-2 text-[11px] text-muted-foreground">Valores cacheados podem estar desatualizados (Excel não recalculado). Divergências esperadas por mudanças aprovadas: zero confirmado, soma de parcelas coincidentes, resíduo na última parcela, prorrogação confirmada, pagamentos, efetivações. Meta ou M ausentes aparecem como pendência, nunca como valor saudável.</p>
             <div className="max-h-72 overflow-auto"><table className="tbl"><thead><tr><th>Data</th><th>Métrica</th><th className="num">Excel (cache)</th><th className="num">Motor</th><th className="num">Diferença</th></tr></thead>
@@ -186,4 +202,28 @@ function Page() {
       <section className="card flex gap-2 p-3"><button className="btn" onClick={exportFlow}>Exportar fluxo do período (CSV)</button><button className="btn" onClick={exportLanc}>Exportar lançamentos (CSV)</button></section>
     </div>
   );
+}
+
+function TargetsPanel({ rows, file, sheet }: { rows: Cell[][]; file: string; sheet: string }) {
+  const { active, update } = useApp();
+  const a = useMemo(() => adaptTargets(rows), [rows]);
+  const [msg, setMsg] = useState("");
+  const st = (t: (typeof a.rows)[number]) => t.errors.length || t.faturamento === null ? "inválido" : active.data.targets[t.month] === undefined ? "novo" : active.data.targets[t.month] === t.faturamento ? "idêntico" : "conflito";
+  const confirmT = () => { const novos = a.rows.filter((t) => st(t) === "novo"); const at = new Date().toISOString(); const e = update((x) => { for (const t of novos) { x.targets[t.month] = t.faturamento!; x.importLog.push({ entity: "targets", key: `targets|${t.month}`, hash: String(t.faturamento), refId: t.month, at, origin: { file, sheet, row: 3 } }); } }); setMsg(e ? `Erro: ${e}` : `${novos.length} meta(s) no RASCUNHO — confirme na barra superior. Conflitos não sobrescritos: ${a.rows.filter((t) => st(t) === "conflito").length}.`); };
+  if (!a.ok) return <p className="text-xs text-destructive">{a.message}</p>;
+  return <div className="mb-2 text-xs"><p className="mb-1">{a.message} Meta bruta candidata = linha 3 (faturamento, valor CACHEADO); linha 2 (líquido) exibida para conferência do redutor implícito. Confirme que a linha 3 é a meta bruta antes de gravar.</p>
+    <div className="max-h-64 overflow-auto"><table className="tbl"><thead><tr><th>Mês</th><th className="num">Faturamento (L3)</th><th className="num">Líquido (L2)</th><th className="num">Redução implícita</th><th>Componentes</th><th>Estado</th></tr></thead>
+      <tbody>{a.rows.map((t) => <tr key={t.month}><td>{t.month.slice(5)}/{t.month.slice(0, 4)}</td><td className="num">{t.faturamento === null ? "vazio" : fmtNum(t.faturamento)}</td><td className="num">{t.liquido === null ? "vazio" : fmtNum(t.liquido)}</td><td className="num">{t.reducaoImplicita === null ? "—" : `${(t.reducaoImplicita * 100).toFixed(2)}%`}</td><td>{t.components.length}</td><td>{st(t)}{t.errors.length ? ` — ${t.errors.join("; ")}` : ""}</td></tr>)}</tbody></table></div>
+    <button className="btn btn-primary mt-2" onClick={confirmT}>Adicionar metas novas ao rascunho</button>{msg && <p className="mt-1">{msg}</p>}</div>;
+}
+function CategoriesPanel({ rows }: { rows: Cell[][] }) {
+  const { active, update } = useApp();
+  const list = useMemo(() => adaptCategories(rows), [rows]);
+  const [msg, setMsg] = useState("");
+  const st = (c: (typeof list)[number]) => { if (c.errors.length) return "inválido"; const r = resolveByName(active.data.categories, c.name); if ("missing" in r) return "novo"; if ("conflict" in r) return "conflito"; const ex = active.data.categories.find((x) => x.id === r.id)!; return normName(ex.group) === normName(c.group) ? "idêntico" : "conflito"; };
+  const confirmC = () => { const novos = list.filter((c) => st(c) === "novo"); const e = update((x) => { for (const c of novos) x.categories.push({ id: uid(), name: c.name, kind: "despesa", group: c.group }); }); setMsg(e ? `Erro: ${e}` : `${novos.length} categoria(s) no RASCUNHO — confirme na barra superior.`); };
+  return <div className="mb-2 text-xs"><p className="mb-1">Lidas somente as colunas A (tipo) e B (grupo); matriz diária D+ ignorada.</p>
+    <div className="max-h-64 overflow-auto"><table className="tbl"><thead><tr><th>Linha</th><th>Tipo</th><th>Grupo</th><th>Estado</th></tr></thead>
+      <tbody>{list.map((c) => <tr key={c.line}><td>{c.line}</td><td>{c.name}</td><td>{c.group}</td><td>{st(c)}{c.errors.length ? ` — ${c.errors.join("; ")}` : ""}</td></tr>)}</tbody></table></div>
+    <button className="btn btn-primary mt-2" onClick={confirmC}>Adicionar categorias novas ao rascunho</button>{msg && <p className="mt-1">{msg}</p>}</div>;
 }

@@ -26,6 +26,7 @@ export interface Planned {
   baseDate: string; categoryId: string; notes: string;
   status: Status | "encerrado"; // encerrado = efetivação concluída encerrou o saldo previsto
   remainingOverride: { value: number; dates: string[] } | null; // restante confirmado após efetivação parcial
+  terms?: (number | null)[] | null; // prazos F:O da própria linha (importados); null = usa os do fornecedor
   origin?: Origin | null;
 }
 // EFETIVADO/REALIZADO = compra real ou pedido. NÃO é pagamento (ver payments).

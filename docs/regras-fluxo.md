@@ -42,3 +42,35 @@ Redutores web; divisor 30 × dias reais e fevereiro bissexto; defasagem na virad
 
 ## Limitações reais
 Fluxo autenticado completo (login → gravar na base oficial) não verificado de ponta a ponta nesta entrega (sem conta de teste confirmada). Convite de novos membros a uma organização não implementado (cada conta tem a própria). Rascunho fica em memória (recarregar a página descarta). "Distribuir Seleção" e feriados não modelados. Arquivo .xlsm real ainda não anexado.
+
+## Revisão 28/10/2026 — Importação CEO, conciliação e compartilhamento
+
+### Conciliação (aba FLUXO DE CAIXA)
+- Calendário = **linha 3** com A=NATUREZA, B=GRUPO, C=DESCRIÇÃO e datas reais em D+. A **linha 1** contém datas de REFERÊNCIA defasadas (−10 dias) e nunca é usada como calendário; a defasagem detectada é só exibida.
+- Rótulos lidos em conjunto de A/B/C. Linhas esperadas: 5 saldo inicial, 6 recebimento previsto/real, 7 recebimento estimado, 8 saídas total (SAÍDA|TOTAL), 9 custo de produto, 10 planejadas, 11 comprometidas, 12 despesas total, 32 saldo final (RESULTADO|SALDO FINAL). Se a linha esperada não confere, busca única; várias candidatas = ambíguo.
+- Recebimento usado do Excel = linha 6 + linha 7.
+- **Bloqueio**: sem cabeçalho da linha 3, sem datas, ou faltando saldo inicial/recebimentos/saídas/saldo final → `ok=false`, "CONCILIAÇÃO BLOQUEADA" com ausências listadas. Cache nunca é presumido atual.
+- Aritmética interna do cache (inicial − saídas + 6 + 7 − final) exibida; o cache tem precisão maior que centavos (ex.: 1.988.081,42906), comparação em centavos → diferenças < R$ 0,01 são arredondamento.
+- Pontos de referência extraídos localmente do XLSM real (cache, não recalculado) usados como fixture: 01/10/2026 (XR), 02/10/2026 (XS), 28/10/2026 (YS).
+
+### Cabeçalhos e adaptadores por aba (layout CEO verificado, cabeçalho na linha 3, editável)
+- COMPRAS DIRETAS_PLANEJADAS: A código, B fornecedor, C data faturamento, D alterar (ignorado), **E valor orçado**, F:O prazos (0 ≠ vazio, gravados na própria previsão), P/Q/R calculados **não importados**.
+- COMPRAS DIRETAS_EFETUADAS: A código, B fornecedor, C identificador do título (texto, ex. 33181A1), D data faturamento, E alterar, F valor, G vencimento, M base de abatimento manual.
+- DESPESAS E OUTRAS: A tipo (categoria), B descrição, C data, F valor, G prazo, L grupo.
+- RECEBIMENTOS: só A:F; calendário G+ ignorado.
+- PREVISÃO DE VENDAS: meses nas colunas (linha 1 mm/aaaa, linha 2 líquido, linha 3 faturamento cacheado, linha 6 datas, linhas 7+ componentes) → transposto; meta bruta candidata = linha 3 (exige confirmação); faturamento vazio = meta ausente; redução implícita (1 − L2/L3) exibida.
+- TABELA_DESPESAS: só A (tipo) e B (grupo); D+ ignorado; mesmo tipo com grupos diferentes = conflito.
+- Fora do layout verificado: detecção de cabeçalho por padrões de campos da aba (não "primeira linha com 3 textos").
+- Fornecedores/categorias resolvidos por nome normalizado (acentos/caixa/espaços); nome duplicado = conflito, linha pulada; fornecedor existente nunca sobrescrito por reimportação.
+- Planejada com prazos próprios usa-os no lugar dos prazos do fornecedor.
+
+### Compartilhamento
+- Organização escolhida explicitamente (própria × convidada); sem escolha resolve apenas se única ou a própria — nunca arbitrária.
+- Página Equipe (só owner): convite individual (e-mail, papel editor/viewer, validade 1–30 dias). Token aleatório de 32 bytes exibido uma vez; servidor guarda só SHA-256. Nenhum e-mail enviado.
+- Aceite: usuário autenticado, e-mail igual ao convidado, checkbox de confirmação explícita; recusa outro e-mail, expirado, revogado e reutilizado.
+- Revogação de convite e de acesso; último owner não removível; auditoria de acesso (criado/revogado/aceito/acesso revogado).
+- Teste controlado em `tests/sql/team_authz.sql` (usuários fictícios, transação desfeita): viewer não grava, editor grava, não membro não grava nem lê, convites inválidos recusados, último owner protegido.
+
+### Critérios de aceite — estado real
+- Atendido com testes automatizados: reconhecimento/aritmética com fixtures fiéis; cabeçalhos reais; transposição de metas; regras de convite/papéis (TS + SQL controlado).
+- **Pendente**: importação do arquivo real (upload ao projeto falhou com HTTP 403 no armazenamento; o arquivo não chegou ao projeto); login e gravação ponta a ponta com conta real confirmada; aceite de convite ponta a ponta com dois usuários reais (não criado convite para pessoas reais).

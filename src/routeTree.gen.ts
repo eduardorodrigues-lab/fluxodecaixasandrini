@@ -11,7 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as ConviteRouteImport } from './routes/convite'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as EquipeRouteImport } from './routes/equipe'
 import { Route as HistoricoRouteImport } from './routes/historico'
 import { Route as LancamentosRouteImport } from './routes/lancamentos'
 import { Route as MetasRouteImport } from './routes/metas'
@@ -30,9 +32,19 @@ const AuthRoute = AuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConviteRoute = ConviteRouteImport.update({
+  id: '/convite',
+  path: '/convite',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EquipeRoute = EquipeRouteImport.update({
+  id: '/equipe',
+  path: '/equipe',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HistoricoRoute = HistoricoRouteImport.update({
@@ -74,7 +86,9 @@ const SimulacoesRoute = SimulacoesRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/convite': typeof ConviteRoute
   '/dashboard': typeof DashboardRoute
+  '/equipe': typeof EquipeRoute
   '/historico': typeof HistoricoRoute
   '/lancamentos': typeof LancamentosRoute
   '/metas': typeof MetasRoute
@@ -86,7 +100,9 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/convite': typeof ConviteRoute
   '/dashboard': typeof DashboardRoute
+  '/equipe': typeof EquipeRoute
   '/historico': typeof HistoricoRoute
   '/lancamentos': typeof LancamentosRoute
   '/metas': typeof MetasRoute
@@ -99,7 +115,9 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/convite': typeof ConviteRoute
   '/dashboard': typeof DashboardRoute
+  '/equipe': typeof EquipeRoute
   '/historico': typeof HistoricoRoute
   '/lancamentos': typeof LancamentosRoute
   '/metas': typeof MetasRoute
@@ -113,7 +131,9 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/convite'
     | '/dashboard'
+    | '/equipe'
     | '/historico'
     | '/lancamentos'
     | '/metas'
@@ -125,7 +145,9 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/convite'
     | '/dashboard'
+    | '/equipe'
     | '/historico'
     | '/lancamentos'
     | '/metas'
@@ -137,7 +159,9 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/auth'
+    | '/convite'
     | '/dashboard'
+    | '/equipe'
     | '/historico'
     | '/lancamentos'
     | '/metas'
@@ -150,7 +174,9 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRoute
+  ConviteRoute: typeof ConviteRoute
   DashboardRoute: typeof DashboardRoute
+  EquipeRoute: typeof EquipeRoute
   HistoricoRoute: typeof HistoricoRoute
   LancamentosRoute: typeof LancamentosRoute
   MetasRoute: typeof MetasRoute
@@ -176,11 +202,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/convite': {
+      id: '/convite'
+      path: '/convite'
+      fullPath: '/convite'
+      preLoaderRoute: typeof ConviteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard': {
       id: '/dashboard'
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/equipe': {
+      id: '/equipe'
+      path: '/equipe'
+      fullPath: '/equipe'
+      preLoaderRoute: typeof EquipeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/historico': {
@@ -238,7 +278,9 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
+  ConviteRoute: ConviteRoute,
   DashboardRoute: DashboardRoute,
+  EquipeRoute: EquipeRoute,
   HistoricoRoute: HistoricoRoute,
   LancamentosRoute: LancamentosRoute,
   MetasRoute: MetasRoute,

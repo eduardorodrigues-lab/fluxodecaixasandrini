@@ -14,6 +14,53 @@ export type Database = {
   }
   public: {
     Tables: {
+      access_log: {
+        Row: {
+          action: string
+          actor: string
+          actor_email: string | null
+          at: string
+          detail: Json
+          id: string
+          org_id: string
+          role: string | null
+          target_email: string | null
+          target_user: string | null
+        }
+        Insert: {
+          action: string
+          actor: string
+          actor_email?: string | null
+          at?: string
+          detail?: Json
+          id?: string
+          org_id: string
+          role?: string | null
+          target_email?: string | null
+          target_user?: string | null
+        }
+        Update: {
+          action?: string
+          actor?: string
+          actor_email?: string | null
+          at?: string
+          detail?: Json
+          id?: string
+          org_id?: string
+          role?: string | null
+          target_email?: string | null
+          target_user?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "access_log_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_log: {
         Row: {
           at: string
@@ -96,6 +143,59 @@ export type Database = {
           },
         ]
       }
+      org_invites: {
+        Row: {
+          accepted_at: string | null
+          accepted_by: string | null
+          created_at: string
+          created_by: string
+          email: string
+          expires_at: string
+          id: string
+          org_id: string
+          revoked_at: string | null
+          revoked_by: string | null
+          role: string
+          token_hash: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          created_at?: string
+          created_by: string
+          email: string
+          expires_at: string
+          id?: string
+          org_id: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          role: string
+          token_hash: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          created_at?: string
+          created_by?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          org_id?: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          role?: string
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_invites_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       org_members: {
         Row: {
           created_at: string
@@ -165,6 +265,51 @@ export type Database = {
         Returns: Json
       }
       is_org_member: { Args: { _org: string }; Returns: boolean }
+      is_org_owner: { Args: { _org: string }; Returns: boolean }
+      team_accept_invite: {
+        Args: { _email: string; _hash: string; _user: string }
+        Returns: Json
+      }
+      team_create_invite: {
+        Args: {
+          _actor: string
+          _actor_email: string
+          _email: string
+          _expires: string
+          _hash: string
+          _org: string
+          _role: string
+        }
+        Returns: Json
+      }
+      team_invite_info: { Args: { _hash: string }; Returns: Json }
+      team_members: {
+        Args: { _actor: string; _org: string }
+        Returns: {
+          created_at: string
+          email: string
+          role: string
+          user_id: string
+        }[]
+      }
+      team_remove_member: {
+        Args: {
+          _actor: string
+          _actor_email: string
+          _org: string
+          _user: string
+        }
+        Returns: Json
+      }
+      team_revoke_invite: {
+        Args: {
+          _actor: string
+          _actor_email: string
+          _invite: string
+          _org: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never
