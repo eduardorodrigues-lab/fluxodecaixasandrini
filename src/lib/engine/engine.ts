@@ -92,8 +92,8 @@ export function distributePlanned(pl: Planned, sup: Supplier | undefined, commit
     if (value < 0) warnings.push({ code: "PLAN_NEGATIVO", severity: "alerta", refId: pl.id, message: `Planejada ${pl.purchaseCode}: restante confirmado negativo (mantido).` });
     return { ...base, parcels: dates.map((d, i) => ({ date: d, amount: parts[i]!, exact: value / dates.length, term: null })), count: dates.length, P: value / dates.length, Q: 0, R: value / dates.length, health: "ok", roundingDiff: residual, remaining: value, mode: "restante_confirmado", warnings };
   }
-  if (!sup) return empty(`Planejada ${pl.purchaseCode || pl.id}: fornecedor não encontrado.`);
-  const terms = sup.terms.slice(0, 10);
+  if (!sup && !pl.terms) return empty(`Planejada ${pl.purchaseCode || pl.id}: fornecedor não encontrado.`);
+  const terms = (pl.terms ?? sup!.terms).slice(0, 10);
   // Vínculo legado por código (coluna M) só vale para efetuadas SEM vínculo explícito de efetivação.
   const linkedList = pl.purchaseCode
     ? committed.filter((c) => c.status !== "cancelado" && c.purchaseCode === pl.purchaseCode && !c.plannedId && c.origin !== "efetivacao")
