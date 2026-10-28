@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { DateInput, IntInput, MoneyInput, PageHeader, ProfileBadge } from "@/components/kit";
-import { committedDate, distributePlanned, expenseDate } from "@/lib/engine/engine";
+import { committedDate, distributePlanned, expenseDate, paymentsFor, splitCents, titleStatus } from "@/lib/engine/engine";
+import { confirmExtension, effectivate, isoToday, registerPayment, reverseEffectivation, reversePayment, suggestEffectivation } from "@/lib/engine/actions";
 import type { Committed, Expense, Planned, ScenarioData } from "@/lib/engine/types";
-import { fmtDate } from "@/lib/dates";
+import { addDays, fmtDate, parseBRDate } from "@/lib/dates";
 import { fmtBRL } from "@/lib/money";
 import { uid, useApp } from "@/lib/store";
 
@@ -11,49 +12,58 @@ export const Route = createFileRoute("/lancamentos")({
   head: () => ({
     meta: [
       { title: "Lançamentos · Fluxo de Caixa Sandrini" },
-      { name: "description", content: "Compras planejadas, compras comprometidas e despesas." },
+      { name: "description", content: "Previsões de compra, compras efetivadas, despesas e pagamentos." },
       { property: "og:title", content: "Lançamentos · Fluxo de Caixa Sandrini" },
-      { property: "og:description", content: "Compras planejadas, comprometidas e despesas." },
+      { property: "og:description", content: "Previsões, efetivações, despesas e pagamentos." },
     ],
   }),
   component: Page,
 });
 
-type Tab = "planned" | "committed" | "expenses";
-const TABS: { k: Tab; l: string }[] = [{ k: "planned", l: "Compras planejadas" }, { k: "committed", l: "Compras comprometidas (realizadas)" }, { k: "expenses", l: "Despesas" }];
+type Tab = "planned" | "committed" | "expenses" | "payments";
+const TABS: { k: Tab; l: string }[] = [{ k: "planned", l: "Previsões de compra (planejado)" }, { k: "committed", l: "Compras efetivadas (pedido/compra)" }, { k: "expenses", l: "Despesas" }, { k: "payments", l: "Pagamentos (baixas)" }];
+const now = () => new Date().toISOString();
 
 function Page() {
   const { active, update } = useApp();
   const d = active.data;
   const [tab, setTab] = useState<Tab>("planned");
+  const [err, setErr] = useState("");
+  const [open, setOpen] = useState<{ kind: string; id: string } | null>(null);
+  const act = (fn: (x: ScenarioData) => void) => { const e = update(fn); setErr(e ?? ""); return !e; };
   const sup = (id: string) => d.suppliers.find((s) => s.id === id);
   const cats = (kind: string) => d.categories.filter((c) => c.kind === kind);
-  const set = <K extends Tab>(k: K, id: string, patch: Partial<ScenarioData[K][number]>) => update((x) => { const it = (x[k] as { id: string }[]).find((i) => i.id === id); if (it) Object.assign(it, patch); });
-  const del = (k: Tab, id: string) => update((x) => { (x[k] as { id: string }[]) = (x[k] as { id: string }[]).filter((i) => i.id !== id); });
-  const add = () => update((x) => {
+  type K = "planned" | "committed" | "expenses";
+  const set = <T extends K>(k: T, id: string, patch: Partial<ScenarioData[T][number]>) => act((x) => { const it = (x[k] as { id: string }[]).find((i) => i.id === id); if (it) Object.assign(it, patch); });
+  const del = (k: K, id: string) => act((x) => { (x[k] as { id: string }[]) = (x[k] as { id: string }[]).filter((i) => i.id !== id); });
+  const add = () => act((x) => {
     const s0 = x.suppliers[0]?.id ?? "";
     const today = x.params.startDate;
-    if (tab === "planned") x.planned.push({ id: uid(), supplierId: s0, purchaseCode: "", document: "", value: 0, baseDate: today, categoryId: cats("planejada")[0]?.id ?? "", notes: "", status: "ativo" });
-    if (tab === "committed") x.committed.push({ id: uid(), supplierId: s0, purchaseCode: "", document: "", value: 0, dueDate: today, extensionDate: null, extensionInfo: "", legacyAbatement: null, categoryId: cats("comprometida")[0]?.id ?? "", notes: "", status: "ativo" });
-    if (tab === "expenses") x.expenses.push({ id: uid(), supplierId: s0, document: "", value: 0, baseDate: today, termDays: 0, extensionDate: null, categoryId: cats("despesa")[0]?.id ?? "", notes: "", status: "ativo" });
+    if (tab === "planned") x.planned.push({ id: uid(), supplierId: s0, purchaseCode: "", document: "", value: 0, baseDate: today, categoryId: cats("planejada")[0]?.id ?? "", notes: "", status: "ativo", remainingOverride: null });
+    if (tab === "committed") x.committed.push({ id: uid(), supplierId: s0, purchaseCode: "", document: "", value: 0, dueDate: today, extensionDate: null, extensionHistory: [], extensionInfo: "", legacyAbatement: null, origin: "manual", plannedId: null, effectivationId: null, categoryId: cats("comprometida")[0]?.id ?? "", notes: "", status: "ativo" });
+    if (tab === "expenses") x.expenses.push({ id: uid(), supplierId: s0, document: "", value: 0, baseDate: today, termDays: 0, extensionDate: null, extensionHistory: [], categoryId: cats("despesa")[0]?.id ?? "", notes: "", status: "ativo" });
   });
   const SupSel = ({ v, on }: { v: string; on: (v: string) => void }) => <select className="inp w-40" value={v} onChange={(e) => on(e.target.value)}>{d.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>;
   const CatSel = ({ v, kind, on }: { v: string; kind: string; on: (v: string) => void }) => <select className="inp w-36" value={v} onChange={(e) => on(e.target.value)}><option value="">—</option>{cats(kind).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>;
-  const StSel = ({ v, on }: { v: string; on: (v: "ativo" | "cancelado") => void }) => <select className="inp" value={v} onChange={(e) => on(e.target.value as "ativo" | "cancelado")}><option value="ativo">ativo</option><option value="cancelado">cancelado</option></select>;
+  const StSel = ({ v, on }: { v: string; on: (v: "ativo" | "cancelado") => void }) => v === "encerrado" ? <span className="tag">encerrado</span> : <select className="inp" value={v} onChange={(e) => on(e.target.value as "ativo" | "cancelado")}><option value="ativo">ativo</option><option value="cancelado">cancelado</option></select>;
   const Txt = ({ v, on, w = "w-24" }: { v: string; on: (v: string) => void; w?: string }) => <input className={`inp ${w}`} defaultValue={v} onBlur={(e) => e.target.value !== v && on(e.target.value)} />;
+  const isOpen = (kind: string, id: string) => open?.kind === kind && open.id === id;
+  const toggle = (kind: string, id: string) => setOpen(isOpen(kind, id) ? null : { kind, id });
 
   return (
     <div>
-      <PageHeader title="Lançamentos" sub="Alterações recalculam o fluxo imediatamente (sem botão Distribuir). Compra comprometida ≠ pagamento liquidado.">
-        <ProfileBadge /><button className="btn btn-primary" onClick={add}>+ Novo lançamento</button>
+      <PageHeader title="Lançamentos" sub={active.isBase ? "Toda alteração entra em rascunho; nada é gravado até você revisar e confirmar. Planejado = previsão; Efetivado = compra/pedido real; Pagamento = baixa registrada." : "Simulação: alterações imediatas e apenas visuais."}>
+        <ProfileBadge />{tab !== "payments" && <button className="btn btn-primary" onClick={add}>+ Novo</button>}
       </PageHeader>
+      {err && <div className="mb-2 rounded border border-destructive p-2 text-xs text-destructive">{err}</div>}
       <div className="mb-2 flex border-b border-border">{TABS.map((t) => <button key={t.k} className={`tab ${tab === t.k ? "tab-on" : ""}`} onClick={() => setTab(t.k)}>{t.l} ({(d[t.k] as unknown[]).length})</button>)}</div>
       <div className="card overflow-auto">
         {tab === "planned" && (
-          <table className="tbl"><thead><tr><th>Fornecedor</th><th>Cód. compra</th><th>Documento</th><th className="num">Valor orçado</th><th>Data base</th><th>Categoria</th><th>Vínculo / parcelas (perfil ativo)</th><th>Estado</th><th>Obs.</th><th /></tr></thead>
+          <table className="tbl"><thead><tr><th>Fornecedor</th><th>Cód. compra</th><th>Documento</th><th className="num">Valor previsto</th><th>Data base</th><th>Categoria</th><th>Restante previsto / parcelas</th><th>Estado</th><th>Ações</th></tr></thead>
             <tbody>{d.planned.map((p: Planned) => {
-              const r = distributePlanned(p, sup(p.supplierId), d.committed, d.params.profile);
-              return (
+              const r = distributePlanned(p, sup(p.supplierId), d.committed, d.params.profile, d.effectivations);
+              const effs = d.effectivations.filter((e) => e.plannedId === p.id);
+              return [
                 <tr key={p.id}>
                   <td><SupSel v={p.supplierId} on={(v) => set("planned", p.id, { supplierId: v })} /></td>
                   <td><Txt v={p.purchaseCode} on={(v) => set("planned", p.id, { purchaseCode: v })} /></td>
@@ -62,58 +72,143 @@ function Page() {
                   <td><DateInput value={p.baseDate} onChange={(v) => v && set("planned", p.id, { baseDate: v })} /></td>
                   <td><CatSel v={p.categoryId} kind="planejada" on={(v) => set("planned", p.id, { categoryId: v })} /></td>
                   <td className="text-[11px]">
-                    <span className={`tag ${r.health === "ok" ? "tag-ok" : r.health === "erro" ? "tag-err" : "tag-warn"}`}>{r.health}</span> {r.linked} efetuada(s) vinculada(s)
+                    <span className={`tag ${r.health === "ok" ? "tag-ok" : r.health === "erro" ? "tag-err" : "tag-warn"}`}>{r.health}</span> efetivado {fmtBRL(r.effectivated)} · {r.mode === "encerrado" ? "encerrada" : r.mode === "restante_confirmado" ? "restante confirmado" : "padrão"}
                     <div className="text-muted-foreground">{r.parcels.map((pc) => `${fmtDate(pc.date)} ${fmtBRL(pc.amount)}`).join(" · ") || "sem parcelas"}</div>
-                    {d.params.profile === "legado" && <div className={r.R < 0 ? "neg" : "text-muted-foreground"}>P {fmtBRL(r.P)} − Q {fmtBRL(r.Q)} = R {fmtBRL(r.R)} · macro Currency {r.macroValue.toFixed(4)}</div>}
+                    {d.params.profile === "legado" && r.mode === "padrao" && <div className={r.R < 0 ? "neg" : "text-muted-foreground"}>P {fmtBRL(r.P)} − Q {fmtBRL(r.Q)} (M, {r.linked} vínc. legado) = R {fmtBRL(r.R)}{r.roundingDiff ? ` · ajuste última parcela ${r.roundingDiff}¢` : ""}</div>}
                   </td>
                   <td><StSel v={p.status} on={(v) => set("planned", p.id, { status: v })} /></td>
-                  <td><Txt v={p.notes} w="w-32" on={(v) => set("planned", p.id, { notes: v })} /></td>
-                  <td><button className="btn btn-danger" onClick={() => confirm("Excluir lançamento?") && del("planned", p.id)}>Excluir</button></td>
-                </tr>
-              );
+                  <td className="space-x-1 whitespace-nowrap">
+                    {p.status === "ativo" && <button className="btn btn-primary" onClick={() => toggle("eff", p.id)}>Efetivar compra/pedido</button>}
+                    <button className="btn btn-danger" onClick={() => confirm("Excluir previsão? (recuperável pelo histórico após confirmar)") && del("planned", p.id)}>Excluir</button>
+                  </td>
+                </tr>,
+                effs.length > 0 && <tr key={p.id + "-e"}><td colSpan={9} className="bg-muted text-[11px]">{effs.map((e) => <div key={e.id} className="flex items-center gap-2">Efetivação {e.kind} em {fmtDate(e.at.slice(0, 10))}: {fmtBRL(e.value)} em {e.committedIds.length} parcela(s) {e.reversedAt ? <span className="tag tag-err">revertida {fmtDate(e.reversedAt.slice(0, 10))}: {e.reversalNote}</span> : <button className="btn" onClick={() => { const n = prompt("Motivo da reversão (auditado):"); if (n) act((x) => reverseEffectivation(x, e.id, n, now())); }}>Reverter</button>}</div>)}</td></tr>,
+                isOpen("eff", p.id) && <tr key={p.id + "-f"}><td colSpan={9}><EffectivateForm data={d} planned={p} onDone={(fn) => { if (act(fn)) setOpen(null); }} /></td></tr>,
+              ];
             })}</tbody></table>
         )}
         {tab === "committed" && (
-          <table className="tbl"><thead><tr><th>Fornecedor</th><th>Cód. compra</th><th>Documento</th><th className="num">Valor</th><th>Venc. original</th><th>Prorrogação</th><th>Info prorrog. (K, informativo)</th><th className="num">Base abatimento legado (M)</th><th>Categoria</th><th>Data no fluxo</th><th>Estado</th><th /></tr></thead>
-            <tbody>{d.committed.map((c: Committed) => (
-              <tr key={c.id}>
-                <td><SupSel v={c.supplierId} on={(v) => set("committed", c.id, { supplierId: v })} /></td>
-                <td><Txt v={c.purchaseCode} on={(v) => set("committed", c.id, { purchaseCode: v })} />{c.purchaseCode && !d.planned.some((p) => p.purchaseCode === c.purchaseCode) && <div className="tag tag-warn">sem planejada</div>}</td>
-                <td><Txt v={c.document} on={(v) => set("committed", c.id, { document: v })} /></td>
-                <td><MoneyInput value={c.value} onChange={(v) => set("committed", c.id, { value: v ?? 0 })} /></td>
-                <td><DateInput value={c.dueDate} onChange={(v) => v && set("committed", c.id, { dueDate: v })} /></td>
-                <td><DateInput allowEmpty value={c.extensionDate} onChange={(v) => set("committed", c.id, { extensionDate: v })} /></td>
-                <td><Txt v={c.extensionInfo} w="w-32" on={(v) => set("committed", c.id, { extensionInfo: v })} /></td>
-                <td><MoneyInput value={c.legacyAbatement} onChange={(v) => set("committed", c.id, { legacyAbatement: v })} />{c.legacyAbatement === null && <div className="tag tag-err">ausente</div>}</td>
-                <td><CatSel v={c.categoryId} kind="comprometida" on={(v) => set("committed", c.id, { categoryId: v })} /></td>
-                <td>{fmtDate(committedDate(c, d.params.profile))}</td>
-                <td><StSel v={c.status} on={(v) => set("committed", c.id, { status: v })} /></td>
-                <td><button className="btn btn-danger" onClick={() => confirm("Excluir lançamento?") && del("committed", c.id)}>Excluir</button></td>
-              </tr>
-            ))}</tbody></table>
+          <table className="tbl"><thead><tr><th>Fornecedor</th><th>Cód. compra</th><th>Documento</th><th className="num">Valor</th><th>Venc. original</th><th>Venc. vigente</th><th>Origem / vínculo</th><th className="num">Base abat. legado (M)</th><th>Pagamento</th><th>Estado</th><th>Ações</th></tr></thead>
+            <tbody>{d.committed.map((c: Committed) => {
+              const ts = titleStatus(c.value, c.status, paymentsFor(d, "committed", c.id));
+              const pl = c.plannedId ? d.planned.find((p) => p.id === c.plannedId) : null;
+              return [
+                <tr key={c.id}>
+                  <td><SupSel v={c.supplierId} on={(v) => set("committed", c.id, { supplierId: v })} /></td>
+                  <td><Txt v={c.purchaseCode} on={(v) => set("committed", c.id, { purchaseCode: v })} /></td>
+                  <td><Txt v={c.document} on={(v) => set("committed", c.id, { document: v })} /></td>
+                  <td><MoneyInput value={c.value} onChange={(v) => set("committed", c.id, { value: v ?? 0 })} /></td>
+                  <td><DateInput value={c.dueDate} onChange={(v) => v && set("committed", c.id, { dueDate: v })} /></td>
+                  <td>{fmtDate(committedDate(c))}{c.extensionDate && <div className="tag tag-warn">prorrogado ({c.extensionHistory.length})</div>}</td>
+                  <td className="text-[11px]">{c.origin === "efetivacao" ? <>efetivação de <b>{pl?.purchaseCode ?? c.plannedId}</b></> : c.origin === "legado" ? "legado (vínculo por código + M)" : "manual"}</td>
+                  <td>{c.origin === "efetivacao" ? <span className="text-[11px] text-muted-foreground">n/a (vínculo explícito)</span> : <><MoneyInput value={c.legacyAbatement} onChange={(v) => set("committed", c.id, { legacyAbatement: v, origin: v === null ? c.origin : "legado" })} />{c.legacyAbatement === null && c.purchaseCode && <div className="tag tag-err">M ausente</div>}</>}</td>
+                  <td className="text-[11px]"><span className={`tag ${ts.state === "Pago" ? "tag-ok" : ts.state === "Parcial" ? "tag-warn" : ""}`}>{ts.state}</span> pago {fmtBRL(ts.paid)} · aberto {fmtBRL(ts.open)}</td>
+                  <td><StSel v={c.status} on={(v) => set("committed", c.id, { status: v })} /></td>
+                  <td className="space-x-1 whitespace-nowrap">
+                    {c.status === "ativo" && ts.open > 0 && <button className="btn btn-primary" disabled={!active.isBase} title={active.isBase ? "" : "Simulação não registra pagamentos"} onClick={() => toggle("pay", c.id)}>Registrar pagamento</button>}
+                    <button className="btn" onClick={() => toggle("ext", c.id)}>Prorrogar</button>
+                    <button className="btn btn-danger" onClick={() => confirm("Excluir? (recuperável pelo histórico)") && del("committed", c.id)}>Excluir</button>
+                  </td>
+                </tr>,
+                isOpen("pay", c.id) && <tr key={c.id + "-p"}><td colSpan={11}><PayForm open={ts.open} onSave={(amount, date, note) => { if (act((x) => registerPayment(x, { id: uid(), titleKind: "committed", titleId: c.id, amount, date, note }))) setOpen(null); }} /></td></tr>,
+                isOpen("ext", c.id) && <tr key={c.id + "-x"}><td colSpan={11}><ExtForm current={c.extensionDate} history={c.extensionHistory} info={c.extensionInfo} onSave={(to, note) => { if (act((x) => confirmExtension(x, "committed", c.id, to, note, now()))) setOpen(null); }} /></td></tr>,
+              ];
+            })}</tbody></table>
         )}
         {tab === "expenses" && (
-          <table className="tbl"><thead><tr><th>Fornecedor</th><th>Documento</th><th className="num">Valor</th><th>Data base</th><th>Prazo G (dias)</th><th>Prorrogação</th><th>Categoria</th><th>Data no fluxo</th><th>Estado</th><th>Obs.</th><th /></tr></thead>
+          <table className="tbl"><thead><tr><th>Fornecedor</th><th>Documento</th><th className="num">Valor</th><th>Data base</th><th>Prazo G</th><th>Venc. vigente</th><th>Categoria</th><th>Pagamento</th><th>Estado</th><th>Ações</th></tr></thead>
             <tbody>{d.expenses.map((e: Expense) => {
-              const dt = expenseDate(e, d.params);
-              return (
+              const dt = expenseDate(e);
+              const ts = titleStatus(e.value, e.status, paymentsFor(d, "expense", e.id));
+              return [
                 <tr key={e.id}>
                   <td><SupSel v={e.supplierId} on={(v) => set("expenses", e.id, { supplierId: v })} /></td>
                   <td><Txt v={e.document} on={(v) => set("expenses", e.id, { document: v })} /></td>
                   <td><MoneyInput value={e.value} onChange={(v) => set("expenses", e.id, { value: v ?? 0 })} /></td>
                   <td><DateInput value={e.baseDate} onChange={(v) => v && set("expenses", e.id, { baseDate: v })} /></td>
                   <td><IntInput value={e.termDays} onChange={(v) => set("expenses", e.id, { termDays: v })} /></td>
-                  <td><DateInput allowEmpty value={e.extensionDate} onChange={(v) => set("expenses", e.id, { extensionDate: v })} /></td>
+                  <td>{dt ? fmtDate(dt) : <span className="tag tag-warn">não distribuída</span>}{e.extensionDate && <div className="tag tag-warn">prorrogado</div>}</td>
                   <td><CatSel v={e.categoryId} kind="despesa" on={(v) => set("expenses", e.id, { categoryId: v })} /></td>
-                  <td>{dt ? fmtDate(dt) : <span className="tag tag-warn">não distribuída</span>}</td>
+                  <td className="text-[11px]"><span className={`tag ${ts.state === "Pago" ? "tag-ok" : ts.state === "Parcial" ? "tag-warn" : ""}`}>{ts.state}</span> aberto {fmtBRL(ts.open)}</td>
                   <td><StSel v={e.status} on={(v) => set("expenses", e.id, { status: v })} /></td>
-                  <td><Txt v={e.notes} w="w-32" on={(v) => set("expenses", e.id, { notes: v })} /></td>
-                  <td><button className="btn btn-danger" onClick={() => confirm("Excluir lançamento?") && del("expenses", e.id)}>Excluir</button></td>
-                </tr>
-              );
+                  <td className="space-x-1 whitespace-nowrap">
+                    {e.status === "ativo" && ts.open > 0 && dt && <button className="btn btn-primary" disabled={!active.isBase} onClick={() => toggle("pay", e.id)}>Registrar pagamento</button>}
+                    <button className="btn" onClick={() => toggle("ext", e.id)}>Prorrogar</button>
+                    <button className="btn btn-danger" onClick={() => confirm("Excluir? (recuperável pelo histórico)") && del("expenses", e.id)}>Excluir</button>
+                  </td>
+                </tr>,
+                isOpen("pay", e.id) && <tr key={e.id + "-p"}><td colSpan={10}><PayForm open={ts.open} onSave={(amount, date, note) => { if (act((x) => registerPayment(x, { id: uid(), titleKind: "expense", titleId: e.id, amount, date, note }))) setOpen(null); }} /></td></tr>,
+                isOpen("ext", e.id) && <tr key={e.id + "-x"}><td colSpan={10}><ExtForm current={e.extensionDate} history={e.extensionHistory} info="" onSave={(to, note) => { if (act((x) => confirmExtension(x, "expense", e.id, to, note, now()))) setOpen(null); }} /></td></tr>,
+              ];
+            })}</tbody></table>
+        )}
+        {tab === "payments" && (
+          <table className="tbl"><thead><tr><th>Data</th><th>Título</th><th className="num">Valor</th><th>Obs.</th><th>Situação</th><th /></tr></thead>
+            <tbody>{[...d.payments].sort((a, b) => a.date.localeCompare(b.date)).map((p) => {
+              const t = p.titleKind === "committed" ? d.committed.find((c) => c.id === p.titleId) : d.expenses.find((e) => e.id === p.titleId);
+              return <tr key={p.id}><td>{fmtDate(p.date)}</td><td>{p.titleKind === "committed" ? "Efetivado" : "Despesa"} · {sup(t?.supplierId ?? "")?.name} · {t?.document ?? p.titleId}</td><td className="num">{fmtBRL(p.amount)}</td><td>{p.note}</td>
+                <td>{p.reversedAt ? <span className="tag tag-err">estornado {fmtDate(p.reversedAt.slice(0, 10))}: {p.reversalNote}</span> : <span className="tag tag-ok">ativo</span>}</td>
+                <td>{!p.reversedAt && <button className="btn" disabled={!active.isBase} onClick={() => { const n = prompt("Motivo do estorno (auditado):"); if (n) act((x) => reversePayment(x, p.id, n, now())); }}>Estornar</button>}</td></tr>;
             })}</tbody></table>
         )}
       </div>
+      <p className="mt-2 text-[11px] text-muted-foreground">Registrar pagamento é apenas o registro de uma baixa já realizada — não executa transferência bancária. Pagamentos nunca são apagados por prorrogação; estornos ficam no histórico.</p>
+    </div>
+  );
+}
+
+function PayForm({ open, onSave }: { open: number; onSave: (amount: number, date: string, note: string) => void }) {
+  const [amount, setAmount] = useState<number | null>(open);
+  const [date, setDate] = useState<string | null>(isoToday());
+  const [note, setNote] = useState("");
+  return <div className="flex flex-wrap items-end gap-2 bg-muted p-2 text-xs"><b>Registrar pagamento</b> Valor <MoneyInput value={amount} onChange={setAmount} /> Data real <DateInput value={date} onChange={setDate} /> <input className="inp w-48" placeholder="observação" value={note} onChange={(e) => setNote(e.target.value)} />
+    <button className="btn btn-primary" disabled={!amount || !date} onClick={() => amount && date && onSave(amount, date, note)}>Adicionar ao rascunho</button><span className="text-muted-foreground">saldo pendente {fmtBRL(open)}</span></div>;
+}
+function ExtForm({ current, history, info, onSave }: { current: string | null; history: { from: string | null; to: string | null; at: string; note: string }[]; info: string; onSave: (to: string | null, note: string) => void }) {
+  const [to, setTo] = useState<string | null>(current);
+  const [note, setNote] = useState("");
+  return <div className="bg-muted p-2 text-xs"><div className="flex flex-wrap items-end gap-2"><b>Prorrogação confirmada</b> Nova data <DateInput allowEmpty value={to} onChange={setTo} /><input className="inp w-48" placeholder="motivo" value={note} onChange={(e) => setNote(e.target.value)} /><button className="btn btn-primary" onClick={() => onSave(to, note)}>Confirmar prorrogação (rascunho)</button></div>
+    <p className="mt-1 text-muted-foreground">Altera a programação oficial ao gravar; vencimento original preservado. Testes de prorrogação devem ser feitos em Simulação.{info && ` Campo K (informativo, não altera cálculo): "${info}".`}</p>
+    {history.length > 0 && <ul className="mt-1">{history.map((h, i) => <li key={i}>{h.at ? fmtDate(h.at.slice(0, 10)) : "—"}: {fmtDate(h.from) || "original"} → {fmtDate(h.to) || "original"} {h.note}</li>)}</ul>}</div>;
+}
+
+function EffectivateForm({ data, planned, onDone }: { data: ScenarioData; planned: Planned; onDone: (fn: (x: ScenarioData) => void) => void }) {
+  const [id] = useState(() => "ef" + uid()); // chave de idempotência por abertura do formulário
+  const base0 = suggestEffectivation(data, planned.id, 0);
+  const [total, setTotal] = useState<number | null>(base0.remainingValue);
+  const [base, setBase] = useState<string | null>(planned.baseDate);
+  const [terms, setTerms] = useState(base0.suggestedTerms.join(", "));
+  const [inst, setInst] = useState<{ value: number; date: string; document: string }[]>([]);
+  const [kind, setKind] = useState<"parcial" | "concluida">("concluida");
+  const [rem, setRem] = useState<number | null>(null);
+  const [remDates, setRemDates] = useState("");
+  const [sent, setSent] = useState(false);
+  const gen = () => {
+    const days = terms.split(/[,;\s]+/).filter(Boolean).map(Number).filter((n) => Number.isFinite(n));
+    if (!total || !base || !days.length) return;
+    const { parts } = splitCents(total, days.length);
+    setInst(days.map((t, i) => ({ value: parts[i]!, date: addDays(base, t), document: "" })));
+    const s = suggestEffectivation(data, planned.id, total);
+    setRem(s.remainingValue); setRemDates(s.remainingDates.map(fmtDate).join(", "));
+    if (s.remainingValue > 0) setKind("parcial");
+  };
+  const effTotal = inst.reduce((a, i) => a + i.value, 0);
+  const dates = remDates.split(/[,;\s]+/).filter(Boolean).map(parseBRDate);
+  const datesOk = dates.every(Boolean);
+  return (
+    <div className="space-y-2 bg-muted p-2 text-xs">
+      <b>Efetivar compra/pedido da previsão {planned.purchaseCode}</b> — restante previsto atual {fmtBRL(base0.remainingValue)}. Valores e vencimentos podem diferir totalmente da previsão.
+      <div className="flex flex-wrap items-end gap-2">Valor efetivado <MoneyInput value={total} onChange={setTotal} /> Data base <DateInput value={base} onChange={setBase} /> Prazos (dias, sugeridos do fornecedor) <input className="inp w-32" value={terms} onChange={(e) => setTerms(e.target.value)} /><button className="btn" onClick={gen}>Gerar parcelas</button></div>
+      {inst.length > 0 && <>
+        <table className="tbl w-auto"><thead><tr><th>#</th><th className="num">Valor</th><th>Vencimento</th><th>Documento</th></tr></thead><tbody>{inst.map((i, n) => <tr key={n}><td>{n + 1}</td><td><MoneyInput value={i.value} onChange={(v) => setInst(inst.map((x, k) => (k === n ? { ...x, value: v ?? 0 } : x)))} /></td><td><DateInput value={i.date} onChange={(v) => v && setInst(inst.map((x, k) => (k === n ? { ...x, date: v } : x)))} /></td><td><input className="inp w-28" value={i.document} onChange={(e) => setInst(inst.map((x, k) => (k === n ? { ...x, document: e.target.value } : x)))} /></td></tr>)}</tbody></table>
+        <div>Total efetivado {fmtBRL(effTotal)} {inst.length > 1 && splitCents(effTotal, inst.length).residual !== 0 && "(resíduo na última parcela)"}</div>
+        <div className="flex flex-wrap items-end gap-3">
+          <label><input type="radio" checked={kind === "concluida"} onChange={() => setKind("concluida")} /> Concluída — encerra o saldo previsto restante</label>
+          <label><input type="radio" checked={kind === "parcial"} onChange={() => setKind("parcial")} /> Parcial — manter restante:</label>
+          {kind === "parcial" && <>Valor <MoneyInput value={rem} onChange={setRem} /> Datas próprias <input className={`inp w-64 ${datesOk ? "" : "ring-1 ring-destructive"}`} placeholder="dd/mm/aaaa, dd/mm/aaaa" value={remDates} onChange={(e) => setRemDates(e.target.value)} /></>}
+        </div>
+        <button className="btn btn-primary" disabled={sent || !effTotal || (kind === "parcial" && (!datesOk || rem === null))} onClick={() => { setSent(true); onDone((x) => effectivate(x, { id, plannedId: planned.id, kind, at: new Date().toISOString(), installments: inst, remaining: kind === "parcial" ? { value: rem ?? 0, dates: dates as string[] } : null })); }}>Adicionar efetivação ao rascunho</button>
+      </>}
     </div>
   );
 }

@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthRouteImport } from './routes/auth'
 import { Route as LancamentosRouteImport } from './routes/lancamentos'
 import { Route as RecebimentosRouteImport } from './routes/recebimentos'
 import { Route as ReferenciasRouteImport } from './routes/referencias'
@@ -19,6 +20,11 @@ import { Route as SimulacoesRouteImport } from './routes/simulacoes'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LancamentosRoute = LancamentosRouteImport.update({
@@ -49,6 +55,7 @@ const SimulacoesRoute = SimulacoesRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/lancamentos': typeof LancamentosRoute
   '/recebimentos': typeof RecebimentosRoute
   '/referencias': typeof ReferenciasRoute
@@ -57,6 +64,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/lancamentos': typeof LancamentosRoute
   '/recebimentos': typeof RecebimentosRoute
   '/referencias': typeof ReferenciasRoute
@@ -66,6 +74,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/lancamentos': typeof LancamentosRoute
   '/recebimentos': typeof RecebimentosRoute
   '/referencias': typeof ReferenciasRoute
@@ -76,6 +85,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/auth'
     | '/lancamentos'
     | '/recebimentos'
     | '/referencias'
@@ -84,6 +94,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/auth'
     | '/lancamentos'
     | '/recebimentos'
     | '/referencias'
@@ -92,6 +103,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/auth'
     | '/lancamentos'
     | '/recebimentos'
     | '/referencias'
@@ -101,6 +113,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthRoute: typeof AuthRoute
   LancamentosRoute: typeof LancamentosRoute
   RecebimentosRoute: typeof RecebimentosRoute
   ReferenciasRoute: typeof ReferenciasRoute
@@ -115,6 +128,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/lancamentos': {
@@ -157,6 +177,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthRoute: AuthRoute,
   LancamentosRoute: LancamentosRoute,
   RecebimentosRoute: RecebimentosRoute,
   ReferenciasRoute: ReferenciasRoute,
