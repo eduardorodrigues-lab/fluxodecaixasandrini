@@ -3,7 +3,7 @@ export type Divisor = "30" | "dias";
 
 export interface Params {
   profile: Profile;
-  legacyReducer: number; // Excel antigo B2 (ex.: 0.25)
+  legacyReducer: number; // Excel antigo B2 (ex.: 0.25) — redutor global
   webR1: number;
   webR2: number;
   divisorLegado: Divisor; // fórmulas conferidas: /30
@@ -11,51 +11,77 @@ export interface Params {
   lagDays: number; // defasagem (dias corridos)
   startDate: string;
   saldoInicial: number; // centavos
-  webExpenseUseExtension: boolean; // web original usa vencimento ORIGINAL de despesas
 }
 
 export interface Supplier { id: string; name: string; group: string; terms: (number | null)[] } // até 10; null = vazio
 export type CategoryKind = "planejada" | "comprometida" | "despesa";
 export interface Category { id: string; name: string; kind: CategoryKind; group: string }
 export type Status = "ativo" | "cancelado";
+export interface Origin { file: string; sheet: string; row: number }
+export interface ExtensionEvent { from: string | null; to: string | null; at: string; note: string }
 
+// PLANEJADO = previsão. Não é compra nem pagamento.
 export interface Planned {
   id: string; supplierId: string; purchaseCode: string; document: string; value: number;
-  baseDate: string; categoryId: string; notes: string; status: Status;
+  baseDate: string; categoryId: string; notes: string;
+  status: Status | "encerrado"; // encerrado = efetivação concluída encerrou o saldo previsto
+  remainingOverride: { value: number; dates: string[] } | null; // restante confirmado após efetivação parcial
+  origin?: Origin | null;
 }
-// Compra realizada/comprometida: NÃO significa pagamento liquidado.
+// EFETIVADO/REALIZADO = compra real ou pedido. NÃO é pagamento (ver payments).
+export type CommittedOrigin = "legado" | "efetivacao" | "manual";
 export interface Committed {
   id: string; supplierId: string; purchaseCode: string; document: string; value: number;
-  dueDate: string; extensionDate: string | null; extensionInfo: string;
-  legacyAbatement: number | null; // coluna M legado (base de abatimento) — importada, nunca inferida
-  categoryId: string; notes: string; status: Status;
+  dueDate: string; // vencimento original (preservado)
+  extensionDate: string | null; // prorrogação CONFIRMADA (altera programação oficial)
+  extensionHistory: ExtensionEvent[];
+  extensionInfo: string; // campo K — apenas informativo
+  legacyAbatement: number | null; // coluna M legado — importada, nunca inferida; só usada quando origin="legado"
+  origin: CommittedOrigin; plannedId: string | null; effectivationId: string | null;
+  categoryId: string; notes: string; status: Status; importOrigin?: Origin | null;
 }
 export interface Expense {
   id: string; supplierId: string; document: string; value: number; baseDate: string;
   termDays: number | null; // G: vazio = não distribui; 0 = data base
-  extensionDate: string | null; categoryId: string; notes: string; status: Status;
+  extensionDate: string | null; extensionHistory: ExtensionEvent[];
+  categoryId: string; notes: string; status: Status; importOrigin?: Origin | null;
+}
+export interface Effectivation {
+  id: string; plannedId: string; at: string; kind: "parcial" | "concluida"; value: number;
+  committedIds: string[];
+  prev: { status: Planned["status"]; remainingOverride: Planned["remainingOverride"] };
+  reversedAt: string | null; reversalNote: string;
+}
+// Baixa = registro de pagamento realizado (NÃO é transferência bancária).
+export interface Payment {
+  id: string; titleKind: "committed" | "expense"; titleId: string; date: string; amount: number;
+  note: string; reversedAt: string | null; reversalNote: string;
 }
 export interface Receipt { id: string; date: string; platforms: Record<string, number | null>; general: number | null; notes: string }
 export interface Adjustment { date: string; value: number | null; note: string } // value 0 é válido
+export interface ImportLogEntry { entity: string; key: string; hash: string; refId: string; at: string; origin?: Origin | null }
 
 export interface ScenarioData {
   params: Params;
   platforms: string[];
   suppliers: Supplier[];
   categories: Category[];
-  targets: Record<string, number>; // "YYYY-MM" -> meta em centavos
+  targets: Record<string, number>; // "YYYY-MM" -> meta bruta em centavos
   planned: Planned[];
   committed: Committed[];
   expenses: Expense[];
+  effectivations: Effectivation[];
+  payments: Payment[];
   receipts: Receipt[];
   adjustments: Adjustment[];
+  importLog: ImportLogEntry[];
 }
 
 export type Severity = "info" | "alerta" | "erro";
 export interface Warning { code: string; severity: Severity; message: string; refId?: string; date?: string }
 
 export type ItemSource = "planejada" | "comprometida" | "despesa" | "recebimento" | "estimativa" | "ajuste";
-export interface Item { source: ItemSource; refId?: string; label: string; amount: number; categoryId?: string; note?: string }
+export interface Item { source: ItemSource; refId?: string; label: string; amount: number; categoryId?: string; note?: string; paid?: boolean }
 
 export interface Day {
   date: string;
