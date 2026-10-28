@@ -11,7 +11,10 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as HistoricoRouteImport } from './routes/historico'
 import { Route as LancamentosRouteImport } from './routes/lancamentos'
+import { Route as MetasRouteImport } from './routes/metas'
 import { Route as RecebimentosRouteImport } from './routes/recebimentos'
 import { Route as ReferenciasRouteImport } from './routes/referencias'
 import { Route as RegrasRouteImport } from './routes/regras'
@@ -27,9 +30,24 @@ const AuthRoute = AuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HistoricoRoute = HistoricoRouteImport.update({
+  id: '/historico',
+  path: '/historico',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LancamentosRoute = LancamentosRouteImport.update({
   id: '/lancamentos',
   path: '/lancamentos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MetasRoute = MetasRouteImport.update({
+  id: '/metas',
+  path: '/metas',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RecebimentosRoute = RecebimentosRouteImport.update({
@@ -56,7 +74,10 @@ const SimulacoesRoute = SimulacoesRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/dashboard': typeof DashboardRoute
+  '/historico': typeof HistoricoRoute
   '/lancamentos': typeof LancamentosRoute
+  '/metas': typeof MetasRoute
   '/recebimentos': typeof RecebimentosRoute
   '/referencias': typeof ReferenciasRoute
   '/regras': typeof RegrasRoute
@@ -65,7 +86,10 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/dashboard': typeof DashboardRoute
+  '/historico': typeof HistoricoRoute
   '/lancamentos': typeof LancamentosRoute
+  '/metas': typeof MetasRoute
   '/recebimentos': typeof RecebimentosRoute
   '/referencias': typeof ReferenciasRoute
   '/regras': typeof RegrasRoute
@@ -75,7 +99,10 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/dashboard': typeof DashboardRoute
+  '/historico': typeof HistoricoRoute
   '/lancamentos': typeof LancamentosRoute
+  '/metas': typeof MetasRoute
   '/recebimentos': typeof RecebimentosRoute
   '/referencias': typeof ReferenciasRoute
   '/regras': typeof RegrasRoute
@@ -86,7 +113,10 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/dashboard'
+    | '/historico'
     | '/lancamentos'
+    | '/metas'
     | '/recebimentos'
     | '/referencias'
     | '/regras'
@@ -95,7 +125,10 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/dashboard'
+    | '/historico'
     | '/lancamentos'
+    | '/metas'
     | '/recebimentos'
     | '/referencias'
     | '/regras'
@@ -104,7 +137,10 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/auth'
+    | '/dashboard'
+    | '/historico'
     | '/lancamentos'
+    | '/metas'
     | '/recebimentos'
     | '/referencias'
     | '/regras'
@@ -114,7 +150,10 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRoute
+  DashboardRoute: typeof DashboardRoute
+  HistoricoRoute: typeof HistoricoRoute
   LancamentosRoute: typeof LancamentosRoute
+  MetasRoute: typeof MetasRoute
   RecebimentosRoute: typeof RecebimentosRoute
   ReferenciasRoute: typeof ReferenciasRoute
   RegrasRoute: typeof RegrasRoute
@@ -137,11 +176,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/historico': {
+      id: '/historico'
+      path: '/historico'
+      fullPath: '/historico'
+      preLoaderRoute: typeof HistoricoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/lancamentos': {
       id: '/lancamentos'
       path: '/lancamentos'
       fullPath: '/lancamentos'
       preLoaderRoute: typeof LancamentosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/metas': {
+      id: '/metas'
+      path: '/metas'
+      fullPath: '/metas'
+      preLoaderRoute: typeof MetasRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/recebimentos': {
@@ -178,7 +238,10 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
+  DashboardRoute: DashboardRoute,
+  HistoricoRoute: HistoricoRoute,
   LancamentosRoute: LancamentosRoute,
+  MetasRoute: MetasRoute,
   RecebimentosRoute: RecebimentosRoute,
   ReferenciasRoute: ReferenciasRoute,
   RegrasRoute: RegrasRoute,
