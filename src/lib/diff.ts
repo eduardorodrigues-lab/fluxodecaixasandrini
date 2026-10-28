@@ -4,24 +4,24 @@ import type { ScenarioData } from "./engine/types";
 export interface Change { entity: string; id: string; kind: "inclusão" | "alteração" | "exclusão"; before: unknown; after: unknown; fields: string[] }
 
 const COLLECTIONS: { key: keyof ScenarioData; label: string; id: (x: Record<string, unknown>) => string }[] = [
-  { key: "suppliers", label: "Fornecedor", id: (x) => String(x.id) },
-  { key: "categories", label: "Categoria", id: (x) => String(x.id) },
-  { key: "planned", label: "Previsão (planejada)", id: (x) => String(x.id) },
-  { key: "committed", label: "Efetivado (compra/pedido)", id: (x) => String(x.id) },
-  { key: "expenses", label: "Despesa", id: (x) => String(x.id) },
-  { key: "effectivations", label: "Efetivação", id: (x) => String(x.id) },
-  { key: "payments", label: "Pagamento (baixa)", id: (x) => String(x.id) },
-  { key: "receipts", label: "Recebimento", id: (x) => String(x.id) },
-  { key: "adjustments", label: "Ajuste de saldo", id: (x) => String(x.date) },
-  { key: "importLog", label: "Registro de importação", id: (x) => String(x.key) },
+  { key: "suppliers", label: "Fornecedor", id: (x) => String(x["id"]) },
+  { key: "categories", label: "Categoria", id: (x) => String(x["id"]) },
+  { key: "planned", label: "Previsão (planejada)", id: (x) => String(x["id"]) },
+  { key: "committed", label: "Efetivado (compra/pedido)", id: (x) => String(x["id"]) },
+  { key: "expenses", label: "Despesa", id: (x) => String(x["id"]) },
+  { key: "effectivations", label: "Efetivação", id: (x) => String(x["id"]) },
+  { key: "payments", label: "Pagamento (baixa)", id: (x) => String(x["id"]) },
+  { key: "receipts", label: "Recebimento", id: (x) => String(x["id"]) },
+  { key: "adjustments", label: "Ajuste de saldo", id: (x) => String(x["date"]) },
+  { key: "importLog", label: "Registro de importação", id: (x) => String(x["key"]) },
 ];
 const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 export function diffData(a: ScenarioData, b: ScenarioData): Change[] {
   const out: Change[] = [];
   for (const c of COLLECTIONS) {
-    const A = new Map(((a[c.key] ?? []) as Record<string, unknown>[]).map((x) => [c.id(x), x]));
-    const B = new Map(((b[c.key] ?? []) as Record<string, unknown>[]).map((x) => [c.id(x), x]));
+    const A = new Map(((a[c.key] ?? []) as unknown as Record<string, unknown>[]).map((x) => [c.id(x), x]));
+    const B = new Map(((b[c.key] ?? []) as unknown as Record<string, unknown>[]).map((x) => [c.id(x), x]));
     for (const [id, x] of A) {
       const y = B.get(id);
       if (!y) out.push({ entity: c.label, id, kind: "exclusão", before: x, after: null, fields: [] });

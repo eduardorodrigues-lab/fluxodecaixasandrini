@@ -23,7 +23,7 @@ function Page() {
   const set = (id: string, fn: (r: (typeof d.receipts)[number]) => void) => update((x) => { const r = x.receipts.find((i) => i.id === id); if (r) fn(r); });
   return (
     <div>
-      <PageHeader title="Recebimentos" sub="Preencha por plataforma OU geral. Regra legado: soma informada do dia ≠ 0 substitui a estimativa; zero usa a estimativa.">
+      <PageHeader title="Recebimentos" sub="Preencha por plataforma OU geral. Evolução aprovada: vazio (não informado) usa estimativa; ZERO confirmado é valor informado e não usa estimativa.">
         <ProfileBadge /><button className="btn btn-primary" onClick={() => update((x) => { x.receipts.push({ id: uid(), date: x.params.startDate, platforms: {}, general: null, notes: "" }); })}>+ Recebimento</button>
       </PageHeader>
       <div className="mb-2 rounded border border-warning bg-warning-soft p-2 text-xs text-warning-foreground">A regra original SOMA(D:O) inclui geral e plataformas. Se ambos estiverem preenchidos, o valor é somado e marcado como possível dupla contagem — nada é corrigido automaticamente.</div>
@@ -41,7 +41,7 @@ function Page() {
                 <td className="num">{inf.present ? fmtNum(inf.sum) : ""}</td>
                 <td className="num">{fmtNum(est.value)}</td>
                 <td className={`num ${inf.sum - est.value < 0 ? "neg" : ""}`}>{inf.present ? fmtNum(inf.sum - est.value) : ""}</td>
-                <td>{inf.doubleCount && <span className="tag tag-warn mr-1">possível dupla contagem</span>}{inf.sum !== 0 ? <span className="tag tag-ok">informado</span> : <span className="tag tag-warn">{inf.present ? "zero → estimativa" : "estimativa"}</span>}</td>
+                <td>{inf.doubleCount && <span className="tag tag-warn mr-1">possível dupla contagem</span>}{inf.present ? <span className="tag tag-ok">{inf.confirmedZero ? "zero confirmado" : "informado"}</span> : <span className="tag tag-warn">não informado → estimativa</span>}</td>
                 <td><input className="inp w-32" defaultValue={r.notes} onBlur={(e) => set(r.id, (x) => { x.notes = e.target.value; })} /></td>
                 <td><button className="btn btn-danger" onClick={() => update((x) => { x.receipts = x.receipts.filter((i) => i.id !== r.id); })}>Excluir</button></td>
               </tr>
@@ -49,7 +49,7 @@ function Page() {
           })}</tbody>
         </table>
       </div>
-      <p className="mt-2 text-[11px] text-muted-foreground">Se houver mais de um registro na mesma data, o fluxo agrega a soma do dia. "Zero informado" não é tratado como confirmação de ausência de entrada (regra legado).</p>
+      <p className="mt-2 text-[11px] text-muted-foreground">Se houver mais de um registro na mesma data, o fluxo agrega a soma do dia. Mudança aprovada em relação ao legado (que usava estimativa quando a soma era zero): documentada como evolução, não equivalência literal.</p>
     </div>
   );
 }

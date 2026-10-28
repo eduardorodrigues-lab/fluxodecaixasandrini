@@ -33,7 +33,7 @@ function FluxoPage() {
 
   return (
     <div>
-      <PageHeader title="Fluxo de caixa" sub="Ambas as visões usam o mesmo motor, cenário, período e filtros.">
+      <PageHeader title="Fluxo de caixa" sub="Ambas as visões usam o mesmo motor, cenário, período e filtros. Base: atualiza após confirmação; rascunho e simulação aparecem imediatamente.">
         <ProfileBadge />
         <div className="flex rounded border border-input">
           {(["vertical", "horizontal"] as const).map((v) => <button key={v} className={`px-2.5 py-1 text-xs ${ui.view === v ? "bg-primary text-primary-foreground" : ""}`} onClick={() => setUi({ view: v })}>{v === "vertical" ? "Vertical (equipe)" : "Visão CEO horizontal"}</button>)}
