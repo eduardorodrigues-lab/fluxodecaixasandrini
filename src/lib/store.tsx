@@ -162,7 +162,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     mode, setMode: (m) => { setDraft(null); setRequestId(""); setSaveState("idle"); setSaveMsg(""); mutLocal((s) => { s.mode = m; s.activeId = "base"; }); },
     user, signOut: async () => { await qc.cancelQueries(); qc.removeQueries({ queryKey: ["official"] }); setDraft(null); await supabase.auth.signOut(); },
     official, orgs, setOrgId: (id) => { setDraft(null); setRequestId(""); setSaveState("idle"); setSaveMsg(""); setOrgIdS(id); try { localStorage.setItem("fluxo.orgId", id); } catch { /* sem storage */ } mutLocal((s) => { s.sims.oficial = []; s.activeId = "base"; }); },
-    official, base, active, sims, ui, canEdit,
+    base, active, sims, ui, canEdit,
     setUi: (p) => setUiS((u) => ({ ...u, ...p })),
     setActive: (id) => mutLocal((s) => { s.activeId = id; }),
     update, draft, changes, discardDraft, commitDraft, saveState, saveMsg,

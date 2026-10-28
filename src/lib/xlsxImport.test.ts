@@ -151,3 +151,13 @@ describe("Importação — tipos e idempotência", () => {
     expect(classify(mapRows("planned", [["00123", "PC1", 456, 2000, 46300]], map), log)[0]!.status).toBe("conflito");
   });
 });
+
+describe("Planejada com prazos próprios (F:O importados)", () => {
+  it("usa os prazos da linha em vez dos do fornecedor", () => {
+    const d = normalizeData({ params: { startDate: "2026-10-01", saldoInicial: 0, profile: "legado" }, targets: {},
+      suppliers: [{ id: "s", name: "S", group: "", terms: [10, null, null, null, null, null, null, null, null, null] }],
+      planned: [{ id: "p", supplierId: "s", purchaseCode: "X", document: "", value: 100000, baseDate: "2026-10-01", categoryId: "", notes: "", status: "ativo", remainingOverride: null, terms: [30, 60, null, null, null, null, null, null, null, null] }] });
+    const f = computeFlow(d, { start: "2026-10-01", end: "2026-12-31" }).days.filter((x) => x.planejada);
+    expect(f.map((x) => [x.date, x.planejada])).toEqual([["2026-10-31", 50000], ["2026-11-30", 50000]]);
+  });
+});
