@@ -50,6 +50,7 @@ export interface Expense {
 export interface Effectivation {
   id: string; plannedId: string; at: string; kind: "parcial" | "concluida"; value: number;
   committedIds: string[];
+  linkedLegacy?: boolean; // efetivação que reclassificou um título legado existente (sem criar novo)
   prev: { status: Planned["status"]; remainingOverride: Planned["remainingOverride"] };
   reversedAt: string | null; reversalNote: string;
 }
@@ -58,16 +59,29 @@ export interface Payment {
   id: string; titleKind: "committed" | "expense"; titleId: string; date: string; amount: number;
   note: string; reversedAt: string | null; reversalNote: string;
 }
-export interface Receipt { id: string; date: string; platforms: Record<string, number | null>; general: number | null; notes: string }
+// Plataforma: ID estável; nome editável; vigência [start, end]. Nunca excluída fisicamente se referenciada.
+export interface Platform { id: string; name: string; start: string; end: string | null; importedCode: string | null; history: { at: string; field: string; from: unknown; to: unknown; note: string }[] }
+// Recebimento: valores por ID de plataforma. residual[id] = repasse APÓS inativação, exceção explícita com nota.
+export interface Receipt { id: string; date: string; platforms: Record<string, number | null>; general: number | null; notes: string; residual?: Record<string, { note: string; at: string }> }
+// Meta mensal versionada: valores próprios do mês; parâmetros gerais são só default na criação.
+export type R2Base = "apos_r1" | "bruto";
+export interface MonthTarget {
+  gross: number; // faturamento bruto (centavos)
+  legacyReducer: number; divisorLegado: Divisor; // perfil Excel legado: redutor único sobre o bruto
+  webR1: number; webR2: number; r2Base: R2Base; divisorWeb: Divisor; // perfil Web
+  lagDays: number; // defasagem aplicada aos dias de fluxo DESTE mês civil
+  version: number; history: { at: string; version: number; before: Omit<MonthTarget, "history"> | null; note: string }[];
+}
 export interface Adjustment { date: string; value: number | null; note: string } // value 0 é válido
 export interface ImportLogEntry { entity: string; key: string; hash: string; refId: string; at: string; origin?: Origin | null }
 
 export interface ScenarioData {
   params: Params;
-  platforms: string[];
+  platforms: Platform[];
   suppliers: Supplier[];
   categories: Category[];
-  targets: Record<string, number>; // "YYYY-MM" -> meta bruta em centavos
+  targets: Record<string, number>; // espelho do bruto (compatibilidade/importação)
+  targetConfigs: Record<string, MonthTarget>; // fonte do cálculo por mês
   planned: Planned[];
   committed: Committed[];
   expenses: Expense[];
