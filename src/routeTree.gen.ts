@@ -12,6 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LancamentosRouteImport } from './routes/lancamentos'
 import { Route as RecebimentosRouteImport } from './routes/recebimentos'
+import { Route as ReferenciasRouteImport } from './routes/referencias'
+import { Route as SimulacoesRouteImport } from './routes/simulacoes'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,35 +30,60 @@ const RecebimentosRoute = RecebimentosRouteImport.update({
   path: '/recebimentos',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ReferenciasRoute = ReferenciasRouteImport.update({
+  id: '/referencias',
+  path: '/referencias',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SimulacoesRoute = SimulacoesRouteImport.update({
+  id: '/simulacoes',
+  path: '/simulacoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/lancamentos': typeof LancamentosRoute
   '/recebimentos': typeof RecebimentosRoute
+  '/referencias': typeof ReferenciasRoute
+  '/simulacoes': typeof SimulacoesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/lancamentos': typeof LancamentosRoute
   '/recebimentos': typeof RecebimentosRoute
+  '/referencias': typeof ReferenciasRoute
+  '/simulacoes': typeof SimulacoesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/lancamentos': typeof LancamentosRoute
   '/recebimentos': typeof RecebimentosRoute
+  '/referencias': typeof ReferenciasRoute
+  '/simulacoes': typeof SimulacoesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/lancamentos' | '/recebimentos'
+  fullPaths:
+    '/' | '/lancamentos' | '/recebimentos' | '/referencias' | '/simulacoes'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/lancamentos' | '/recebimentos'
-  id: '__root__' | '/' | '/lancamentos' | '/recebimentos'
+  to: '/' | '/lancamentos' | '/recebimentos' | '/referencias' | '/simulacoes'
+  id:
+    | '__root__'
+    | '/'
+    | '/lancamentos'
+    | '/recebimentos'
+    | '/referencias'
+    | '/simulacoes'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LancamentosRoute: typeof LancamentosRoute
   RecebimentosRoute: typeof RecebimentosRoute
+  ReferenciasRoute: typeof ReferenciasRoute
+  SimulacoesRoute: typeof SimulacoesRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -82,6 +109,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RecebimentosRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/referencias': {
+      id: '/referencias'
+      path: '/referencias'
+      fullPath: '/referencias'
+      preLoaderRoute: typeof ReferenciasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/simulacoes': {
+      id: '/simulacoes'
+      path: '/simulacoes'
+      fullPath: '/simulacoes'
+      preLoaderRoute: typeof SimulacoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -89,6 +130,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LancamentosRoute: LancamentosRoute,
   RecebimentosRoute: RecebimentosRoute,
+  ReferenciasRoute: ReferenciasRoute,
+  SimulacoesRoute: SimulacoesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
