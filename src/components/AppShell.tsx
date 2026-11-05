@@ -80,6 +80,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           {user && <p className="leading-snug opacity-80">{user.email}<br />{official.status === "ready" ? `Papel ${official.role}` : official.status === "error" ? official.error : "Carregando…"}<br /><button className="underline" onClick={() => { if (!draft || confirm("Há rascunho não confirmado. Sair descarta o rascunho e remove as simulações deste navegador. Continuar?")) signOut(); }}>Sair</button></p>}
         </div>
       </aside>
+      )}
       <div className="min-w-0 flex-1">
         {official.status === "ready" && isEmpty(base.data) && active.isBase && <div className="border-b border-border bg-muted px-4 py-2 text-xs">Nenhum dado cadastrado em {official.orgName}. Comece pelo cadastro inicial em <Link to="/referencias" className="underline">Referências</Link> (saldo inicial, fornecedores, categorias) ou carregue a planilha atual em <Link to="/regras" className="underline">Regras e Conciliação → Importação</Link>.</div>}
         {!active.isBase && <div className="sticky top-0 z-30 border-b-2 border-destructive bg-destructive px-4 py-1.5 text-xs font-semibold text-destructive-foreground">SIMULAÇÃO "{active.name}" — exclusivamente visual, local a este navegador. Nada aqui é gravado nos dados reais, marca pagamentos ou é promovido.</div>}
