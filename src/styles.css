@@ -152,3 +152,12 @@
   .tab { @apply border-b-2 border-transparent px-3 py-1.5 text-xs font-medium text-muted-foreground; }
   .tab-on { @apply border-primary text-primary; }
 }
+
+.hist-cmp td, .hist-cmp th { white-space: normal; }
+@media print {
+  body:has(.print-area) * { visibility: hidden; }
+  .print-area, .print-area * { visibility: visible; }
+  .print-area { position: absolute; inset: 0 auto auto 0; width: 100% !important; height: auto !important; overflow: visible !important; box-shadow: none; }
+  .print-area .no-print { display: none; }
+  .print-area .hist-cmp td.text-destructive { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
