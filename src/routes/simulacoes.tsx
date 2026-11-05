@@ -45,7 +45,7 @@ function Page() {
       {target && (
         <section className="card p-3">
           <div className="lbl mb-2">Histórico da simulação: {target.name}</div>
-          <HistoryView entries={target.history ?? []} data={target.data} />
+          <HistoryView entries={target.history ?? []} data={target.data} scope={`Simulação: ${target.name}`} />
         </section>
       )}
       {target && rs ? (

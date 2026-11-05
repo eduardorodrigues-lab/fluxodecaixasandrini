@@ -42,7 +42,7 @@ function Page() {
         <button className={`btn ${tab === "real" ? "btn-primary" : ""}`} onClick={() => setTab("real")}>Fluxo real</button>
         {sims.map((s) => <button key={s.id} className={`btn ${tab === s.id ? "btn-danger" : ""}`} onClick={() => setTab(s.id)}>Simulação: {s.name}</button>)}
       </div>
-      <HistoryView entries={entries} data={tab === "real" ? base.data : sim?.data ?? base.data}
+      <HistoryView entries={entries} data={tab === "real" ? base.data : sim?.data ?? base.data} scope={sim ? `Simulação: ${sim.name}` : "Fluxo real"}
         onRestore={tab === "real" && active.isBase ? (c) => ENTITY_KEY[c.entity] && restore(c.entity, c.before) : undefined} />
     </div>
   );
