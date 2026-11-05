@@ -151,11 +151,13 @@ export type Database = {
           created_by: string
           email: string
           expires_at: string
+          full_name: string | null
           id: string
           org_id: string
           revoked_at: string | null
           revoked_by: string | null
           role: string
+          sector: string | null
           token_hash: string
         }
         Insert: {
@@ -165,11 +167,13 @@ export type Database = {
           created_by: string
           email: string
           expires_at: string
+          full_name?: string | null
           id?: string
           org_id: string
           revoked_at?: string | null
           revoked_by?: string | null
           role: string
+          sector?: string | null
           token_hash: string
         }
         Update: {
@@ -179,11 +183,13 @@ export type Database = {
           created_by?: string
           email?: string
           expires_at?: string
+          full_name?: string | null
           id?: string
           org_id?: string
           revoked_at?: string | null
           revoked_by?: string | null
           role?: string
+          sector?: string | null
           token_hash?: string
         }
         Relationships: [
@@ -199,20 +205,26 @@ export type Database = {
       org_members: {
         Row: {
           created_at: string
+          full_name: string | null
           org_id: string
           role: string
+          sector: string | null
           user_id: string
         }
         Insert: {
           created_at?: string
+          full_name?: string | null
           org_id: string
           role: string
+          sector?: string | null
           user_id: string
         }
         Update: {
           created_at?: string
+          full_name?: string | null
           org_id?: string
           role?: string
+          sector?: string | null
           user_id?: string
         }
         Relationships: [
@@ -277,8 +289,10 @@ export type Database = {
           _email: string
           _expires: string
           _hash: string
+          _name: string
           _org: string
           _role: string
+          _sector: string
         }
         Returns: Json
       }
@@ -288,7 +302,9 @@ export type Database = {
         Returns: {
           created_at: string
           email: string
+          full_name: string
           role: string
+          sector: string
           user_id: string
         }[]
       }
