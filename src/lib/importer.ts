@@ -62,8 +62,9 @@ export const FIELDS: Record<Entity, FieldDef[]> = {
     ...Array.from({ length: 10 }, (_, i) => ({ key: `t${i + 1}`, label: `Prazo ${i + 1}`, type: "int?" as const })),
   ],
   receipts: [
-    { key: "date", label: "Data", type: "date", required: true }, { key: "general", label: "Geral", type: "money?" },
-    { key: "p1", label: "Plataforma 1", type: "money?" }, { key: "p2", label: "Plataforma 2", type: "money?" }, { key: "p3", label: "Plataforma 3", type: "money?" },
+    // Formato longo do Excel CEO: uma linha por (data, plataforma). Plataforma = nome como no arquivo (resolvida por nome/código, nunca inventada).
+    { key: "date", label: "Data", type: "date", required: true }, { key: "platform", label: "Plataforma (nome)", type: "text" },
+    { key: "amount", label: "Valor líquido", type: "money?" }, { key: "code", label: "Código (REAL/Previsão)", type: "text" }, { key: "general", label: "Geral", type: "money?" },
   ],
   targets: [{ key: "month", label: "Mês", type: "month", required: true }, { key: "meta", label: "Meta bruta", type: "money", required: true }],
 };
@@ -85,7 +86,7 @@ export function suggestMapping(entity: Entity, header: Cell[]): Record<string, n
   return out;
 }
 // Chave estável de identidade por entidade (para não duplicar na reimportação).
-export const KEY_FIELDS: Record<Entity, string[]> = { planned: ["purchaseCode", "document", "baseDate"], committed: ["purchaseCode", "document", "dueDate"], expenses: ["document", "baseDate", "supplier"], suppliers: ["name"], receipts: ["date"], targets: ["month"] };
+export const KEY_FIELDS: Record<Entity, string[]> = { planned: ["purchaseCode", "document", "baseDate"], committed: ["purchaseCode", "document", "dueDate"], expenses: ["document", "baseDate", "supplier"], suppliers: ["name"], receipts: ["date", "platform", "code"], targets: ["month"] };
 
 export interface ParsedRow { line: number; values: Record<string, string | number | null>; errors: string[]; key: string; hash: string; status?: "novo" | "idêntico" | "conflito" | "inválido" }
 
