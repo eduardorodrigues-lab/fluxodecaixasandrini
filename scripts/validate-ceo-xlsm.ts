@@ -82,3 +82,8 @@ report.entidades = ents;
 report.totalMs = Math.round(performance.now() - t0);
 writeFileSync(outPath, JSON.stringify(report, null, 1));
 console.log(`leitura ${readMs} ms, rss ${rssMB} MB, total ${report.totalMs} ms → ${outPath}`);
+const maxBy = new Map<string, { dif: number; date: string }>();
+for (const r of rc.rows) if (r.diff !== null && Math.abs(r.diff) > Math.abs(maxBy.get(r.metric)?.dif ?? 0)) maxBy.set(r.metric, { dif: r.diff, date: r.date });
+console.log("maior diferença por métrica (centavos):", JSON.stringify([...maxBy]));
+const invalid = (e: Entity) => (ents[e] as { errosPrincipais: unknown }).errosPrincipais;
+console.log("inválidos:", JSON.stringify(order.map((e) => [e, invalid(e)])));
