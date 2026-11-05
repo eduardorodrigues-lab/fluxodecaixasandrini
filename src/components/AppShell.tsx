@@ -25,6 +25,16 @@ const NAV_KEY = "fluxo.nav.hidden";
 export function AppShell({ children }: { children: ReactNode }) {
   const { orgs, setOrgId, user, authReady, signOut, official, base, active, sims, setActive, draft, changes, saveState, saveMsg, baseMoved, draftBaseVersion } = useApp();
   const [review, setReview] = useState(false);
+  // Barra lateral ocultável: a preferência fica só neste navegador (não é dado da organização).
+  const [navHidden, setNavHidden] = useState(false);
+  useEffect(() => {
+    try { setNavHidden(localStorage.getItem(NAV_KEY) === "1"); } catch { /* navegador sem armazenamento */ }
+  }, []);
+  const toggleNav = () => {
+    const next = !navHidden;
+    setNavHidden(next);
+    try { localStorage.setItem(NAV_KEY, next ? "1" : "0"); } catch { /* navegador sem armazenamento */ }
+  };
   const path = useRouterState({ select: (s) => s.location.pathname });
   const publicPage = path === "/auth" || path === "/convite";
   // Sem login: só a tela de entrada (ou aceite de convite). Nenhum dado financeiro é exibido.
