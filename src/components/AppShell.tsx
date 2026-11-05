@@ -1,6 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import type { ScenarioData } from "@/lib/engine/types";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { computeFlow } from "@/lib/engine/engine";
 import { fmtDate } from "@/lib/dates";
 import { fmtBRL } from "@/lib/money";
@@ -18,6 +19,8 @@ const NAV = [
   { to: "/historico", label: "Histórico / Auditoria" },
   { to: "/equipe", label: "Equipe e acesso" },
 ] as const;
+
+const NAV_KEY = "fluxo.nav.hidden";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { orgs, setOrgId, user, authReady, signOut, official, base, active, sims, setActive, draft, changes, saveState, saveMsg, baseMoved, draftBaseVersion } = useApp();
