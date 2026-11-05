@@ -23,7 +23,7 @@ function columns(entity: string, d: ScenarioData, sample: R): Col[] {
   switch (entity) {
     case "Recebimento":
       return [F("Data", "date", date),
-        ...d.platforms.map((p) => ({ label: p.name, num: true, get: (o: R) => money((o.platforms as R | undefined)?.[p.id]) })),
+        ...d.platforms.map((p) => ({ label: p.name, num: true, get: (o: R) => money((o["platforms"] as R | undefined)?.[p.id]) })),
         F("Geral", "general", money, true), F("Observações", "notes")];
     case "Previsão (planejada)":
       return [F("Fornecedor", "supplierId", sup), F("Código compra", "purchaseCode"), F("Documento", "document"), F("Valor", "value", money, true), F("Data base", "baseDate", date), F("Categoria", "categoryId", cat), F("Situação", "status", st), F("Observações", "notes")];
@@ -32,15 +32,15 @@ function columns(entity: string, d: ScenarioData, sample: R): Col[] {
     case "Despesa":
       return [F("Fornecedor", "supplierId", sup), F("Documento", "document"), F("Valor", "value", money, true), F("Data base", "baseDate", date), F("Prazo (dias)", "termDays"), F("Prorrogação", "extensionDate", date), F("Categoria", "categoryId", cat), F("Situação", "status", st), F("Observações", "notes")];
     case "Fornecedor":
-      return [F("Nome", "name"), F("Grupo", "group"), { label: "Prazos (dias)", get: (o) => ((o.terms as unknown[]) ?? []).filter((x) => x != null).join(" / ") }];
+      return [F("Nome", "name"), F("Grupo", "group"), { label: "Prazos (dias)", get: (o) => ((o["terms"] as unknown[]) ?? []).filter((x) => x != null).join(" / ") }];
     case "Categoria":
       return [F("Nome", "name"), F("Tipo", "kind"), F("Grupo", "group")];
     case "Ajuste de saldo":
       return [F("Data", "date", date), F("Valor", "value", money, true), F("Observação", "note")];
     case "Pagamento (baixa)":
-      return [{ label: "Título", get: (o) => (o.titleKind === "expense" ? "Despesa" : "Compra") }, F("Data", "date", date), F("Valor", "amount", money, true), F("Observação", "note"), { label: "Estorno", get: (o) => (o.reversedAt ? `Estornado ${date(String(o.reversedAt).slice(0, 10))}` : "") }];
+      return [{ label: "Título", get: (o) => (o["titleKind"] === "expense" ? "Despesa" : "Compra") }, F("Data", "date", date), F("Valor", "amount", money, true), F("Observação", "note"), { label: "Estorno", get: (o) => (o["reversedAt"] ? `Estornado ${date(String(o["reversedAt"]).slice(0, 10))}` : "") }];
     case "Efetivação":
-      return [F("Tipo", "kind"), F("Valor", "value", money, true), { label: "Data", get: (o) => date(String(o.at ?? "").slice(0, 10)) }, { label: "Estorno", get: (o) => (o.reversedAt ? "Estornada" : "") }];
+      return [F("Tipo", "kind"), F("Valor", "value", money, true), { label: "Data", get: (o) => date(String(o["at"] ?? "").slice(0, 10)) }, { label: "Estorno", get: (o) => (o["reversedAt"] ? "Estornada" : "") }];
     case "Parâmetros":
       return Object.keys(sample).map((k) => ({ label: PARAMS[k] ?? k, num: k === "saldoInicial", get: (o: R) => (k === "saldoInicial" ? money(o[k]) : txt(o[k])) }));
     default:
@@ -50,11 +50,11 @@ function columns(entity: string, d: ScenarioData, sample: R): Col[] {
 
 function rowsFor(c: Change, d: ScenarioData): { cols: Col[]; before: R | null; after: R | null } {
   if (c.entity === "Meta de faturamento") {
-    const cols: Col[] = [{ label: "Mês", get: () => c.id.split("-").reverse().join("/") }, { label: "Meta", num: true, get: (o) => money(o.v) }];
+    const cols: Col[] = [{ label: "Mês", get: () => c.id.split("-").reverse().join("/") }, { label: "Meta", num: true, get: (o) => money(o["v"]) }];
     return { cols, before: c.before == null ? null : { v: c.before }, after: c.after == null ? null : { v: c.after } };
   }
   if (c.entity === "Plataformas") {
-    const toR = (a: unknown) => Object.fromEntries(((a as R[]) ?? []).map((p) => [String(p.id), `${p.name}${p.end ? ` (inativa ${date(p.end)})` : ""}`]));
+    const toR = (a: unknown) => Object.fromEntries(((a as R[]) ?? []).map((p) => [String(p["id"]), `${p["name"]}${p["end"] ? ` (inativa ${date(p["end"])})` : ""}`]));
     const b = toR(c.before), a = toR(c.after);
     const ids = [...new Set([...Object.keys(b), ...Object.keys(a)])];
     const cols = ids.map((id) => ({ label: d.platforms.find((p) => p.id === id)?.name ?? "Plataforma", get: (o: R) => txt(o[id]) }));
