@@ -8,6 +8,7 @@ import { fmtNum } from "@/lib/money";
 import { classify, FIELDS, mapRows, parseCSV, suggestMapping, toCSV, type Cell, type Entity, type ParsedRow } from "@/lib/importer";
 import { uid, useApp } from "@/lib/store";
 import { setMonthTarget } from "@/lib/engine/actions";
+import { applyImportRows, type ApplyResult } from "@/lib/importApply";
 
 export const Route = createFileRoute("/regras")({
   head: () => ({
@@ -90,40 +91,20 @@ function Page() {
     const k = new Set<string>();
     for (const s of d.suppliers) k.add(`suppliers|${normName(s.name).toLowerCase()}`);
     for (const m of Object.keys(d.targets)) k.add(`targets|${m}`);
-    for (const r of d.receipts) k.add(`receipts|${r.date}`);
     return k;
   }, [d]);
   const doPreview = () => setPreview(classify(mapRows(entity, rows.slice(headerIdx + 1), mapping, headerIdx + 2), d.importLog, existing));
   const confirmImport = () => {
     if (!preview) return;
     const novos = preview.filter((r) => r.status === "novo");
-    const at = new Date().toISOString();
-    const skipped: string[] = [];
-    const err = update((x) => {
-      for (const r of novos) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const v: any = r.values;
-        const origin = { file: fileName, sheet: sheet || "CSV", row: r.line };
-        // Fornecedor resolvido por nome normalizado; nome duplicado = conflito (linha pulada), nunca escolha arbitrária.
-        const supOf = (): string | null => { if (v.supplier == null || String(v.supplier).trim() === "") return ""; const r0 = resolveByName(x.suppliers, String(v.supplier)); if ("id" in r0) return r0.id; if ("conflict" in r0) { skipped.push(`linha ${r.line}: fornecedor "${v.supplier}" ambíguo (${r0.conflict.length} cadastros)`); return null; } const s2 = { id: uid(), name: String(v.supplier).trim(), group: "(importado — revisar)", terms: Array(10).fill(null) }; x.suppliers.push(s2); return s2.id; };
-        const catOf = (): string => { if (!v.category) return ""; const r0 = resolveByName(x.categories, String(v.category)); if ("id" in r0) return r0.id; if ("conflict" in r0) return ""; const c2 = { id: uid(), name: String(v.category).trim(), kind: "despesa" as const, group: String(v.group ?? "(importado — revisar)") }; x.categories.push(c2); return c2.id; };
-        const rowTerms = Array.from({ length: 10 }, (_, i) => (v[`t${i + 1}`] as number | null) ?? null);
-        const needsSup = entity === "planned" || entity === "committed" || entity === "expenses";
-        const sid = needsSup ? supOf() : "";
-        if (sid === null) continue;
-        const id = uid();
-        if (entity === "planned") x.planned.push({ id, supplierId: sid, terms: rowTerms.some((t) => t !== null) ? rowTerms : null, purchaseCode: String(v.purchaseCode ?? ""), document: String(v.document ?? ""), value: v.value, baseDate: v.baseDate, categoryId: "", notes: "importado", status: "ativo", remainingOverride: null, origin });
-        if (entity === "committed") x.committed.push({ id, supplierId: sid, purchaseCode: String(v.purchaseCode ?? ""), document: String(v.document), value: v.value, dueDate: v.dueDate, extensionDate: v.extensionDate ?? null, extensionHistory: v.extensionDate ? [{ from: null, to: v.extensionDate, at, note: "importado" }] : [], extensionInfo: "", legacyAbatement: v.legacyAbatement ?? null, origin: v.legacyAbatement != null ? "legado" : "manual", plannedId: null, effectivationId: null, categoryId: "", notes: "importado", status: "ativo", importOrigin: origin });
-        if (entity === "expenses") x.expenses.push({ id, supplierId: sid, document: String(v.document), value: v.value, baseDate: v.baseDate, termDays: v.termDays ?? null, extensionDate: null, extensionHistory: [], categoryId: catOf(), notes: "importado", status: "ativo", importOrigin: origin });
-        if (entity === "suppliers") { const r0 = resolveByName(x.suppliers, String(v.name)); if (!("missing" in r0)) { skipped.push(`linha ${r.line}: fornecedor "${v.name}" já existe — não sobrescrito (conflito)`); continue; } }
-        if (entity === "suppliers") x.suppliers.push({ id, name: String(v.name), group: String(v.group ?? ""), terms: Array.from({ length: 10 }, (_, i) => (v[`t${i + 1}`] as number | null) ?? null) });
-        if (entity === "receipts") { const plats: Record<string, number | null> = {}; ["p1", "p2", "p3"].forEach((k, i) => { if (v[k] != null) plats[x.platforms[i]?.id ?? `importado-${i + 1}`] = v[k]; }); x.receipts.push({ id, date: v.date, platforms: plats, general: v.general ?? null, notes: `importado ${origin.sheet}:${origin.row}`, residual: {} }); }
-        if (entity === "targets") setMonthTarget(x, v.month, { gross: v.meta }, `importado ${origin.sheet}:${origin.row}`, at);
-        x.importLog.push({ entity, key: r.key, hash: r.hash, refId: entity === "targets" ? v.month : id, at, origin });
-      }
-    });
+    let out: ApplyResult | null = null;
+    const err = update((x) => { out = applyImportRows(x, entity, novos, { file: fileName, sheet, at: new Date().toISOString(), uid }); });
+    const o = out as ApplyResult | null;
+    const skipped = o?.skipped ?? [];
+    const created = o ? ` Criados para revisão: ${o.createdSuppliers.length} fornecedor(es), ${o.createdCategories.length} categoria(s), ${o.createdPlatforms.length} plataforma(s) (nomes do próprio arquivo).` : "";
+    const hist = entity === "committed" || entity === "expenses" ? " Títulos históricos entram como 'situação a confirmar' (sem pagamento inferido)." : "";
     const c = (s: string) => preview.filter((r) => r.status === s).length;
-    setResult(err ? `Erro: ${err}` : `${novos.length} linha(s) adicionadas ao RASCUNHO (ainda não gravadas — revise e confirme na barra superior). Idênticas ignoradas: ${c("idêntico")}. Conflitos não importados: ${c("conflito")}. Inválidas: ${c("inválido")}.${skipped.length ? ` Puladas por conflito: ${skipped.join("; ")}.` : ""}`);
+    setResult(err ? `Erro: ${err}` : `${o?.applied ?? 0} linha(s) adicionadas ao RASCUNHO (ainda não gravadas — revise e confirme na barra superior). Idênticas ignoradas: ${c("idêntico")}. Conflitos não importados: ${c("conflito")}. Inválidas: ${c("inválido")}.${created}${hist}${skipped.length ? ` Puladas por conflito: ${skipped.join("; ")}.` : ""}`);
     setPreview(null);
   };
   const download = (name: string, csv: string) => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" })); a.download = name; a.click(); };
