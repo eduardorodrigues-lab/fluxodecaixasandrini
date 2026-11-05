@@ -82,7 +82,7 @@ export function coalesce(list: HistEntry[]): HistEntry[] {
   return out.filter((g) => g.changes.length);
 }
 
-export function HistoryView({ entries, data, onRestore }: { entries: HistEntry[]; data: ScenarioData; onRestore?: (c: Change) => void }) {
+export function HistoryView({ entries, data, onRestore }: { entries: HistEntry[]; data: ScenarioData; onRestore?: ((c: Change) => void) | undefined }) {
   const list = coalesce(entries);
   if (!list.length) return <p className="text-xs text-muted-foreground">Nenhuma alteração registrada.</p>;
   return (
