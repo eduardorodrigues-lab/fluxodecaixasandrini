@@ -113,14 +113,27 @@ describe("Importação XLSX — layout CEO", () => {
     expect(p.errors).toEqual([]);
     expect(p.values).toMatchObject({ category: "ALUGUEL", document: "Aluguel loja 1", value: 500000, termDays: 0, group: "ADMINISTRATIVO" });
   });
-  it("previsão de vendas: meses horizontais transpostos; faturamento vazio = meta ausente", () => {
-    const a = adaptTargets(S("PREVISÃO DE VENDAS").rows);
-    expect(a.rows.map((r) => r.month)).toEqual(["2026-10", "2026-11"]);
-    expect(a.rows[0]).toMatchObject({ faturamento: 27300000, liquido: 16789500 });
-    expect(a.rows[0]!.reducaoImplicita).toBeCloseTo(0.385, 6);
-    expect(a.rows[0]!.components).toEqual([{ label: "COMPONENTE A", value: 10000 }]);
-    expect(a.rows[1]!.faturamento).toBeNull();
-    expect(a.rows[1]!.errors[0]).toMatch(/meta ausente/);
+  it("previsão de vendas (estrutura real): bruto = Σ linhas 7+ (inclui linha sem rótulo e além da 20); L2 = bruto·(1−B2); L3 parcial só informativa", () => {
+    const R: Cell[][] = Array.from({ length: 22 }, () => []);
+    R[0] = ["FLUXO DE CAIXA SANDRINI", "x", "DEFASAGEM EM DIAS", 999, "10/2026", "11/2026", "12/2026"];
+    R[1] = ["PREVISÃO DE VENDAS (FATURAMENTO)", 0.25, 10, "TOTAL LÍQUIDO DE DESCONTOS", (10000000 - 1000000 + 405000 + 5000) * 0.75, 7500000, 1];
+    R[2] = [null, null, null, "TOTAL", 9405000, null, null];
+    R[5] = ["ORIGEM", "DESCONTOS", "PESO", "OBS", 46296, 46327, 46357];
+    R[6] = ["BASE DE VENDAS", 0.3, 1, 0, 10000000, 10000000, null];
+    R[7] = ["REDUTOR SANDRINI", 0.33, 0, 0, -1000000, null, null];
+    R[8] = [null, null, 0, 0, 405000, null, null];
+    R[21] = ["COMPONENTE L22", null, null, null, 5000, null, null];
+    const a = adaptTargets(R);
+    expect(a.reducerB2).toBe(0.25); expect(a.lagC2).toBe(10);
+    expect(a.rows.map((r) => r.month)).toEqual(["2026-10", "2026-11", "2026-12"]);
+    expect(a.rows[0]).toMatchObject({ faturamento: 941000000, liquido: 705750000, totalLinha3: 940500000, errors: [] });
+    expect(a.rows[1]).toMatchObject({ faturamento: 1000000000, errors: [] });
+    expect(a.rows[2]!.faturamento).toBeNull();
+    expect(a.rows[2]!.errors[0]).toMatch(/meta ausente/);
+  });
+  it("líquido cacheado incoerente com Σ·(1−B2) é sinalizado (cache desatualizado), não aceito em silêncio", () => {
+    const R: Cell[][] = [["T", null, null, null, "10/2026"], ["P", 0.25, 10, "L", 100], [], [], [], [null, null, null, null, 46296], ["A", null, null, null, 1000]];
+    expect(adaptTargets(R).rows[0]!.errors.join()).toMatch(/cache desatualizado/);
   });
   it("TABELA_DESPESAS: só A/B, ignora D+, conflito de grupo explícito", () => {
     const c = adaptCategories(S("TABELA_DESPESAS").rows);

@@ -1,4 +1,4 @@
-import * as XLSX from "xlsx";
+import { listSheets, readSheet, sharedStrings } from "./xlsxFast";
 import { excelSerialToISO, FIELDS, HINTS, type Cell, type Entity } from "./importer";
 import { parseBRDate } from "./dates";
 import { roundCents } from "./money";
@@ -31,8 +31,10 @@ export const CEO_LAYOUT: Partial<Record<Entity, { header: number; check: [number
   planned: { header: 2, check: [[0, /COD/], [1, /FORNEC/]], map: { purchaseCode: 0, supplier: 1, baseDate: 2, value: col("E"), document: -1, ...terms } },
   committed: { header: 2, check: [[0, /COD/], [1, /FORNEC/]], map: { purchaseCode: 0, supplier: 1, document: 2, baseDate: 3, value: col("F"), dueDate: col("G"), extensionDate: -1, legacyAbatement: col("M") } },
   expenses: { header: 2, check: [[0, /TIPO|DESPESA/], [2, /DATA/]], map: { category: 0, document: 1, baseDate: 2, value: col("F"), termDays: col("G"), group: col("L"), supplier: -1 } },
-  suppliers: { header: 2, check: [[0, /FORNEC|NOME/]], map: {} },
-  receipts: { header: 2, check: [[0, /DATA/]], map: {} },
+  // Real: A FORNECEDOR, B:I "1o PAG."…"8o PAG." (8 prazos).
+  suppliers: { header: 2, check: [[0, /FORNEC|NOME/]], map: { name: 0, group: -1, ...Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`t${i + 1}`, i < 8 ? 1 + i : -1])) } },
+  // Real (formato LONGO): A COD. RECEBIMENTO (REAL/Previsão), B MARKET PLACE (nome), C DATA, D mês, E dia semana, F VALOR LÍQUIDO.
+  receipts: { header: 2, check: [[0, /COD/], [1, /MARKET|PLATAF/], [2, /DATA/]], map: { code: 0, platform: 1, date: 2, amount: col("F"), general: -1 } },
 };
 const txt = (c: Cell) => normName(String(c ?? ""));
 function scoreHeader(row: Cell[], kind: Entity): number {
@@ -60,14 +62,17 @@ export function layoutMapping(kind: Entity, rows: Cell[][], headerRow: number, f
   return { map: m, fixed: false };
 }
 
-export interface SheetInfo { name: string; kind: SheetKind; note: string; rows: Cell[][]; headerRow: number }
+export interface SheetInfo { name: string; kind: SheetKind; note: string; rows: Cell[][]; headerRow: number; formulas?: Record<string, string>; cellsRead?: number; colsRead?: number }
+// Colunas-FONTE lidas por aba (0 = todas). Matrizes distribuídas à direita nunca são lidas como entrada.
+export const SOURCE_COLS: Record<SheetKind, number> = { planned: 19, committed: 13, expenses: 13, receipts: 6, suppliers: 11, categorias: 3, targets: 0, fluxo: 0, desconhecida: 12 };
 export function readWorkbook(buf: ArrayBuffer): SheetInfo[] {
-  const wb = XLSX.read(buf, { type: "array", cellFormula: false, cellDates: false, bookVBA: false, cellHTML: false });
-  return wb.SheetNames.map((name) => {
-    const ws = wb.Sheets[name]!;
-    const rows = XLSX.utils.sheet_to_json<Cell[]>(ws, { header: 1, raw: true, defval: null, blankrows: true });
+  const u8 = new Uint8Array(buf);
+  if (u8[0] !== 0x50 || u8[1] !== 0x4b) throw new Error("arquivo não é .xlsx/.xlsm (zip)");
+  const sst = sharedStrings(u8);
+  return listSheets(u8).map(({ name, path }) => {
     const r = recognize(name);
-    return { name, ...r, rows, headerRow: detectHeader(rows, r.kind) };
+    const s = readSheet(u8, path, sst, SOURCE_COLS[r.kind], 4, r.kind === "desconhecida" ? 60 : Infinity);
+    return { name, ...r, rows: s.rows, headerRow: detectHeader(s.rows, r.kind), formulas: s.formulas, cellsRead: s.cellsRead, colsRead: SOURCE_COLS[r.kind] };
   });
 }
 
@@ -79,9 +84,12 @@ const asMonth = (c: Cell): string | null => {
 };
 const cents = (c: Cell) => (typeof c === "number" ? roundCents(c * 100) : null);
 
-export interface TargetRow { month: string; column: number; faturamento: number | null; liquido: number | null; reducaoImplicita: number | null; components: { label: string; value: number | null }[]; errors: string[] }
-/** PREVISÃO DE VENDAS: meses nas COLUNAS. Linha1 mm/aaaa, linha2 líquido, linha3 faturamento (cache), linha6 datas, linhas 7+ componentes. */
-export function adaptTargets(rows: Cell[][]): { ok: boolean; message: string; rows: TargetRow[] } {
+export interface TargetRow { month: string; column: number; faturamento: number | null; liquido: number | null; totalLinha3: number | null; reducaoImplicita: number | null; components: { label: string; value: number | null }[]; errors: string[] }
+/** PREVISÃO DE VENDAS (real): meses nas COLUNAS. Linha1 mm/aaaa, linha2 líquido = SUM(col7:col1006)·(1−B2), linha3 "TOTAL" = SUM(linhas 7:20) (parcial, informativo),
+ *  linha6 datas, linhas 7+ componentes. Faturamento bruto = SOMA de TODAS as linhas 7+ da coluna (mesma base da fórmula da linha 2), conferido contra o líquido cacheado. */
+export function adaptTargets(rows: Cell[][]): { ok: boolean; message: string; rows: TargetRow[]; reducerB2: number | null; lagC2: number | null } {
+  const reducerB2 = typeof rows[1]?.[1] === "number" ? (rows[1]![1] as number) : null;
+  const lagC2 = typeof rows[1]?.[2] === "number" ? (rows[1]![2] as number) : null;
   const r1 = rows[0] ?? [], r6 = rows[5] ?? [];
   const width = Math.max(r1.length, r6.length);
   const out: TargetRow[] = [];
@@ -90,22 +98,26 @@ export function adaptTargets(rows: Cell[][]): { ok: boolean; message: string; ro
     const month = asMonth(r1[c] ?? null) ?? asDate(r6[c] ?? null)?.slice(0, 7) ?? null;
     if (!month) continue;
     if (firstCol < 0) firstCol = c;
-    const fat = cents(rows[2]?.[c] ?? null), liq = cents(rows[1]?.[c] ?? null);
+    const liqRaw = typeof rows[1]?.[c] === "number" ? (rows[1]![c] as number) : null;
+    let sumRaw = 0, any = false;
+    for (let r = 6; r < rows.length; r++) { const v = rows[r]?.[c]; if (typeof v === "number") { sumRaw += v; any = true; } }
+    const fat = any ? roundCents(sumRaw * 100) : null, liq = cents(rows[1]?.[c] ?? null), tot3 = cents(rows[2]?.[c] ?? null);
     const errors: string[] = [];
-    if (fat === null) errors.push("Faturamento (linha 3) vazio — meta ausente, não assumida como zero");
+    if (fat === null) errors.push("Sem componentes (linhas 7+) — meta ausente, não assumida como zero");
+    if (fat !== null && liqRaw !== null && reducerB2 !== null && Math.abs(sumRaw * (1 - reducerB2) - liqRaw) > 0.005) errors.push(`Linha 2 (líquido ${liqRaw}) ≠ soma linhas 7+ × (1−B2) — cache desatualizado ou fórmula diferente`);
     if (out.some((o) => o.month === month)) errors.push("Mês repetido em outra coluna");
     const r6m = asDate(r6[c] ?? null)?.slice(0, 7);
     if (r6m && r6m !== month) errors.push(`Linha 6 (${r6m}) diverge da linha 1 (${month})`);
-    out.push({ month, column: c, faturamento: fat, liquido: liq, reducaoImplicita: fat && liq !== null ? 1 - liq / fat : null, components: [], errors });
+    out.push({ month, column: c, faturamento: fat, liquido: liq, totalLinha3: tot3, reducaoImplicita: fat && liq !== null ? 1 - liq / fat : null, components: [], errors });
   }
-  if (!out.length) return { ok: false, message: "Nenhum mês reconhecido na linha 1/linha 6.", rows: [] };
+  if (!out.length) return { ok: false, message: "Nenhum mês reconhecido na linha 1/linha 6.", rows: [], reducerB2, lagC2 };
   for (let r = 6; r < rows.length; r++) {
     const row = rows[r] ?? [];
     const label = String(row.slice(0, firstCol).find((c) => typeof c === "string" && c.trim()) ?? "").trim();
     if (!label) continue;
     for (const o of out) o.components.push({ label, value: cents(row[o.column] ?? null) });
   }
-  return { ok: true, message: `${out.length} mês(es) reconhecidos (transpostos de colunas).`, rows: out };
+  return { ok: true, message: `${out.length} mês(es) reconhecidos (transpostos de colunas). B2 redutor=${reducerB2 ?? "?"}; C2 defasagem=${lagC2 ?? "?"}.`, rows: out, reducerB2, lagC2 };
 }
 
 export interface CategoryRow { line: number; name: string; group: string; errors: string[] }

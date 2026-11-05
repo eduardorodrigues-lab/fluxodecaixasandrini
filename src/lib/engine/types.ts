@@ -40,12 +40,14 @@ export interface Committed {
   legacyAbatement: number | null; // coluna M legado — importada, nunca inferida; só usada quando origin="legado"
   origin: CommittedOrigin; plannedId: string | null; effectivationId: string | null;
   categoryId: string; notes: string; status: Status; importOrigin?: Origin | null;
+  paymentUnconfirmed?: boolean; // importado sem informação de pagamento: "situação a confirmar" (não é aberto validado nem pago)
 }
 export interface Expense {
   id: string; supplierId: string; document: string; value: number; baseDate: string;
   termDays: number | null; // G: vazio = não distribui; 0 = data base
   extensionDate: string | null; extensionHistory: ExtensionEvent[];
   categoryId: string; notes: string; status: Status; importOrigin?: Origin | null;
+  paymentUnconfirmed?: boolean;
 }
 export interface Effectivation {
   id: string; plannedId: string; at: string; kind: "parcial" | "concluida"; value: number;

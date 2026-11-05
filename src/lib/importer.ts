@@ -62,8 +62,9 @@ export const FIELDS: Record<Entity, FieldDef[]> = {
     ...Array.from({ length: 10 }, (_, i) => ({ key: `t${i + 1}`, label: `Prazo ${i + 1}`, type: "int?" as const })),
   ],
   receipts: [
-    { key: "date", label: "Data", type: "date", required: true }, { key: "general", label: "Geral", type: "money?" },
-    { key: "p1", label: "Plataforma 1", type: "money?" }, { key: "p2", label: "Plataforma 2", type: "money?" }, { key: "p3", label: "Plataforma 3", type: "money?" },
+    // Formato longo do Excel CEO: uma linha por (data, plataforma). Plataforma = nome como no arquivo (resolvida por nome/código, nunca inventada).
+    { key: "date", label: "Data", type: "date", required: true }, { key: "platform", label: "Plataforma (nome)", type: "text" },
+    { key: "amount", label: "Valor líquido", type: "money?" }, { key: "code", label: "Código (REAL/Previsão)", type: "text" }, { key: "general", label: "Geral", type: "money?" },
   ],
   targets: [{ key: "month", label: "Mês", type: "month", required: true }, { key: "meta", label: "Meta bruta", type: "money", required: true }],
 };
@@ -85,11 +86,14 @@ export function suggestMapping(entity: Entity, header: Cell[]): Record<string, n
   return out;
 }
 // Chave estável de identidade por entidade (para não duplicar na reimportação).
-export const KEY_FIELDS: Record<Entity, string[]> = { planned: ["purchaseCode", "document", "baseDate"], committed: ["purchaseCode", "document", "dueDate"], expenses: ["document", "baseDate", "supplier"], suppliers: ["name"], receipts: ["date"], targets: ["month"] };
+// Linhas com a MESMA chave no arquivo (o Excel soma todas) viram ocorrências "#2", "#3"… na ordem do arquivo: estável na reimportação
+// do mesmo arquivo e nunca descartadas em silêncio (aviso "repetida" na prévia).
+export const KEY_FIELDS: Record<Entity, string[]> = { planned: ["purchaseCode", "supplier", "document", "baseDate"], committed: ["purchaseCode", "supplier", "document", "dueDate", "value"], expenses: ["category", "document", "baseDate", "supplier", "value"], suppliers: ["name"], receipts: ["date", "platform", "code"], targets: ["month"] };
 
-export interface ParsedRow { line: number; values: Record<string, string | number | null>; errors: string[]; key: string; hash: string; status?: "novo" | "idêntico" | "conflito" | "inválido" }
+export interface ParsedRow { line: number; values: Record<string, string | number | null>; errors: string[]; key: string; hash: string; status?: "novo" | "idêntico" | "conflito" | "inválido"; occurrence?: number }
 
 export function mapRows(entity: Entity, rows: Cell[][], mapping: Record<string, number>, firstLine = 2): ParsedRow[] {
+  const occ = new Map<string, number>();
   return rows.map((r, idx) => {
     const errors: string[] = [];
     const values: ParsedRow["values"] = {};
@@ -101,9 +105,13 @@ export function mapRows(entity: Entity, rows: Cell[][], mapping: Record<string, 
       if (err) errors.push(`${f.label} ${err}`);
       else if (v === null && f.required) errors.push(`${f.label} vazio`);
     }
-    const key = entity + "|" + KEY_FIELDS[entity].map((k) => String(values[k] ?? "").toLowerCase()).join("|");
+    const base = entity + "|" + KEY_FIELDS[entity].map((k) => String(values[k] ?? "").toLowerCase()).join("|");
+    const blank = Object.values(values).every((v) => v === null || v === "");
+    const n = blank || entity === "suppliers" || entity === "targets" ? 1 : (occ.get(base) ?? 0) + 1;
+    if (!blank) occ.set(base, n);
+    const key = n > 1 ? `${base}#${n}` : base;
     const hash = hashStr(JSON.stringify(FIELDS[entity].map((f) => values[f.key])));
-    return { line: idx + firstLine, values, errors, key, hash };
+    return { line: idx + firstLine, values, errors, key, hash, occurrence: n };
   });
 }
 

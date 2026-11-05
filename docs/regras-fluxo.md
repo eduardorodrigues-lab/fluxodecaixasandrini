@@ -57,10 +57,11 @@ Fluxo autenticado completo (login → gravar na base oficial) não verificado de
 - COMPRAS DIRETAS_PLANEJADAS: A código, B fornecedor, C data faturamento, D alterar (ignorado), **E valor orçado**, F:O prazos (0 ≠ vazio, gravados na própria previsão), P/Q/R calculados **não importados**.
 - COMPRAS DIRETAS_EFETUADAS: A código, B fornecedor, C identificador do título (texto, ex. 33181A1), D data faturamento, E alterar, F valor, G vencimento, M base de abatimento manual.
 - DESPESAS E OUTRAS: A tipo (categoria), B descrição, C data, F valor, G prazo, L grupo.
-- RECEBIMENTOS: só A:F; calendário G+ ignorado.
-- PREVISÃO DE VENDAS: meses nas colunas (linha 1 mm/aaaa, linha 2 líquido, linha 3 faturamento cacheado, linha 6 datas, linhas 7+ componentes) → transposto; meta bruta candidata = linha 3 (exige confirmação); faturamento vazio = meta ausente; redução implícita (1 − L2/L3) exibida.
+- RECEBIMENTOS (real, formato longo): A código (REAL/Previsão), B MARKET PLACE (nome), C data, D mês, E dia semana, F valor líquido; calendário G+ ignorado. Plataforma resolvida pelo nome do arquivo (normalizado); nome novo vira plataforma com o MESMO nome do arquivo e vigência = primeira data (revisar/conciliar grafias).
+- PREVISÃO DE VENDAS (real): meses nas colunas (linha 1 mm/aaaa, linha 2 líquido = SUM(linhas 7:1006)·(1−B2), linha 3 "TOTAL" = SUM(linhas 7:20) — parcial, só informativa, linha 6 datas, linhas 7+ componentes) → transposto. **Meta bruta = soma de todas as linhas 7+** (inclui linhas sem rótulo), conferida contra o líquido cacheado; B2 (redutor) e C2 (defasagem) do arquivo gravados no mês importado. Sem componentes = meta ausente.
 - TABELA_DESPESAS: só A (tipo) e B (grupo); D+ ignorado; mesmo tipo com grupos diferentes = conflito.
 - Fora do layout verificado: detecção de cabeçalho por padrões de campos da aba (não "primeira linha com 3 textos").
+- TABELA_FORNECEDORES (real): A nome, B:I 8 prazos ("1o PAG."…"8o PAG.").
 - Fornecedores/categorias resolvidos por nome normalizado (acentos/caixa/espaços); nome duplicado = conflito, linha pulada; fornecedor existente nunca sobrescrito por reimportação.
 - Planejada com prazos próprios usa-os no lugar dos prazos do fornecedor.
 
@@ -73,4 +74,47 @@ Fluxo autenticado completo (login → gravar na base oficial) não verificado de
 
 ### Critérios de aceite — estado real
 - Atendido com testes automatizados: reconhecimento/aritmética com fixtures fiéis; cabeçalhos reais; transposição de metas; regras de convite/papéis (TS + SQL controlado).
-- **Pendente**: importação do arquivo real (upload ao projeto falhou com HTTP 403 no armazenamento; o arquivo não chegou ao projeto); login e gravação ponta a ponta com conta real confirmada; aceite de convite ponta a ponta com dois usuários reais (não criado convite para pessoas reais).
+- **Pendente**: gravação do arquivo real em uma organização (exige login de Eduardo e escolha da organização — ver "Validação do XLSM real"); login e gravação ponta a ponta com conta real confirmada; aceite de convite ponta a ponta com dois usuários reais (não criado convite para pessoas reais).
+
+## Validação do XLSM real `Fluxo_CEO_Sandrini.xlsm` (05/11/2026)
+Arquivo anexado ao chat (31,8 MB). Analisado só no ambiente de desenvolvimento; **não** copiado para public/, assets ou bundle; nenhum dado gravado em organização. Leitura somente de valores cacheados (e fórmulas das linhas 1–4 para diagnóstico); `vbaProject.bin` e `calcChain.xml` nunca lidos.
+
+### Leitura / desempenho
+- Leitura completa (SheetJS): ~25 s e ~2,8 GB de memória — inviável no navegador. Substituída por leitor seletivo (`src/lib/xlsxFast.ts`): uma aba por vez, só colunas-fonte (planejadas A:S, efetuadas A:M, despesas A:M, recebimentos A:F, fornecedores A:K, TABELA_DESPESAS A:C; FLUXO e PREVISÃO completas por terem poucas linhas). Resultado: ~5 s, ~0,9 GB no processo de teste, ~175 mil células lidas em vez de milhões.
+- Dependência `xlsx` estava ausente do projeto (typecheck falhava) — instalada; usada só nos testes.
+
+### Quantidades (importação em memória, mesma rotina da tela)
+| Entidade | Linhas | Novas | Inválidas (motivo) |
+|---|---|---|---|
+| Fornecedores | 86 | 86 | 0 |
+| Categorias (TABELA_DESPESAS) | 97 (19 grupos) | 97 | 0 |
+| Metas (meses) | 75 (10/2024–12/2030) | 75 | 0; B2=0,25, C2=10 |
+| Previsões | 650 | 645 | 5 (código vazio) |
+| Efetivadas | 5.337 | 5.333 | 4 (3 datas de faturamento inválidas, 1 documento vazio) |
+| Despesas | 6.912 | 6.911 | 1 (data vazia) |
+| Recebimentos | 1.182 | 1.182 | 0 |
+- Linhas repetidas legítimas (o Excel soma todas): agora importadas como ocorrências `#2`, `#3`… da mesma chave (antes eram descartadas como conflito — causava diferença de R$ 3.561,73 em 01/10 e R$ 15.248,90 em 02/10).
+- Fornecedores das efetuadas vêm como "código - nome" e não batem com TABELA_FORNECEDORES: 474 fornecedores criados como "(importado — revisar)" — **pede conciliação manual**.
+- Recebimentos: 33 nomes de plataforma distintos, com grafias variantes (ex.: Daifiti/Dafiti, Shoppe/Shopee, Licitação/Licitações) e linhas que não são plataforma (FINAL DE SEMANA, FERIADO, RECEBIMENTO, Rendimento Aplicações, Empréstimo) — **pedem conciliação/renomeação**; 192 linhas com valor 1 (marcador?) e 27 sem código — confirmar.
+
+### Colunas que pedem confirmação
+- Efetuadas **M vazia em todas as linhas** (0 numéricas) → no Excel Q=0, previsões nunca são abatidas; código A preenchido em 2.666 linhas. Vínculos por código não são inferidos; aviso PLAN_M_AUSENTE onde há código coincidente.
+- Efetuadas H:L (2º–6º pagamento) preenchidas em 1.275 linhas — a macro ativa distribui só G (F no vencimento G); não distribuído, pendência.
+- Planejadas: 596 de 650 com valor E = 0. Fórmulas F:O: `VLOOKUP(...;$A:$G;2..7)` com K:O todas na coluna 7 e faixa só até G — prazos 6º–10º repetem o 6º e 7º/8º do fornecedor nunca são lidos. Diagnóstico da fonte, não reproduzido como regra; valores cacheados F:O importados como estão.
+- FLUXO C1 = TODAY() cacheado em 05/10/2026: o cache é dessa data; não prova resultado atualizado.
+- Aba "Alinhamentos": não reconhecida, ignorada.
+- Pagamentos: o arquivo não informa baixas. Efetivadas e despesas importadas ficam **"Situação a confirmar"** (`paymentUnconfirmed`): continuam no fluxo pelo vencimento (como o Excel), mas não entram no aberto validado, vencidos nem ranking; card próprio no Dashboard. Vencimento passado nunca implica pago.
+
+### Conciliação com o cache (perfil Excel legado, saldo inicial de 01/10/2026 do cache, outubro/2026)
+- Calendário real linha 3 (2.191 datas), linha 1 = referência −10 dias; 9 linhas reconhecidas; resultado `ok`.
+- 01/10 e 02/10: **todas** as métricas iguais ao cache em centavos (saldo inicial, informado, estimado, saídas, custo, planejadas, comprometidas, despesas, saldo final).
+- 28/10: movimentos iguais; saldo inicial/final −R$ 0,06. Em todo o mês, movimentos idênticos e diferença máxima de saldo R$ 0,08 (31/10): a estimativa diária é arredondada a centavos por dia (política aprovada), o Excel acumula precisão total (ex.: 300.228,04443).
+- Mudanças aprovadas e efeito observado: zero confirmado (sem efeito em outubro — dias com informado zero usaram estimativa como no Excel, pois não havia zero confirmado no arquivo); soma de parcelas na mesma data (4 avisos de colisão em previsões, sem valor em outubro); resíduo na última parcela/centavos (14 avisos de arredondamento).
+
+### Como importar oficialmente (exige login de Eduardo)
+1. Entrar, escolher a organização correta no seletor e o modo Real.
+2. Regras e Conciliação → Importação → selecionar o mesmo arquivo `.xlsm`.
+3. Por aba, nesta ordem: TABELA_DESPESAS (categorias), TABELA_FORNECEDORES, PREVISÃO DE VENDAS, COMPRAS DIRETAS_PLANEJADAS, COMPRAS DIRETAS_EFETUADAS, DESPESAS E OUTRAS, RECEBIMENTOS → "Mapear" → "Pré-visualizar" → "Adicionar ao rascunho".
+4. Revisar o antes/depois na barra superior e confirmar (ou cancelar sem alterar nada).
+5. FLUXO DE CAIXA → "Conciliar com motor" com o período 01/10/2026–31/10/2026.
+Script de reprodução local: `bun scripts/validate-ceo-xlsm.ts <arquivo> /tmp/relatorio.json` (relatório contém agregados reais — manter fora do projeto). Teste `src/lib/ceoReal.test.ts` roda a conciliação quando o arquivo está disponível localmente.

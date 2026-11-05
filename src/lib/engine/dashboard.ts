@@ -2,7 +2,7 @@ import { addDays } from "../dates";
 import { committedDate, distributePlanned, expenseDate, paymentsFor, titleStatus } from "./engine";
 import type { Day, FlowResult, ScenarioData } from "./types";
 
-export interface OpenTitle { kind: "committed" | "expense"; id: string; supplierId: string; supplier: string; group: string; document: string; due: string | null; value: number; paid: number; open: number; state: string }
+export interface OpenTitle { kind: "committed" | "expense"; id: string; supplierId: string; supplier: string; group: string; document: string; due: string | null; value: number; paid: number; open: number; state: string; unconfirmed: boolean }
 export interface DashScope { start: string; end: string; supplierId?: string; group?: string }
 
 // Aberto = títulos efetivados/despesas − pagamentos ativos. Vencimento passado NÃO implica pago. Previsão fica separada.
@@ -15,12 +15,14 @@ export function openTitles(d: ScenarioData, scope?: Pick<DashScope, "supplierId"
   for (const c of d.committed) {
     if (c.status === "cancelado" || !pass(c.supplierId)) continue;
     const t = titleStatus(c.value, c.status, paymentsFor(d, "committed", c.id));
-    if (t.open > 0) out.push({ kind: "committed", id: c.id, ...base(c.supplierId), document: c.document, due: committedDate(c), value: c.value, paid: t.paid, open: t.open, state: t.state });
+    const u = !!c.paymentUnconfirmed && t.paid === 0;
+    if (t.open > 0) out.push({ kind: "committed", id: c.id, ...base(c.supplierId), document: c.document, due: committedDate(c), value: c.value, paid: t.paid, open: t.open, state: u ? "Situação a confirmar" : t.state, unconfirmed: u });
   }
   for (const e of d.expenses) {
     if (e.status === "cancelado" || !pass(e.supplierId)) continue;
     const t = titleStatus(e.value, e.status, paymentsFor(d, "expense", e.id));
-    if (t.open > 0) out.push({ kind: "expense", id: e.id, ...base(e.supplierId), document: e.document, due: expenseDate(e), value: e.value, paid: t.paid, open: t.open, state: t.state });
+    const u = !!e.paymentUnconfirmed && t.paid === 0;
+    if (t.open > 0) out.push({ kind: "expense", id: e.id, ...base(e.supplierId), document: e.document, due: expenseDate(e), value: e.value, paid: t.paid, open: t.open, state: u ? "Situação a confirmar" : t.state, unconfirmed: u });
   }
   return out.sort((a, b) => (a.due ?? "9999").localeCompare(b.due ?? "9999"));
 }
@@ -38,7 +40,10 @@ export function computeDashboard(d: ScenarioData, flow: FlowResult, today: strin
   const filt = scope.supplierId || scope.group ? ` · filtro ${scope.supplierId ? "fornecedor" : ""}${scope.group ? ` grupo ${scope.group}` : ""}` : "";
   const stockScope = `Estoque em aberto na data-base ${today} (independe do período)${filt}`;
   const perScope = `Vencimentos no período ${scope.start} a ${scope.end}${filt}`;
-  const all = openTitles(d, scope);
+  // Aberto VALIDADO exclui títulos importados sem informação de pagamento ("situação a confirmar"): não são pagos nem aberto confirmado.
+  const every = openTitles(d, scope);
+  const unconfirmed = every.filter((t) => t.unconfirmed);
+  const all = every.filter((t) => !t.unconfirmed);
   const dated = all.filter((t) => t.due);
   const noDue = all.filter((t) => !t.due);
   const bySup = new Map<string, { supplierId: string; supplier: string; open: number; titles: OpenTitle[] }>();
@@ -76,10 +81,11 @@ export function computeDashboard(d: ScenarioData, flow: FlowResult, today: strin
     T("committed", "Efetivado pendente", all.filter((t) => t.kind === "committed"), stockScope, "Compras/pedidos efetivados ainda não pagos (total ou parcial)."),
     T("expense", "Despesas pendentes", all.filter((t) => t.kind === "expense"), stockScope, "Despesas não pagas, incluindo as sem vencimento."),
     T("nodue", "Sem vencimento (pendência)", noDue, stockScope, "Despesas com prazo G vazio: entram no aberto, mas não em janelas de data nem no fluxo. Informe o prazo.", noDue.length ? "warn" : undefined),
+    T("unconfirmed", "Situação a confirmar (importados)", unconfirmed, stockScope, "Títulos importados sem informação de pagamento. Não entram no aberto validado nem no ranking; vencimento passado não indica pagamento. Registre a baixa ou confirme a situação.", unconfirmed.length ? "warn" : undefined),
     { key: "planned", label: "Previsão restante (não é aberto)", value: parcels.reduce((a, p) => a + p.amount, 0), count: parcels.length, scope: `Parcelas previstas no período ${scope.start} a ${scope.end}${filt}`, explanation: "Saldo previsto (planejado) após efetivações e abatimento legado. Não é título em aberto.", parcels, kind: "parcels" },
     { key: "min", label: "Saldo mínimo", value: flow.kpis.menorSaldo, count: minDay ? 1 : 0, scope: `Fluxo do período ${scope.start} a ${scope.end}${filt}`, explanation: minDay ? `Menor saldo final do período, em ${minDay.date}.` : "Sem dias no período.", day: minDay, curve, kind: "day", tone: flow.kpis.menorSaldo < 0 ? "neg" : undefined },
     { key: "neg", label: "Primeiro saldo negativo", value: firstNeg?.saldoFinal ?? 0, count: firstNeg ? 1 : 0, scope: `Fluxo do período ${scope.start} a ${scope.end}${filt}`, explanation: firstNeg ? `Primeiro dia com saldo final negativo: ${firstNeg.date}.` : "Nenhum dia negativo no período.", day: firstNeg, curve, kind: "day", tone: firstNeg ? "neg" : undefined },
     { key: "need", label: "Necessidade de caixa", value: Math.max(0, -flow.kpis.menorSaldo), count: flow.kpis.menorSaldo < 0 ? 1 : 0, scope: `Fluxo do período ${scope.start} a ${scope.end}${filt}`, explanation: flow.kpis.menorSaldo < 0 ? `Valor para cobrir o saldo mínimo (${minDay?.date}): −(saldo mínimo).` : "Saldo mínimo não negativo: sem necessidade no período.", day: minDay, curve, kind: "day" },
   ];
-  return { cards, titles: all, ranking, noDue, today };
+  return { cards, titles: all, unconfirmed, ranking, noDue, today };
 }
