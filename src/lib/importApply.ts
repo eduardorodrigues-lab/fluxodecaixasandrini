@@ -65,5 +65,11 @@ export function applyImportRows(x: ScenarioData, entity: Entity, rows: ParsedRow
     x.importLog.push({ entity, key: r.key, hash: r.hash, refId: entity === "targets" ? v.month : id, at, origin });
     res.applied++;
   }
+  // Vigência inicial das plataformas criadas = primeira data com recebimento delas (evita alerta falso de "fora da vigência").
+  for (const p of x.platforms) {
+    if (!res.createdPlatforms.includes(p.name) || p.history[0]?.at !== at) continue;
+    const ds = x.receipts.filter((r) => r.platforms[p.id] !== undefined).map((r) => r.date).sort();
+    if (ds[0]) p.start = ds[0];
+  }
   return res;
 }
