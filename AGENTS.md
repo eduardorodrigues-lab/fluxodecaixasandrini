@@ -19,3 +19,5 @@
 - XLSX adapters use the verified CEO layout (header row 3, fixed columns) and block reconciliation when essential rows are missing — never report healthy numbers from guessed rows.
 - Every base mutation goes through `update()` in `src/lib/store.tsx` into a draft confirmed via the review dialog; simulations and the demo space stay local and are never promoted to the official base.
 - Business rules are documented in `docs/regras-fluxo.md` and covered by `src/lib/**/*.test.ts`; update both when a rule changes.
+- XLSX/XLSM is read by the selective reader `src/lib/xlsxFast.ts` (only source columns per sheet, never VBA/calcChain) and rows are applied via `applyImportRows` in `src/lib/importApply.ts`, shared by the UI and `scripts/validate-ceo-xlsm.ts` — full reads of the real 31 MB file need ~2.8 GB.
+- Real financial files are never copied into the project, assets or bundle; reports with real aggregates stay outside the repo.

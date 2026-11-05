@@ -8,4 +8,6 @@
 - [ ] F Isolamento de simulações/rascunho por usuário+org; expectedVersion snapshot; confirmação ao trocar
 - [ ] Docs, AGENTS, testes, verificação visual
 
-Pendências externas: importação real do XLSM (arquivo anexado? verificar), login real ponta a ponta.
+- [x] Validação do XLSM real (leitor seletivo, layouts reais, conciliação outubro/2026)
+
+Pendências externas: gravação oficial do XLSM (login de Eduardo + organização), login real ponta a ponta.

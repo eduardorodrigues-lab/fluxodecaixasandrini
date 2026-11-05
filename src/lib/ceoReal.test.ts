@@ -56,7 +56,7 @@ describe("Ajustes derivados do XLSM real", () => {
 });
 
 // Teste com o arquivo REAL — roda só onde o XLSM está disponível localmente (nunca embutido no projeto).
-const REAL = process.env.CEO_XLSM ?? "/mnt/user-uploads/Fluxo_CEO_Sandrini.xlsm";
+const REAL = process.env["CEO_XLSM"] ?? "/mnt/user-uploads/Fluxo_CEO_Sandrini.xlsm";
 describe.skipIf(!existsSync(REAL))("XLSM real do CEO (arquivo local)", () => {
   it("importa em memória e concilia outubro/2026 com o cache: 01/10 e 02/10 exatos; diferenças só de arredondamento da estimativa", () => {
     const b = readFileSync(REAL);
