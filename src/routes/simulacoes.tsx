@@ -19,7 +19,7 @@ export const Route = createFileRoute("/simulacoes")({
 });
 
 function Page() {
-  const { sims, base, ui, createSim, discardSim, deleteSim, setActive, active, mode } = useApp();
+  const { sims, base, ui, createSim, discardSim, deleteSim, setActive, active } = useApp();
   const [cmp, setCmp] = useState(sims[0]?.id ?? "");
   const [name, setName] = useState("");
   const target = sims.find((s) => s.id === cmp);
@@ -28,7 +28,7 @@ function Page() {
   const rs = useMemo(() => (target ? computeFlow(target.data, opt) : null), [target, ui.start, ui.end]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="space-y-3">
-      <PageHeader title="Simulações" sub={`Exclusivamente visuais, salvas só neste navegador, isoladas da base ${mode === "demo" ? "demo" : "oficial"}. Não existe aplicar/promover para a base.`} />
+      <PageHeader title="Simulações" sub={`Exclusivamente visuais, salvas só neste navegador, isoladas dos dados reais. Não existe aplicar/promover para a base.`} />
       <section className="card p-3">
         <div className="mb-2 flex gap-2"><input className="inp w-64" placeholder="Nome da simulação" value={name} onChange={(e) => setName(e.target.value)} /><button className="btn btn-primary" onClick={() => { createSim(name || `Simulação ${sims.length + 1}`); setName(""); }}>Criar a partir da base e ativar</button></div>
         <table className="tbl"><thead><tr><th>Simulação</th><th>Criada</th><th>Base copiada (versão)</th><th>Ações</th></tr></thead>

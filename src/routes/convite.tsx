@@ -12,7 +12,7 @@ export const Route = createFileRoute("/convite")({
   validateSearch: (s: Record<string, unknown>) => ({ t: typeof s["t"] === "string" ? (s["t"] as string) : "" }),
   head: () => ({ meta: [
     { title: "Convite · Fluxo de Caixa Sandrini" },
-    { name: "description", content: "Aceite de convite individual para a base oficial." },
+    { name: "description", content: "Aceite de convite individual para a organização." },
     { property: "og:title", content: "Convite · Fluxo de Caixa Sandrini" },
     { property: "og:description", content: "Aceite de convite com confirmação explícita." },
     { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" },
@@ -22,7 +22,7 @@ export const Route = createFileRoute("/convite")({
 
 function Page() {
   const { t } = Route.useSearch();
-  const { user, setMode, setOrgId } = useApp();
+  const { user, setOrgId } = useApp();
   const qc = useQueryClient();
   const fInfo = useServerFn(inviteInfo), fAccept = useServerFn(acceptInvite);
   // Remove o token da barra de endereço após ler (não fica em histórico/compartilhamentos de tela).
@@ -41,7 +41,7 @@ function Page() {
           {!i.emailMatches && <p className="mt-1 text-destructive">{ACCEPT_MSG["email_mismatch"]} (você entrou como {user.email})</p>}
           {i.state === "pendente" && i.emailMatches && <>
             <label className="mt-2 flex items-center gap-2"><input type="checkbox" checked={ok} onChange={(e) => setOk(e.target.checked)} /> Confirmo que quero entrar nesta organização com o papel {i.role}.</label>
-            <button className="btn btn-primary mt-2" disabled={!ok || busy} onClick={async () => { setBusy(true); try { const r = await fAccept({ data: { token, confirm: true } }); setMsg(ACCEPT_MSG[r.status] ?? r.status); if (r.status === "ok" && r.org_id) { await qc.invalidateQueries({ queryKey: ["official"] }); setMode("oficial"); setOrgId(r.org_id); } } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); } }}>Aceitar convite</button>
+            <button className="btn btn-primary mt-2" disabled={!ok || busy} onClick={async () => { setBusy(true); try { const r = await fAccept({ data: { token, confirm: true } }); setMsg(ACCEPT_MSG[r.status] ?? r.status); if (r.status === "ok" && r.org_id) { await qc.invalidateQueries({ queryKey: ["official"] }); setOrgId(r.org_id); } } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); } }}>Aceitar convite</button>
           </>}
           {msg && <p className="mt-2">{msg}</p>}
         </>}

@@ -19,7 +19,7 @@ const ENTITY_KEY: Record<string, keyof ScenarioData> = {
 };
 
 function Page() {
-  const { audit, update, mode, active } = useApp();
+  const { audit, update, active } = useApp();
   const restore = (entity: string, before: unknown) => {
     const k = ENTITY_KEY[entity];
     if (!k) return;
@@ -33,7 +33,7 @@ function Page() {
   };
   return (
     <div className="space-y-3">
-      <PageHeader title="Histórico / Auditoria" sub={`${mode === "oficial" ? "Base oficial (servidor)" : "Espaço demo (navegador)"} · cada confirmação grava antes/depois, usuário e data/hora.`} />
+      <PageHeader title="Histórico / Auditoria" sub={`cada confirmação grava antes/depois, usuário e data/hora.`} />
       {!active.isBase && <p className="text-xs text-destructive">Simulação ativa: restaurações só são possíveis na base.</p>}
       {audit.length === 0 ? <p className="text-xs text-muted-foreground">Nenhuma alteração confirmada.</p> : audit.map((a) => (
         <details key={a.id} className="card p-2 text-xs">

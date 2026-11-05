@@ -107,16 +107,16 @@ describe("Sessão: isolamento e concorrência otimista", () => {
     expect(commit(s.baseVersion)).toBe("conflict");
   });
   it("troca de usuário/organização não reutiliza rascunho nem simulações", () => {
-    const s = editSession(null, scopeKey("oficial", "u1", "o1")!, base, 1, () => {}, () => "r");
-    expect(visibleDraft(s, scopeKey("oficial", "u2", "o1"))).toBeNull();
-    expect(visibleDraft(s, scopeKey("oficial", "u1", "o2"))).toBeNull();
-    expect(visibleDraft(s, scopeKey("oficial", "u1", "o1"))).toBe(s);
-    expect(scopeKey("oficial", null, "o1")).toBeNull();
+    const s = editSession(null, scopeKey("u1", "o1")!, base, 1, () => {}, () => "r");
+    expect(visibleDraft(s, scopeKey("u2", "o1"))).toBeNull();
+    expect(visibleDraft(s, scopeKey("u1", "o2"))).toBeNull();
+    expect(visibleDraft(s, scopeKey("u1", "o1"))).toBe(s);
+    expect(scopeKey(null, "o1")).toBeNull();
     const n = editSession(s, "oficial:u2:o1", base, 7, () => {}, () => "r9");
     expect([n.baseVersion, n.requestId]).toEqual([7, "r9"]);
     const sims = migrateSims({ demo: [], oficial: [{ id: "x" }], "oficial:u1:o1": [{ id: "a" }], "oficial:u2:o1": [{ id: "b" }] });
-    expect(Object.keys(sims).sort()).toEqual(["demo", "oficial:u1:o1", "oficial:u2:o1"]); // "oficial" sem dono descartado
-    expect(Object.keys(purgeUser(sims, "u1")).sort()).toEqual(["demo", "oficial:u2:o1"]);
+    expect(Object.keys(sims).sort()).toEqual(["oficial:u1:o1", "oficial:u2:o1"]); // "demo" e "oficial" sem dono descartados
+    expect(Object.keys(purgeUser(sims, "u1")).sort()).toEqual(["oficial:u2:o1"]);
   });
   it("hoje em America/Sao_Paulo, não UTC", () => {
     expect(todaySP(new Date("2026-10-29T01:30:00Z"))).toBe("2026-10-28");
