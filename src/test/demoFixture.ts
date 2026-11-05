@@ -1,5 +1,5 @@
-import { normalizeData } from "./engine/actions";
-import type { ScenarioData } from "./engine/types";
+import { normalizeData } from "../lib/engine/actions";
+import type { ScenarioData } from "../lib/engine/types";
 
 // DADOS DEMONSTRATIVOS — fictícios, não importados dos arquivos reais.
 export function demoData(): ScenarioData {

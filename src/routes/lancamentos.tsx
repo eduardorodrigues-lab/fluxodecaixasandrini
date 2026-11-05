@@ -174,7 +174,7 @@ function ExtForm({ current, history, info, onSave }: { current: string | null; h
   const [to, setTo] = useState<string | null>(current);
   const [note, setNote] = useState("");
   return <div className="bg-muted p-2 text-xs"><div className="flex flex-wrap items-end gap-2"><b>Prorrogação confirmada</b> Nova data <DateInput allowEmpty value={to} onChange={setTo} /><input className="inp w-48" placeholder="motivo" value={note} onChange={(e) => setNote(e.target.value)} /><button className="btn btn-primary" onClick={() => onSave(to, note)}>Confirmar prorrogação (rascunho)</button></div>
-    <p className="mt-1 text-muted-foreground">Altera a programação oficial ao gravar; vencimento original preservado. Testes de prorrogação devem ser feitos em Simulação.{info && ` Campo K (informativo, não altera cálculo): "${info}".`}</p>
+    <p className="mt-1 text-muted-foreground">Altera a programação real ao gravar; vencimento original preservado. Testes de prorrogação devem ser feitos em Simulação.{info && ` Campo K (informativo, não altera cálculo): "${info}".`}</p>
     {history.length > 0 && <ul className="mt-1">{history.map((h, i) => <li key={i}>{h.at ? fmtDate(h.at.slice(0, 10)) : "—"}: {fmtDate(h.from) || "original"} → {fmtDate(h.to) || "original"} {h.note}</li>)}</ul>}</div>;
 }
 
