@@ -105,7 +105,7 @@ function Page() {
           <Platforms today={today} act={act} />
         </aside>
       </div>}
-      <p className="text-[11px] text-muted-foreground">Mesma data com mais de um registro: o fluxo soma o dia. Recebimentos referenciam a plataforma pelo ID estável — renomear não altera registros anteriores.</p>
+      <p className="text-[11px] text-muted-foreground">Mesma data com mais de um registro: o fluxo soma o dia. Renomear uma plataforma não altera recebimentos anteriores.</p>
     </div>
   );
 }
