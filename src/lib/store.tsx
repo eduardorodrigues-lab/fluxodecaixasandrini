@@ -12,7 +12,8 @@ import { baseMovedSince, editSession, migrateSims, purgeUser, scopeKey, visibleD
 // UMA base operacional por organização (login obrigatório, gravação só via servidor com auditoria).
 // Sem dados demonstrativos e sem fallback: sem login/erro não há dados financeiros.
 // Modo Simulação: cópias locais por usuário+organização, isoladas, sem promoção para a base.
-export interface Sim { id: string; name: string; createdAt: string; data: ScenarioData; baseVersion: number | null }
+export interface SimEdit { at: string; user: string; changes: Change[] }
+export interface Sim { id: string; name: string; createdAt: string; data: ScenarioData; baseVersion: number | null; history?: SimEdit[] }
 export interface AuditEntry { id: string; at: string; user_email: string | null; version_from: number; version_to: number; summary: string; changes: Change[] }
 interface LocalState { v: 4; activeId: string; sims: SimStore }
 export interface UiState { view: "vertical" | "horizontal"; start: string; end: string; supplierId: string; group: string }
@@ -109,7 +110,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const baseData: ScenarioData | null = user ? offData : null; // nunca dados financeiros sem login
   const baseVersion = official.version;
   const scope = scopeKey(user?.id, offQ.data?.orgId ?? null);
-  const sims = scope ? local.sims[scope] ?? [] : [];
+  const sims = (scope ? local.sims[scope] ?? [] : []) as Sim[];
   const cur = visibleDraft(session, scope);
   const draft = cur?.data ?? null;
   const sim = sims.find((s) => s.id === local.activeId) ?? null;
@@ -126,7 +127,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       if (sim) {
         const next = editDraft(sim.data, null, fn);
-        mutLocal((s) => { const x = scope ? s.sims[scope]?.find((i) => i.id === sim.id) : null; if (x) x.data = next; });
+        const ch = diffData(sim.data, next);
+        mutLocal((s) => { const x = scope ? s.sims[scope]?.find((i) => i.id === sim.id) as Sim | undefined : null; if (x) { x.data = next; if (ch.length) (x.history ??= []).unshift({ at: new Date().toISOString(), user: user?.email ?? "", changes: ch }); } });
       } else {
         if (!baseData || !scope) return "Base ainda não carregada.";
         setSession(editSession(cur, scope, baseData, baseVersion, fn, uuid)); setSaveState("idle"); setSaveMsg("");
@@ -142,20 +144,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const semData = draft.receipts.filter((r) => !r.date && (r.general != null || Object.values(r.platforms).some((v) => v != null)));
     if (semData.length) { setSaveState("error"); setSaveMsg(`${semData.length} recebimento(s) com valor e sem data. Informe a data antes de gravar.`); return; }
     const toSave = { ...draft, receipts: draft.receipts.filter((r) => r.date) };
+    const sent = draft;
     setSaveState("saving"); setSaveMsg("");
     try {
       // expectedVersion = versão SNAPSHOT do início do rascunho (não a versão recarregada).
       const r = await commitFn({ data: { orgId: selOrg, expectedVersion: cur!.baseVersion, requestId: cur!.requestId, dataJson: JSON.stringify(toSave) } });
       if (r.status === "ok" || r.status === "duplicate" || r.status === "noop") {
+        // Edições feitas durante a gravação continuam como nova alteração sobre a versão gravada.
+        setSession((s) => (!s || s.data === sent ? null : { ...s, baseVersion: r.version, requestId: uuid() }));
         await qc.invalidateQueries({ queryKey: ["official"] });
-        setSession(null); setSaveState("saved");
-        setSaveMsg(r.status === "noop" ? "Nada a gravar." : `Gravado (versão ${r.version}).`);
+        setSaveState("saved");
+        setSaveMsg(r.status === "noop" ? "" : `Salvo às ${new Date().toLocaleTimeString("pt-BR")}.`);
       } else if (r.status === "conflict") {
         setSaveState("conflict");
         setSaveMsg(`Conflito: os dados foram alterados por outra pessoa (agora versão ${r.version}; seu rascunho partiu da ${cur!.baseVersion}). Nada foi sobrescrito. Seu rascunho continua aqui; recarregue a base e refaça as alterações.`);
       } else { setSaveState("error"); setSaveMsg("Sem permissão para gravar."); }
     } catch (e) { setSaveState("error"); setSaveMsg(`Falha ao gravar (nada confirmado): ${(e as Error).message}. Tente novamente — o envio é idempotente.`); }
   };
+
+  // Editor: toda alteração passa a valer sozinha (gravação automática com auditoria, sem revisão manual).
+  const pendingSemData = !!draft?.receipts.some((r) => !r.date && (r.general != null || Object.values(r.platforms).some((v) => v != null)));
+  useEffect(() => {
+    if (!draft || saveState === "saving" || saveState === "conflict" || saveState === "error" || pendingSemData) return;
+    const t = setTimeout(() => { void commitDraft(); }, 800);
+    return () => clearTimeout(t);
+  }, [draft, saveState, pendingSemData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const value: Ctx = {
     authReady,
