@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { demoData } from "../demo";
+import { demoData } from "../../test/demoFixture";
 import { buildRows, computeFlow, dailyEstimate, distributePlanned, expenseDate, committedDate, receiptInformed, splitCents, toVertical } from "./engine";
 import { normalizeData } from "./actions";
 import type { Committed, Expense, ScenarioData } from "./types";

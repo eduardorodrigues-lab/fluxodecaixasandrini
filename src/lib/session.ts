@@ -1,8 +1,7 @@
 import type { ScenarioData } from "./engine/types";
 
-// Escopo de trabalho: demo (local) ou oficial por USUÁRIO + ORGANIZAÇÃO. Rascunho e simulações nunca cruzam escopos.
-export function scopeKey(mode: "demo" | "oficial", userId: string | null | undefined, orgId: string | null | undefined): string | null {
-  if (mode === "demo") return "demo";
+// Escopo de trabalho: USUÁRIO + ORGANIZAÇÃO (única base operacional). Rascunho e simulações nunca cruzam escopos.
+export function scopeKey(userId: string | null | undefined, orgId: string | null | undefined): string | null {
   return userId && orgId ? `oficial:${userId}:${orgId}` : null;
 }
 
@@ -24,8 +23,8 @@ export type SimStore = Record<string, SimLike[]>;
 export function migrateSims(raw: unknown): SimStore {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, SimLike[] | undefined>;
   const out: SimStore = {};
-  for (const [k, v] of Object.entries(r)) if (Array.isArray(v) && (k === "demo" || k.startsWith("oficial:"))) out[k] = v;
-  return out; // chave "oficial" (sem usuário/org) é descartada
+  for (const [k, v] of Object.entries(r)) if (Array.isArray(v) && k.startsWith("oficial:")) out[k] = v;
+  return out; // chaves antigas "demo" e "oficial" (sem usuário/org) são descartadas
 }
 /** Ao sair da conta: remove simulações oficiais do usuário (cópias financeiras não ficam no navegador). */
 export function purgeUser(s: SimStore, userId: string): SimStore {
