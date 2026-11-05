@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/kit";
+import { HistoryView } from "@/components/HistoryView";
 import { computeFlow } from "@/lib/engine/engine";
 import { fmtDate } from "@/lib/dates";
 import { fmtBRL, fmtNum } from "@/lib/money";
@@ -34,13 +35,19 @@ function Page() {
         <table className="tbl"><thead><tr><th>Simulação</th><th>Criada</th><th>Base copiada (versão)</th><th>Ações</th></tr></thead>
           <tbody>{sims.map((s) => (
             <tr key={s.id}><td>{s.name}{s.id === active.id && <span className="tag tag-warn ml-1">ativa</span>}</td><td>{fmtDate(s.createdAt.slice(0, 10))}</td><td>v{s.baseVersion ?? "—"}</td>
-              <td className="space-x-1"><button className="btn" onClick={() => setActive(s.id)}>Ativar</button><button className="btn" onClick={() => setCmp(s.id)}>Comparar</button>
+              <td className="space-x-1">{s.id !== active.id ? <button className="btn" onClick={() => setActive(s.id)}>Ativar</button> : <button className="btn" onClick={() => setActive("base")}>Desativar</button>}<button className={`btn ${cmp === s.id ? "btn-primary" : ""}`} onClick={() => setCmp(s.id)}>Comparar</button>
                 <button className="btn" onClick={() => confirm("Descartar todas as hipóteses desta simulação e recopiar a base atual?") && discardSim(s.id)}>Descartar hipóteses</button>
                 <button className="btn btn-danger" onClick={() => confirm("Excluir simulação?") && deleteSim(s.id)}>Excluir</button></td></tr>
           ))}</tbody></table>
         {!active.isBase && <button className="btn mt-2" onClick={() => setActive("base")}>Voltar para a base</button>}
         <p className="mt-2 text-[11px] text-muted-foreground">Com a simulação ativa, use Lançamentos, Recebimentos, Metas e Referências para incluir/excluir/ajustar valores, datas, metas e prazos — tudo imediato e apenas nesta simulação. Pagamentos não podem ser registrados em simulação.</p>
       </section>
+      {target && (
+        <section className="card p-3">
+          <div className="lbl mb-2">Histórico da simulação: {target.name}</div>
+          <HistoryView entries={target.history ?? []} data={target.data} />
+        </section>
+      )}
       {target && rs ? (
         <section className="card p-3">
           <div className="lbl mb-2">Comparação diária: {target.name} × {base.name} · {fmtDate(ui.start)} a {fmtDate(ui.end)}</div>
