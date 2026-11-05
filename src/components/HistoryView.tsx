@@ -130,8 +130,12 @@ function printDetail() {
   const css = [...document.querySelectorAll('style, link[rel="stylesheet"]')].map((n) => n.outerHTML).join("");
   w.document.write(`<!doctype html><html lang="pt-BR"><head><title>Detalhamento da alteração</title>${css}<style>.no-print{display:none!important}body{background:#fff;padding:12px}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}.print-area{width:100%!important;height:auto!important;overflow:visible!important;box-shadow:none!important}@page{size:A4 portrait;margin:8mm}html,body{width:auto!important;height:auto!important;overflow:visible!important}.overflow-x-auto,.overflow-y-auto{overflow:visible!important}table{width:100%!important;table-layout:fixed;font-size:8px!important}th,td{white-space:normal!important;word-break:break-word;overflow-wrap:anywhere;padding:2px 3px!important}section{break-inside:avoid}</style></head><body>${el.outerHTML}</body></html>`);
   w.document.close();
-  w.onload = () => { w.focus(); w.print(); w.close(); };
-  setTimeout(() => { if (!w.closed) { w.focus(); w.print(); } }, 800);
+  // Imprime uma única vez, só depois de todas as folhas de estilo carregarem (antes saía sem formatação).
+  let done = false;
+  const go = () => { if (done || w.closed) return; done = true; w.focus(); w.print(); w.close(); };
+  const links = [...w.document.querySelectorAll('link[rel="stylesheet"]')] as HTMLLinkElement[];
+  Promise.all(links.map((l) => (l.sheet ? Promise.resolve() : new Promise<void>((r) => { l.onload = () => r(); l.onerror = () => r(); }))))
+    .then(() => w.document.fonts?.ready).then(() => setTimeout(go, 150));
 }
 
 export function HistoryView({ entries, data, scope = "Fluxo real", onRestore }: { entries: HistEntry[]; data: ScenarioData; scope?: string; onRestore?: ((c: Change) => void) | undefined }) {
