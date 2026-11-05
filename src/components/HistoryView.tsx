@@ -122,6 +122,18 @@ function Compare({ c, d }: { c: Change; d: ScenarioData }) {
 const dt = (at: string) => fmtDate(new Date(at).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }));
 const hr = (at: string) => new Date(at).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo" });
 
+// Impressão numa janela própria: o layout do app (altura fixa/rolagem) cortava o conteúdo.
+function printDetail() {
+  const el = document.querySelector(".print-area");
+  const w = window.open("", "_blank", "width=1100,height=800");
+  if (!el || !w) return;
+  const css = [...document.querySelectorAll('style, link[rel="stylesheet"]')].map((n) => n.outerHTML).join("");
+  w.document.write(`<!doctype html><html lang="pt-BR"><head><title>Detalhamento da alteração</title>${css}<style>.no-print{display:none!important}body{background:#fff;padding:12px}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}.print-area{width:100%!important;height:auto!important;overflow:visible!important;box-shadow:none!important}@page{size:landscape;margin:10mm}</style></head><body>${el.outerHTML}</body></html>`);
+  w.document.close();
+  w.onload = () => { w.focus(); w.print(); w.close(); };
+  setTimeout(() => { if (!w.closed) { w.focus(); w.print(); } }, 800);
+}
+
 export function HistoryView({ entries, data, scope = "Fluxo real", onRestore }: { entries: HistEntry[]; data: ScenarioData; scope?: string; onRestore?: ((c: Change) => void) | undefined }) {
   const [open, setOpen] = useState<number | null>(null);
   const list = coalesce(entries);
@@ -156,7 +168,7 @@ export function HistoryView({ entries, data, scope = "Fluxo real", onRestore }: 
             <div className="mb-3 flex items-start justify-between border-b border-border pb-2">
               <div><div className="text-base font-semibold">Detalhamento da alteração</div>
                 <div className="text-xs text-muted-foreground">{sel.changes.length} registro(s) nesta confirmação</div></div>
-              <div className="no-print flex gap-1"><button className="btn btn-primary" onClick={() => window.print()}>Imprimir</button><button className="btn" onClick={() => setOpen(null)}>Fechar</button></div>
+              <div className="no-print flex gap-1"><button className="btn btn-primary" onClick={printDetail}>Imprimir</button><button className="btn" onClick={() => setOpen(null)}>Fechar</button></div>
             </div>
             <div className="mb-4 grid grid-cols-2 gap-2 rounded border border-border bg-secondary p-2 text-xs md:grid-cols-4">
               <div><div className="lbl">Usuário</div>{sel.user || "—"}</div>
