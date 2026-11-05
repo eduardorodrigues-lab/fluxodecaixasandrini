@@ -115,7 +115,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const sim = sims.find((s) => s.id === local.activeId) ?? null;
   const emptyBase = useMemo(() => normalizeData({}), []);
   const base: Scenario = { id: "base", name: official.orgName || "Real", isBase: true, data: baseData ?? emptyBase };
-  const active: Scenario = sim ? { id: sim.id, name: sim.name, isBase: false, data: sim.data } : { ...base, data: draft ?? base.data };
+  const active: Scenario = sim ? { id: sim.id, name: sim.name, isBase: false, data: sim.data ?? base.data } : { ...base, data: draft ?? base.data };
   const canEdit = !!sim || (official.status === "ready" && official.role !== "viewer");
   const changes = useMemo(() => (draft && baseData ? diffData(baseData, draft) : []), [draft, baseData]);
 

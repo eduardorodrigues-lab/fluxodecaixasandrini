@@ -23,7 +23,7 @@ export type SimStore = Record<string, SimLike[]>;
 export function migrateSims(raw: unknown): SimStore {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, SimLike[] | undefined>;
   const out: SimStore = {};
-  for (const [k, v] of Object.entries(r)) if (Array.isArray(v) && k.startsWith("oficial:")) out[k] = v;
+  for (const [k, v] of Object.entries(r)) if (Array.isArray(v) && k.startsWith("oficial:")) out[k] = v.filter((s) => s && typeof s === "object" && typeof s.id === "string" && s.data && typeof s.data === "object"); // simulação corrompida/sem dados é descartada
   return out; // chaves antigas "demo" e "oficial" (sem usuário/org) são descartadas
 }
 /** Ao sair da conta: remove simulações oficiais do usuário (cópias financeiras não ficam no navegador). */
