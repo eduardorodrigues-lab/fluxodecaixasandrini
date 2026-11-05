@@ -21,7 +21,7 @@ export const Route = createFileRoute("/dashboard")({
 });
 
 function Page() {
-  const { active, ui, mode } = useApp();
+  const { active, ui } = useApp();
   const d = active.data;
   const today = todaySP();
   const filter = { supplierId: ui.supplierId, group: ui.group };
@@ -31,7 +31,7 @@ function Page() {
   const supName = d.suppliers.find((s) => s.id === ui.supplierId)?.name;
   return (
     <div className="space-y-3">
-      <PageHeader title="Dashboard" sub={`Espaço ${mode === "demo" ? "DEMO" : "OFICIAL"} · cenário "${active.name}" · período ${fmtDate(ui.start)} a ${fmtDate(ui.end)}${supName ? ` · fornecedor ${supName}` : ""}${ui.group ? ` · grupo ${ui.group}` : ""} · hoje ${fmtDate(today)} (America/Sao_Paulo)`}><ProfileBadge /></PageHeader>
+      <PageHeader title="Dashboard" sub={`${active.isBase ? "Real" : "Simulação"} · cenário "${active.name}" · período ${fmtDate(ui.start)} a ${fmtDate(ui.end)}${supName ? ` · fornecedor ${supName}` : ""}${ui.group ? ` · grupo ${ui.group}` : ""} · hoje ${fmtDate(today)} (America/Sao_Paulo)`}><ProfileBadge /></PageHeader>
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7">
         {k.cards.map((c) => (
           <button key={c.key} type="button" onClick={() => setSel(c)} aria-haspopup="dialog" aria-label={`${c.label}: ${fmtBRL(c.value)}. Abrir detalhes`}

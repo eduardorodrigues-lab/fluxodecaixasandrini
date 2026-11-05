@@ -10,7 +10,7 @@ import { createInvite, getTeam, removeMember, revokeInvite } from "@/lib/team.fu
 export const Route = createFileRoute("/equipe")({
   head: () => ({ meta: [
     { title: "Equipe e acesso · Fluxo de Caixa Sandrini" },
-    { name: "description", content: "Convites individuais, papéis e revogação de acesso à base oficial." },
+    { name: "description", content: "Convites individuais, papéis e revogação de acesso à organização." },
     { property: "og:title", content: "Equipe e acesso · Fluxo de Caixa Sandrini" },
     { property: "og:description", content: "Gestão de acesso da organização." },
     { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" },
@@ -23,7 +23,7 @@ const ERR: Record<string, string> = { forbidden: "Apenas owner pode fazer isso."
 const dt = (s: string | null) => (s ? `${fmtDate(s.slice(0, 10))} ${s.slice(11, 16)}` : "—");
 
 function Page() {
-  const { user, official, mode } = useApp();
+  const { user, official } = useApp();
   const orgId = official.orgId;
   const qc = useQueryClient();
   const fTeam = useServerFn(getTeam), fCreate = useServerFn(createInvite), fRevoke = useServerFn(revokeInvite), fRemove = useServerFn(removeMember);
@@ -33,7 +33,7 @@ function Page() {
   const refresh = () => qc.invalidateQueries({ queryKey: ["official", "team", orgId] });
   const run = async (fn: () => Promise<string>) => { if (busy) return; setBusy(true); setMsg(""); try { const s = await fn(); setMsg(s === "ok" ? "Feito." : ERR[s] ?? s); refresh(); } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); } };
 
-  if (mode !== "oficial" || !user) return <div><PageHeader title="Equipe e acesso" /><p className="card p-3 text-xs">Disponível apenas na base oficial com login.</p></div>;
+  if (!user) return <div><PageHeader title="Equipe e acesso" /><p className="card p-3 text-xs">Disponível somente com login.</p></div>;
   if (official.role !== "owner") return <div><PageHeader title="Equipe e acesso" /><p className="card p-3 text-xs">Seu papel nesta organização é "{official.role || "—"}". Apenas owner gerencia acesso.</p></div>;
   const t = q.data;
   return (

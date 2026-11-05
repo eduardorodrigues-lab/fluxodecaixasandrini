@@ -25,7 +25,7 @@ export const getOfficial = createServerFn({ method: "GET" })
   .handler(async ({ data: input, context }) => {
     const m = await myOrg(context.supabase, context.userId, input.orgId);
     const { data, error } = await context.supabase.from("official_data").select("data, version, updated_at").eq("org_id", m.org_id).single();
-    if (error || !data) throw new Error("Falha ao ler base oficial.");
+    if (error || !data) throw new Error("Falha ao ler os dados da organização.");
     return { orgId: m.org_id, orgName: m.organizations?.name ?? "", role: m.role, version: data.version, updatedAt: data.updated_at, dataJson: JSON.stringify(normalizeData(data.data)) };
   });
 
@@ -50,7 +50,7 @@ export const commitOfficial = createServerFn({ method: "POST" })
     const m = await myOrg(context.supabase, context.userId, input.orgId);
     if (m.role !== "owner" && m.role !== "editor") return { status: "forbidden" as const, version: -1, summary: "" };
     const { data: cur, error } = await context.supabase.from("official_data").select("data, version").eq("org_id", m.org_id).single();
-    if (error || !cur) throw new Error("Falha ao ler base oficial.");
+    if (error || !cur) throw new Error("Falha ao ler os dados da organização.");
     if (cur.version !== input.expectedVersion) return { status: "conflict" as const, version: cur.version, summary: "" };
     let parsed: unknown;
     try { parsed = JSON.parse(input.dataJson); } catch { throw new Error("Dados inválidos."); }
@@ -64,7 +64,7 @@ export const commitOfficial = createServerFn({ method: "POST" })
       _org: m.org_id, _user: context.userId, _email: email ?? "", _expected: input.expectedVersion,
       _data: next as never, _request: input.requestId, _summary: summary, _changes: changes as never,
     });
-    if (e2) { console.error(e2); throw new Error("Falha ao gravar na base oficial."); }
+    if (e2) { console.error(e2); throw new Error("Falha ao gravar."); }
     const r = res as { status: "ok" | "conflict" | "duplicate" | "forbidden"; version: number };
     return { status: r.status, version: r.version ?? -1, summary };
   });

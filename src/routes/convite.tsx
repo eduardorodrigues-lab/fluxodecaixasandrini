@@ -12,7 +12,7 @@ export const Route = createFileRoute("/convite")({
   validateSearch: (s: Record<string, unknown>) => ({ t: typeof s["t"] === "string" ? (s["t"] as string) : "" }),
   head: () => ({ meta: [
     { title: "Convite · Fluxo de Caixa Sandrini" },
-    { name: "description", content: "Aceite de convite individual para a base oficial." },
+    { name: "description", content: "Aceite de convite individual para a organização." },
     { property: "og:title", content: "Convite · Fluxo de Caixa Sandrini" },
     { property: "og:description", content: "Aceite de convite com confirmação explícita." },
     { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" },
