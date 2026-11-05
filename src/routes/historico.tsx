@@ -1,4 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
+import type { Change } from "@/lib/diff";
 import { PageHeader } from "@/components/kit";
 import { fmtDate } from "@/lib/dates";
 import type { ScenarioData } from "@/lib/engine/types";
@@ -18,8 +20,30 @@ const ENTITY_KEY: Record<string, keyof ScenarioData> = {
   "Fornecedor": "suppliers", "Categoria": "categories", "Previsão (planejada)": "planned", "Efetivado (compra/pedido)": "committed", "Despesa": "expenses", "Recebimento": "receipts", "Ajuste de saldo": "adjustments",
 };
 
+const HIDE = new Set(["id", "history", "extensionHistory", "residual", "importOrigin", "origin"]);
+const val = (v: unknown): string => {
+  if (v == null || v === "") return "—";
+  if (typeof v !== "object") return String(v);
+  const o = Array.isArray(v) ? v : Object.fromEntries(Object.entries(v as Record<string, unknown>).filter(([k, x]) => !HIDE.has(k) && x != null && x !== ""));
+  const t = JSON.stringify(o); return t.length > 160 ? t.slice(0, 160) + "…" : t;
+};
+interface Row { at: string; user: string; c: Change; field: string; before: unknown; after: unknown }
+function flatten(list: { at: string; user: string; changes: Change[] }[]): Row[] {
+  const out: Row[] = [];
+  for (const e of list) for (const c of e.changes) {
+    const fs = c.kind === "alteração" ? c.fields.filter((f) => !HIDE.has(f)) : [];
+    if (!fs.length) out.push({ at: e.at, user: e.user, c, field: "—", before: c.before, after: c.after });
+    else for (const f of fs) {
+      const pick = (o: unknown) => (o && typeof o === "object" && !Array.isArray(o) && c.entity !== "Meta de faturamento" ? (o as Record<string, unknown>)[f] : o);
+      out.push({ at: e.at, user: e.user, c, field: f, before: pick(c.before), after: pick(c.after) });
+    }
+  }
+  return out;
+}
+
 function Page() {
-  const { audit, update, active } = useApp();
+  const { audit, update, active, sims } = useApp();
+  const [tab, setTab] = useState("real");
   const restore = (entity: string, before: unknown) => {
     const k = ENTITY_KEY[entity];
     if (!k) return;
@@ -29,22 +53,29 @@ function Page() {
       if (arr.some((i) => (b.id ? i.id === b.id : i.date === b.date))) throw new Error("Registro já existe na base atual.");
       arr.push(JSON.parse(JSON.stringify(before)));
     });
-    alert(e ?? "Registro restaurado no rascunho. Revise e confirme para gravar.");
+    alert(e ?? "Registro restaurado.");
   };
+  const sim = sims.find((s) => s.id === tab);
+  const rows = tab === "real" ? flatten(audit.map((a) => ({ at: a.at, user: a.user_email ?? "", changes: a.changes }))) : flatten(sim?.history ?? []);
   return (
     <div className="space-y-3">
-      <PageHeader title="Histórico / Auditoria" sub={`cada confirmação grava antes/depois, usuário e data/hora.`} />
-      {!active.isBase && <p className="text-xs text-destructive">Simulação ativa: restaurações só são possíveis na base.</p>}
-      {audit.length === 0 ? <p className="text-xs text-muted-foreground">Nenhuma alteração confirmada.</p> : audit.map((a) => (
-        <details key={a.id} className="card p-2 text-xs">
-          <summary className="cursor-pointer"><b>{fmtDate(a.at.slice(0, 10))} {new Date(a.at).toLocaleTimeString("pt-BR")}</b> · {a.user_email || "—"} · v{a.version_from}→v{a.version_to} · {a.summary}</summary>
-          <table className="tbl mt-2"><thead><tr><th>Tipo</th><th>Entidade</th><th>Id</th><th>Campos</th><th>Antes</th><th>Depois</th><th /></tr></thead>
-            <tbody>{a.changes.map((c, i) => <tr key={i}><td>{c.kind}</td><td>{c.entity}</td><td className="font-mono text-[10px]">{c.id}</td><td>{c.fields.join(", ")}</td>
-              <td className="max-w-xs truncate font-mono text-[10px]" title={JSON.stringify(c.before)}>{JSON.stringify(c.before)}</td>
-              <td className="max-w-xs truncate font-mono text-[10px]" title={JSON.stringify(c.after)}>{JSON.stringify(c.after)}</td>
-              <td>{c.kind === "exclusão" && ENTITY_KEY[c.entity] && active.isBase && <button className="btn" onClick={() => restore(c.entity, c.before)}>Restaurar</button>}</td></tr>)}</tbody></table>
-        </details>
-      ))}
+      <PageHeader title="Histórico / Auditoria" sub="Cada alteração registra data, horário, quem alterou, campo, antes e depois." />
+      <div className="flex flex-wrap gap-1 text-xs">
+        <button className={`btn ${tab === "real" ? "btn-primary" : ""}`} onClick={() => setTab("real")}>Fluxo real</button>
+        {sims.map((s) => <button key={s.id} className={`btn ${tab === s.id ? "btn-danger" : ""}`} onClick={() => setTab(s.id)}>Simulação: {s.name}</button>)}
+      </div>
+      {rows.length === 0 ? <p className="text-xs text-muted-foreground">Nenhuma alteração registrada.</p> : (
+        <div className="max-h-[75vh] overflow-auto">
+          <table className="tbl"><thead><tr><th>Data</th><th>Horário</th><th>Alterado por</th><th>Tipo</th><th>Entidade</th><th>Campo</th><th>Antes</th><th>Depois</th><th /></tr></thead>
+            <tbody>{rows.map((r, i) => <tr key={i}>
+              <td>{fmtDate(new Date(r.at).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }))}</td>
+              <td>{new Date(r.at).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo" })}</td>
+              <td>{r.user || "—"}</td><td>{r.c.kind}</td><td>{r.c.entity}</td><td>{r.field}</td>
+              <td className="max-w-xs truncate font-mono text-[10px]" title={val(r.before)}>{val(r.before)}</td>
+              <td className="max-w-xs truncate font-mono text-[10px]" title={val(r.after)}>{val(r.after)}</td>
+              <td>{tab === "real" && r.c.kind === "exclusão" && ENTITY_KEY[r.c.entity] && active.isBase && <button className="btn" onClick={() => restore(r.c.entity, r.c.before)}>Restaurar</button>}</td></tr>)}</tbody></table>
+        </div>
+      )}
     </div>
   );
 }
