@@ -165,7 +165,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Editor: toda alteração passa a valer sozinha (gravação automática com auditoria, sem revisão manual).
   const pendingSemData = !!draft?.receipts.some((r) => !r.date && (r.general != null || Object.values(r.platforms).some((v) => v != null)));
   useEffect(() => {
-    if (!draft || saveState === "saving" || saveState === "conflict" || pendingSemData) return;
+    if (!draft || saveState === "saving" || saveState === "conflict" || saveState === "error" || pendingSemData) return;
     const t = setTimeout(() => { void commitDraft(); }, 800);
     return () => clearTimeout(t);
   }, [draft, saveState, pendingSemData]); // eslint-disable-line react-hooks/exhaustive-deps

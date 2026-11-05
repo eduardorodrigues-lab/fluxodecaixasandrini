@@ -18,7 +18,7 @@ export const visibleDraft = (cur: DraftSession | null, scope: string | null) => 
 export const baseMovedSince = (s: DraftSession | null, currentVersion: number) => !!s && s.baseVersion !== currentVersion;
 
 // Simulações persistidas no navegador por escopo; versão antiga (v2) tinha "oficial" sem dono → descartada por segurança.
-export interface SimLike { id: string; name: string; createdAt: string; data: ScenarioData; baseVersion: number | null }
+export interface SimLike { id: string; name: string; createdAt: string; data: ScenarioData; baseVersion: number | null; history?: unknown[] }
 export type SimStore = Record<string, SimLike[]>;
 export function migrateSims(raw: unknown): SimStore {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, SimLike[] | undefined>;
