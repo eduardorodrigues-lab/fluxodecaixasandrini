@@ -122,7 +122,7 @@ function Gate({ children }: { children: ReactNode }) {
 function Entry() {
   return <div className="card w-full max-w-md p-5 text-sm">
     <p className="mb-1 font-medium">Acesso restrito à equipe financeira</p>
-    <p className="mb-4 text-xs text-muted-foreground">Entre com sua conta para abrir a projeção de caixa da sua organização. Acesso de novas pessoas somente por convite.</p>
+    <p className="mb-4 text-xs text-muted-foreground">Entre com sua conta para abrir a projeção de caixa da sua organização. Acesso a uma organização existente somente por convite.</p>
     <Link to="/auth" className="btn btn-primary">Entrar</Link>
   </div>;
 }

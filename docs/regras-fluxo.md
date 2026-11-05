@@ -7,10 +7,11 @@ Nenhum arquivo real foi importado. Regras do legado extraídas por análise est�
 - Ações de domínio puras em `src/lib/engine/actions.ts` (efetivar, reverter, pagar, estornar, prorrogar, normalizar); dashboard em `engine/dashboard.ts`; diff antes/depois em `src/lib/diff.ts`.
 - Parcelas datadas agregadas por data; nunca matriz lançamento × dia.
 
-## Espaços de dados e persistência
-- **Base oficial (Lovable Cloud)**: login obrigatório. Tabelas `organizations`, `org_members`, `official_data` (documento JSON + `version`), `audit_log`. RLS: só membros leem a própria organização; nenhum acesso anônimo; nenhum usuário tem INSERT/UPDATE direto. Cada conta nova recebe organização própria (trigger); não existe autoinscrição em organização existente.
+## Base operacional e persistência
+- **Base operacional única por organização**: login obrigatório. Tabelas `organizations`, `org_members`, `official_data` (documento JSON + `version`), `audit_log`. RLS: só membros leem a própria organização; nenhum acesso anônimo; nenhum usuário tem INSERT/UPDATE direto. Cada conta nova recebe organização própria (trigger); não existe autoinscrição em organização existente.
 - Gravação somente via server function `commitOfficial` (verifica papel owner/editor, versão esperada, calcula diff no servidor) → RPC `commit_official` executável apenas pelo service role: controle otimista de versão (conflito → nada sobrescrito), idempotência por `request_id`, auditoria com antes/depois, usuário, e-mail, timestamp e snapshot anterior.
-- **Demonstrativo**: dados fictícios só no navegador (localStorage), mesma mecânica de rascunho/auditoria local, nunca enviados à base oficial.
+- **Sem dados demonstrativos no produto** (decisão de Eduardo, 05/11/2026): não há seletor demo/oficial. Antes do login só a tela de entrada; após login abre a organização (seletor só se houver mais de uma) ou estado vazio com cadastro inicial (Referências / Importação). Sem login, carregando ou com erro: nenhum dado financeiro, nenhum fallback. Dados de teste existem apenas nos testes automatizados (`src/test/demoFixture.ts`). Simulações e espaço demo antigos salvos no navegador são descartados na migração local. Testes: `src/test/entry-gate.test.tsx`.
+- **Modo de trabalho Real / Simulação**: Simulação é cópia local por usuário+organização, banner permanente, sem gravar nem promover.
 - **Simulações**: locais ao navegador, cópia isolada da base, banner permanente, sem promover/aplicar à base, sem registrar pagamentos. "Descartar hipóteses" recopia a base.
 
 ## Modo real (rascunho → revisão → confirmação)
