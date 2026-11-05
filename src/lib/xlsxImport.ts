@@ -1,4 +1,4 @@
-import * as XLSX from "xlsx";
+import { listSheets, readSheet, sharedStrings } from "./xlsxFast";
 import { excelSerialToISO, FIELDS, HINTS, type Cell, type Entity } from "./importer";
 import { parseBRDate } from "./dates";
 import { roundCents } from "./money";
@@ -60,14 +60,17 @@ export function layoutMapping(kind: Entity, rows: Cell[][], headerRow: number, f
   return { map: m, fixed: false };
 }
 
-export interface SheetInfo { name: string; kind: SheetKind; note: string; rows: Cell[][]; headerRow: number }
+export interface SheetInfo { name: string; kind: SheetKind; note: string; rows: Cell[][]; headerRow: number; formulas?: Record<string, string>; cellsRead?: number; colsRead?: number }
+// Colunas-FONTE lidas por aba (0 = todas). Matrizes distribuídas à direita nunca são lidas como entrada.
+export const SOURCE_COLS: Record<SheetKind, number> = { planned: 19, committed: 13, expenses: 13, receipts: 6, suppliers: 11, categorias: 3, targets: 0, fluxo: 0, desconhecida: 12 };
 export function readWorkbook(buf: ArrayBuffer): SheetInfo[] {
-  const wb = XLSX.read(buf, { type: "array", cellFormula: false, cellDates: false, bookVBA: false, cellHTML: false });
-  return wb.SheetNames.map((name) => {
-    const ws = wb.Sheets[name]!;
-    const rows = XLSX.utils.sheet_to_json<Cell[]>(ws, { header: 1, raw: true, defval: null, blankrows: true });
+  const u8 = new Uint8Array(buf);
+  if (u8[0] !== 0x50 || u8[1] !== 0x4b) throw new Error("arquivo não é .xlsx/.xlsm (zip)");
+  const sst = sharedStrings(u8);
+  return listSheets(u8).map(({ name, path }) => {
     const r = recognize(name);
-    return { name, ...r, rows, headerRow: detectHeader(rows, r.kind) };
+    const s = readSheet(u8, path, sst, SOURCE_COLS[r.kind], 4, r.kind === "desconhecida" ? 60 : Infinity);
+    return { name, ...r, rows: s.rows, headerRow: detectHeader(s.rows, r.kind), formulas: s.formulas, cellsRead: s.cellsRead, colsRead: SOURCE_COLS[r.kind] };
   });
 }
 
