@@ -94,11 +94,16 @@ function ReviewDialog({ onClose }: { onClose: () => void }) {
           ))}
         </div>
         <p className="mb-2 text-xs">{dayDiffs.length ? `Impacto em ${dayDiffs.length} dia(s) do período; primeiro em ${fmtDate(dayDiffs[0]!.date)} (Δ saldo ${fmtBRL(dayDiffs[0]!.diff)}).` : "Sem impacto no saldo diário do período exibido."}</p>
-        <table className="tbl mb-3"><thead><tr><th>Tipo</th><th>Entidade</th><th>Id</th><th>Antes</th><th>Depois</th></tr></thead>
+        <table className="tbl mb-3"><thead><tr><th>Tipo</th><th>Entidade</th><th>Antes</th><th>Depois</th></tr></thead>
           <tbody>{changes.map((c, i) => {
             const b = c.before as Record<string, unknown> | null, a = c.after as Record<string, unknown> | null;
-            const pick = (o: Record<string, unknown> | null) => (o && typeof o === "object" && c.fields.length ? Object.fromEntries(c.fields.map((f) => [f, o[f]])) : o);
-            return <tr key={i}><td><span className={`tag ${c.kind === "exclusão" ? "tag-err" : c.kind === "inclusão" ? "tag-ok" : "tag-warn"}`}>{c.kind}</span></td><td>{c.entity}</td><td className="font-mono text-[10px]">{c.id}</td><td className="font-mono text-[10px]">{short(pick(b))}</td><td className="font-mono text-[10px]">{short(pick(a))}</td></tr>;
+            const HIDE = new Set(["id", "history", "extensionHistory", "residual", "importOrigin", "origin"]);
+            const pick = (o: Record<string, unknown> | null) => {
+              if (!o || typeof o !== "object") return o;
+              const src = c.fields.length ? Object.fromEntries(c.fields.map((f) => [f, o[f]])) : o;
+              return Object.fromEntries(Object.entries(src).filter(([k, v]) => !HIDE.has(k) && v !== null && v !== "" && !(typeof v === "object" && v && !Array.isArray(v) && !Object.keys(v).length)));
+            };
+            return <tr key={i}><td><span className={`tag ${c.kind === "exclusão" ? "tag-err" : c.kind === "inclusão" ? "tag-ok" : "tag-warn"}`}>{c.kind}</span></td><td>{c.entity}</td><td className="font-mono text-[10px]">{short(pick(b))}</td><td className="font-mono text-[10px]">{short(pick(a))}</td></tr>;
           })}</tbody></table>
         {saveMsg && <p className={`mb-2 text-xs ${saveState === "conflict" || saveState === "error" ? "text-destructive" : ""}`}>{saveMsg}</p>}
         <div className="flex flex-wrap gap-2">
