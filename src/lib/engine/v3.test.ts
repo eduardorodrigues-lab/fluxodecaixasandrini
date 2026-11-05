@@ -114,7 +114,7 @@ describe("Sessão: isolamento e concorrência otimista", () => {
     expect(scopeKey(null, "o1")).toBeNull();
     const n = editSession(s, "oficial:u2:o1", base, 7, () => {}, () => "r9");
     expect([n.baseVersion, n.requestId]).toEqual([7, "r9"]);
-    const sims = migrateSims({ demo: [], oficial: [{ id: "x" }], "oficial:u1:o1": [{ id: "a" }], "oficial:u2:o1": [{ id: "b" }] });
+    const sims = migrateSims({ demo: [], oficial: [{ id: "x", data: {} }], "oficial:u1:o1": [{ id: "a", data: {} }, { id: "sem-dados" }], "oficial:u2:o1": [{ id: "b", data: {} }] });
     expect(Object.keys(sims).sort()).toEqual(["oficial:u1:o1", "oficial:u2:o1"]); // "demo" e "oficial" sem dono descartados
     expect(Object.keys(purgeUser(sims, "u1")).sort()).toEqual(["oficial:u2:o1"]);
   });
