@@ -34,6 +34,7 @@ describe("Entrada do sistema", () => {
     render(<AppShell><p>{DATA}</p></AppShell>);
     expect(screen.getByText(DATA)).toBeTruthy();
     expect(screen.getByLabelText("Modo de trabalho")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Ocultar menu" })).toBeTruthy();
     expect(screen.getByText("a@b.c", { exact: false })).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/Espaço de dados|demonstrativ|Base oficial|Cloud/i);
   });

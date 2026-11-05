@@ -1,6 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import type { ScenarioData } from "@/lib/engine/types";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { computeFlow } from "@/lib/engine/engine";
 import { fmtDate } from "@/lib/dates";
 import { fmtBRL } from "@/lib/money";
@@ -19,9 +20,21 @@ const NAV = [
   { to: "/equipe", label: "Equipe e acesso" },
 ] as const;
 
+const NAV_KEY = "fluxo.nav.hidden";
+
 export function AppShell({ children }: { children: ReactNode }) {
   const { orgs, setOrgId, user, authReady, signOut, official, base, active, sims, setActive, draft, changes, saveState, saveMsg, baseMoved, draftBaseVersion } = useApp();
   const [review, setReview] = useState(false);
+  // Barra lateral ocultável: a preferência fica só neste navegador (não é dado da organização).
+  const [navHidden, setNavHidden] = useState(false);
+  useEffect(() => {
+    try { setNavHidden(localStorage.getItem(NAV_KEY) === "1"); } catch { /* navegador sem armazenamento */ }
+  }, []);
+  const toggleNav = () => {
+    const next = !navHidden;
+    setNavHidden(next);
+    try { localStorage.setItem(NAV_KEY, next ? "1" : "0"); } catch { /* navegador sem armazenamento */ }
+  };
   const path = useRouterState({ select: (s) => s.location.pathname });
   const publicPage = path === "/auth" || path === "/convite";
   // Sem login: só a tela de entrada (ou aceite de convite). Nenhum dado financeiro é exibido.
@@ -29,10 +42,22 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (official.status !== "ready" && !publicPage) return <Gate><div className="card w-full max-w-md p-4 text-sm"><p className="mb-2">{official.status === "error" ? `Não foi possível abrir os dados da organização: ${official.error}` : "Carregando dados da organização…"}</p><p className="mb-3 text-xs text-muted-foreground">Conectado como {user.email}. Nenhum dado é exibido até a organização carregar.</p>{orgs.length > 1 && <select aria-label="Organização" className="mb-2 w-full rounded border border-border px-1.5 py-1 text-xs" value={official.orgId} onChange={(e) => setOrgId(e.target.value)}><option value="">— selecione a organização —</option>{orgs.map((o) => <option key={o.orgId} value={o.orgId}>{o.name}</option>)}</select>}<button className="btn" onClick={() => signOut()}>Sair</button></div></Gate>;
   return (
     <div className="flex min-h-screen">
+      {navHidden ? (
+        <div className="sticky top-0 flex h-screen w-8 shrink-0 flex-col items-center border-r border-sidebar-border bg-sidebar py-2">
+          <button className="rounded p-1 text-sidebar-foreground hover:bg-sidebar-accent" title="Mostrar menu" aria-label="Mostrar menu" onClick={toggleNav}>
+            <PanelLeftOpen className="h-4 w-4" />
+          </button>
+        </div>
+      ) : (
       <aside className="sticky top-0 flex h-screen w-52 shrink-0 flex-col bg-sidebar text-sidebar-foreground">
-        <div className="border-b border-sidebar-border px-4 py-4">
-          <div className="text-[10px] uppercase tracking-widest text-sidebar-primary">Grupo Sandrini</div>
-          <div className="text-sm font-semibold">Fluxo de Caixa</div>
+        <div className="flex items-start justify-between gap-2 border-b border-sidebar-border px-4 py-4">
+          <div>
+            <div className="text-[10px] uppercase tracking-widest text-sidebar-primary">Grupo Sandrini</div>
+            <div className="text-sm font-semibold">Fluxo de Caixa</div>
+          </div>
+          <button className="mt-0.5 rounded p-1 text-sidebar-foreground hover:bg-sidebar-accent" title="Ocultar menu" aria-label="Ocultar menu" onClick={toggleNav}>
+            <PanelLeftClose className="h-4 w-4" />
+          </button>
         </div>
         <nav className="flex-1 space-y-0.5 overflow-auto p-2">
           {NAV.map((n) => (
@@ -55,6 +80,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           {user && <p className="leading-snug opacity-80">{user.email}<br />{official.status === "ready" ? `Papel ${official.role}` : official.status === "error" ? official.error : "Carregando…"}<br /><button className="underline" onClick={() => { if (!draft || confirm("Há rascunho não confirmado. Sair descarta o rascunho e remove as simulações deste navegador. Continuar?")) signOut(); }}>Sair</button></p>}
         </div>
       </aside>
+      )}
       <div className="min-w-0 flex-1">
         {official.status === "ready" && isEmpty(base.data) && active.isBase && <div className="border-b border-border bg-muted px-4 py-2 text-xs">Nenhum dado cadastrado em {official.orgName}. Comece pelo cadastro inicial em <Link to="/referencias" className="underline">Referências</Link> (saldo inicial, fornecedores, categorias) ou carregue a planilha atual em <Link to="/regras" className="underline">Regras e Conciliação → Importação</Link>.</div>}
         {!active.isBase && <div className="sticky top-0 z-30 border-b-2 border-destructive bg-destructive px-4 py-1.5 text-xs font-semibold text-destructive-foreground">SIMULAÇÃO "{active.name}" — exclusivamente visual, local a este navegador. Nada aqui é gravado nos dados reais, marca pagamentos ou é promovido.</div>}
