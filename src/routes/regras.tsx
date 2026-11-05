@@ -93,7 +93,7 @@ function Page() {
     for (const m of Object.keys(d.targets)) k.add(`targets|${m}`);
     return k;
   }, [d]);
-  const doPreview = () => setPreview(classify(mapRows(entity, rows.slice(headerIdx + 1), mapping, headerIdx + 2), d.importLog, existing));
+  const doPreview = () => setPreview(classify(mapRows(entity, rows.slice(headerIdx + 1), mapping, headerIdx + 2).filter((r) => Object.values(r.values).some((v) => v !== null && v !== "")), d.importLog, existing));
   const confirmImport = () => {
     if (!preview) return;
     const novos = preview.filter((r) => r.status === "novo");
