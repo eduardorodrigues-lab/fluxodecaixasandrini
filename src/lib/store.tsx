@@ -139,10 +139,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const commitDraft = async () => {
     if (!draft || !baseData || saveState === "saving") return;
+    const semData = draft.receipts.filter((r) => !r.date && (r.general != null || Object.values(r.platforms).some((v) => v != null)));
+    if (semData.length) { setSaveState("error"); setSaveMsg(`${semData.length} recebimento(s) com valor e sem data. Informe a data antes de gravar.`); return; }
+    const toSave = { ...draft, receipts: draft.receipts.filter((r) => r.date) };
     setSaveState("saving"); setSaveMsg("");
     try {
       // expectedVersion = versão SNAPSHOT do início do rascunho (não a versão recarregada).
-      const r = await commitFn({ data: { orgId: selOrg, expectedVersion: cur!.baseVersion, requestId: cur!.requestId, dataJson: JSON.stringify(draft) } });
+      const r = await commitFn({ data: { orgId: selOrg, expectedVersion: cur!.baseVersion, requestId: cur!.requestId, dataJson: JSON.stringify(toSave) } });
       if (r.status === "ok" || r.status === "duplicate" || r.status === "noop") {
         await qc.invalidateQueries({ queryKey: ["official"] });
         setSession(null); setSaveState("saved");
