@@ -107,7 +107,7 @@ function Compare({ c, d }: { c: Change; d: ScenarioData }) {
   const { cols, before, after } = rowsFor(c, d);
   return (
     <div className="overflow-x-auto">
-      <table className="tbl"><thead><tr><th />{cols.map((k, n) => <th key={n} className={k.num ? "num" : ""}>{k.label}</th>)}</tr></thead>
+      <table className="tbl hist-cmp"><thead><tr><th />{cols.map((k, n) => <th key={n} className={k.num ? "num" : ""}>{k.label}</th>)}</tr></thead>
         <tbody>
           <tr><td className="font-semibold">Antes</td>{cols.map((k, n) => <td key={n} className={k.num ? "num" : ""}>{before ? k.get(before) || EMPTY : EMPTY}</td>)}</tr>
           <tr><td className="font-semibold">Depois</td>{cols.map((k, n) => {
@@ -132,17 +132,19 @@ export function HistoryView({ entries, data, scope = "Fluxo real", onRestore }: 
       <div className="max-h-[75vh] overflow-auto">
         <table className="tbl"><thead><tr><th>Data</th><th>Horário</th><th>Usuário</th><th>Aba</th><th>Registro</th><th>Ação</th><th>Campo</th><th>Antes</th><th>Depois</th></tr></thead>
           <tbody>{list.map((e, i) => {
-            const lines = e.changes.flatMap((c) => {
+            const lines = e.changes.map((c) => {
               const { cols, before, after } = rowsFor(c, data);
               const diff = c.kind === "alteração" ? cols.filter((k) => (before ? k.get(before) : "") !== (after ? k.get(after) : "")) : [];
-              const base = { c, reg: recordLabel(c, data) };
-              return diff.length ? diff.map((k) => ({ ...base, campo: k.label, b: (before && k.get(before)) || EMPTY, a: (after && k.get(after)) || EMPTY }))
-                : [{ ...base, campo: "Registro completo", b: c.kind === "inclusão" ? EMPTY : "Existente", a: c.kind === "exclusão" ? "Removido" : "Incluído" }];
+              const reg = recordLabel(c, data);
+              if (c.kind !== "alteração") return { c, reg, campo: "—", b: c.kind === "inclusão" ? EMPTY : "Existente", a: c.kind === "exclusão" ? "Removido" : "Incluído" };
+              if (diff.length === 1) { const k = diff[0]!; return { c, reg, campo: k.label, b: (before && k.get(before)) || EMPTY, a: (after && k.get(after)) || EMPTY }; }
+              const names = diff.map((k) => k.label);
+              return { c, reg, campo: `${diff.length} campos: ${names.slice(0, 3).join(", ")}${names.length > 3 ? "…" : ""}`, b: "Ver detalhe", a: "Ver detalhe" };
             });
             return lines.map((l, j) => (
               <tr key={`${i}-${j}`} className={`cursor-pointer hover:bg-secondary ${j === 0 ? "border-t-2 border-border" : ""}`} onClick={() => setOpen(i)}>
                 <td>{j === 0 ? dt(e.at) : ""}</td><td>{j === 0 ? hr(e.at) : ""}</td><td>{j === 0 ? e.user || "—" : ""}</td>
-                <td>{ABA[l.c.entity] ?? l.c.entity}</td><td>{l.reg}</td><td>{ACAO[l.c.kind]}</td><td>{l.campo}</td>
+                <td>{ABA[l.c.entity] ?? l.c.entity}</td><td>{l.reg}</td><td>{ACAO[l.c.kind]}</td><td className="max-w-xs truncate" title={l.campo}>{l.campo}</td>
                 <td className="max-w-xs truncate" title={l.b}>{l.b}</td><td className="max-w-xs truncate font-semibold" title={l.a}>{l.a}</td>
               </tr>
             ));
@@ -150,11 +152,11 @@ export function HistoryView({ entries, data, scope = "Fluxo real", onRestore }: 
       </div>
       {sel && (
         <div className="fixed inset-0 z-50 flex justify-end bg-foreground/30" onClick={() => setOpen(null)}>
-          <aside className="h-full w-[min(900px,92vw)] overflow-y-auto bg-background p-4 shadow-xl" onClick={(ev) => ev.stopPropagation()}>
+          <aside className="print-area h-full w-[96vw] overflow-y-auto bg-background p-4 shadow-xl" onClick={(ev) => ev.stopPropagation()}>
             <div className="mb-3 flex items-start justify-between border-b border-border pb-2">
               <div><div className="text-base font-semibold">Detalhamento da alteração</div>
                 <div className="text-xs text-muted-foreground">{sel.changes.length} registro(s) nesta confirmação</div></div>
-              <button className="btn" onClick={() => setOpen(null)}>Fechar</button>
+              <div className="no-print flex gap-1"><button className="btn btn-primary" onClick={() => window.print()}>Imprimir</button><button className="btn" onClick={() => setOpen(null)}>Fechar</button></div>
             </div>
             <div className="mb-4 grid grid-cols-2 gap-2 rounded border border-border bg-secondary p-2 text-xs md:grid-cols-4">
               <div><div className="lbl">Usuário</div>{sel.user || "—"}</div>
