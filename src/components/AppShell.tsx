@@ -42,10 +42,22 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (official.status !== "ready" && !publicPage) return <Gate><div className="card w-full max-w-md p-4 text-sm"><p className="mb-2">{official.status === "error" ? `Não foi possível abrir os dados da organização: ${official.error}` : "Carregando dados da organização…"}</p><p className="mb-3 text-xs text-muted-foreground">Conectado como {user.email}. Nenhum dado é exibido até a organização carregar.</p>{orgs.length > 1 && <select aria-label="Organização" className="mb-2 w-full rounded border border-border px-1.5 py-1 text-xs" value={official.orgId} onChange={(e) => setOrgId(e.target.value)}><option value="">— selecione a organização —</option>{orgs.map((o) => <option key={o.orgId} value={o.orgId}>{o.name}</option>)}</select>}<button className="btn" onClick={() => signOut()}>Sair</button></div></Gate>;
   return (
     <div className="flex min-h-screen">
+      {navHidden ? (
+        <div className="sticky top-0 flex h-screen w-8 shrink-0 flex-col items-center border-r border-sidebar-border bg-sidebar py-2">
+          <button className="rounded p-1 text-sidebar-foreground hover:bg-sidebar-accent" title="Mostrar menu" aria-label="Mostrar menu" onClick={toggleNav}>
+            <PanelLeftOpen className="h-4 w-4" />
+          </button>
+        </div>
+      ) : (
       <aside className="sticky top-0 flex h-screen w-52 shrink-0 flex-col bg-sidebar text-sidebar-foreground">
-        <div className="border-b border-sidebar-border px-4 py-4">
-          <div className="text-[10px] uppercase tracking-widest text-sidebar-primary">Grupo Sandrini</div>
-          <div className="text-sm font-semibold">Fluxo de Caixa</div>
+        <div className="flex items-start justify-between gap-2 border-b border-sidebar-border px-4 py-4">
+          <div>
+            <div className="text-[10px] uppercase tracking-widest text-sidebar-primary">Grupo Sandrini</div>
+            <div className="text-sm font-semibold">Fluxo de Caixa</div>
+          </div>
+          <button className="mt-0.5 rounded p-1 text-sidebar-foreground hover:bg-sidebar-accent" title="Ocultar menu" aria-label="Ocultar menu" onClick={toggleNav}>
+            <PanelLeftClose className="h-4 w-4" />
+          </button>
         </div>
         <nav className="flex-1 space-y-0.5 overflow-auto p-2">
           {NAV.map((n) => (
