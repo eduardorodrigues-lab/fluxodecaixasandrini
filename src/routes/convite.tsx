@@ -2,11 +2,12 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { PageHeader } from "@/components/kit";
 import { fmtDate } from "@/lib/dates";
 import { useApp } from "@/lib/store";
 import { ACCEPT_MSG } from "@/lib/team";
-import { acceptInvite, inviteInfo } from "@/lib/team.functions";
+import { acceptInvite, inviteInfo, publicInviteInfo, registerFromInvite } from "@/lib/team.functions";
 
 export const Route = createFileRoute("/convite")({
   validateSearch: (s: Record<string, unknown>) => ({ t: typeof s["t"] === "string" ? (s["t"] as string) : "" }),
@@ -31,7 +32,7 @@ function Page() {
   const q = useQuery({ queryKey: ["invite", token, user?.id], queryFn: () => fInfo({ data: { token } }), enabled: !!user && !!token, retry: false });
   const [ok, setOk] = useState(false); const [msg, setMsg] = useState(""); const [busy, setBusy] = useState(false);
   if (!token) return <div><PageHeader title="Convite" /><p className="card p-3 text-xs">Link de convite inválido.</p></div>;
-  if (!user) return <div><PageHeader title="Convite" /><p className="card p-3 text-xs">Entre com a conta do e-mail convidado para ver o convite. <Link to="/auth" className="underline">Entrar</Link> e depois abra o link novamente.</p></div>;
+  if (!user) return <Register token={token} />;
   const i = q.data;
   return (
     <div className="space-y-3"><PageHeader title="Convite" />
@@ -45,6 +46,43 @@ function Page() {
           </>}
           {msg && <p className="mt-2">{msg}</p>}
         </>}
+      </section>
+    </div>
+  );
+}
+
+function Register({ token }: { token: string }) {
+  const fInfo = useServerFn(publicInviteInfo), fReg = useServerFn(registerFromInvite);
+  const q = useQuery({ queryKey: ["publicInvite", token], queryFn: () => fInfo({ data: { token } }), retry: false });
+  const [pass, setPass] = useState(""); const [pass2, setPass2] = useState(""); const [msg, setMsg] = useState(""); const [busy, setBusy] = useState(false);
+  const i = q.data;
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault(); if (pass !== pass2) return setMsg("As senhas não conferem.");
+    setBusy(true); setMsg("");
+    try {
+      const r = await fReg({ data: { token, password: pass } });
+      if (r.status === "exists") return setMsg("Já existe conta com este e-mail. Entre e abra o link novamente.");
+      if (r.status !== "ok" || !r.email) return setMsg(ACCEPT_MSG[r.status] ?? "Não foi possível concluir o cadastro.");
+      const s = await supabase.auth.signInWithPassword({ email: r.email, password: pass });
+      if (s.error) return setMsg("Cadastro concluído. Entre pela tela de acesso.");
+      window.location.assign("/");
+    } catch (err) { setMsg((err as Error).message); } finally { setBusy(false); }
+  };
+  return (
+    <div className="space-y-3"><PageHeader title="Convite" />
+      <section className="card max-w-md p-4 text-xs">
+        {q.isLoading ? "Carregando…" : !i || i.status !== "ok" ? "Convite inexistente." : i.state !== "pendente" ? <>Convite {i.state}. <Link to="/auth" className="underline">Entrar</Link></> : <>
+          <dl className="mb-3 grid grid-cols-[90px_1fr] gap-1">
+            <dt>Nome</dt><dd><b>{i.full_name}</b></dd><dt>E-mail</dt><dd><b>{i.email}</b></dd><dt>Setor</dt><dd>{i.sector}</dd><dt>Permissão</dt><dd>{i.role}</dd><dt>Organização</dt><dd>{i.org_name}</dd>
+          </dl>
+          <form onSubmit={submit} className="space-y-2">
+            <input className="inp w-full" type="password" required minLength={8} placeholder="defina sua senha (mín. 8)" value={pass} onChange={(e) => setPass(e.target.value)} />
+            <input className="inp w-full" type="password" required minLength={8} placeholder="repita a senha" value={pass2} onChange={(e) => setPass2(e.target.value)} />
+            <button className="btn btn-primary w-full" disabled={busy}>{busy ? "Aguarde…" : "Criar acesso"}</button>
+          </form>
+          <p className="mt-2">Já tem conta? <Link to="/auth" className="underline">Entrar</Link> e abra o link novamente.</p>
+        </>}
+        {msg && <p className="mt-2 text-destructive">{msg}</p>}
       </section>
     </div>
   );
