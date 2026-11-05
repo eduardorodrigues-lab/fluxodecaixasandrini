@@ -110,7 +110,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const baseData: ScenarioData | null = user ? offData : null; // nunca dados financeiros sem login
   const baseVersion = official.version;
   const scope = scopeKey(user?.id, offQ.data?.orgId ?? null);
-  const sims = scope ? local.sims[scope] ?? [] : [];
+  const sims = (scope ? local.sims[scope] ?? [] : []) as Sim[];
   const cur = visibleDraft(session, scope);
   const draft = cur?.data ?? null;
   const sim = sims.find((s) => s.id === local.activeId) ?? null;
