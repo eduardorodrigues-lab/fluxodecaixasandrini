@@ -157,3 +157,5 @@ Script de reprodução local: `bun scripts/validate-ceo-xlsm.ts <arquivo> /tmp/r
 - Novo lançamento: primeiro passo escolhe Planejada ou Efetivado (não pela aba). Planejada aceita código/documento vazios; Efetivado exige documento e pode vincular previsão ativa: substitui parte via efetivação, restante continua planejado ou é encerrado. Validações só ao avançar.
 
 - Registrar pagamento: forma (Pix/TED/DOC/Boleto) e origem. Conta bancária: uma ou mais contas, cada uma debitada só pela sua parte. Cartão (só Boleto): cartão, valor, data, tarifas e parcelamento; quita o boleto total/parcial, valor+tarifas viram parcelas da fatura, sem débito bancário até pagar a fatura. Revisão, baixas e histórico mostram forma, origem e vínculo boleto→operação→fatura.
+
+- Relatório de Pagamentos do Dia (Lançamentos → Consultas): só baixas reais da data (nunca simulação/previsão), uma linha por baixa, subtotais por conta/cartão, cartão separado das saídas bancárias, estornos fora do total e consultáveis; observação editável com confirmação e histórico; impressão A4 com cabeçalho repetido, total e assinaturas.

@@ -1,3 +1,4 @@
+import { PagamentosDia } from "@/components/PagamentosDia";
 import { useMemo, useState } from "react";
 import { DateInput } from "@/components/kit";
 import { paymentsFor, titleStatus } from "@/lib/engine/engine";
@@ -70,6 +71,13 @@ export function groupByDocument(rows: ConsultaRow[]): ConsultaRow[] {
 }
 
 export function Consultas({ d }: { d: ScenarioData }) {
+  const [rep, setRep] = useState<"boletos" | "dia">("boletos");
+  return <div>
+    <div className="mb-2 flex gap-1 text-xs">{([["boletos", "Boletos e pagamentos"], ["dia", "Relatório de Pagamentos do Dia"]] as const).map(([k, l]) => <button key={k} className={`btn ${rep === k ? "btn-primary" : ""}`} onClick={() => setRep(k)}>{l}</button>)}</div>
+    {rep === "dia" ? <PagamentosDia /> : <ConsultaBoletos d={d} />}
+  </div>;
+}
+function ConsultaBoletos({ d }: { d: ScenarioData }) {
   const all = useMemo(() => buildConsulta(d), [d]);
   const [f, setF] = useState<ConsultaFilter>(EMPTY_FILTER);
   const [sel, setSel] = useState<ConsultaRow | null>(null);
