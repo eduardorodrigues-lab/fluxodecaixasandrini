@@ -218,11 +218,11 @@ export interface SaveAs { name: string; terms: (number | null)[]; from: string |
  *  "Salvar como nova condição do fornecedor" é opção separada e exige confirmação. */
 export function ConditionPicker({ d, supplierId, hint, disabled, disabledHint, onConfirm, baseDate }: { d: ScenarioData; supplierId: string; baseDate?: string | null | undefined; hint?: string | undefined; disabled?: boolean; disabledHint?: string; onConfirm: (c: { name: string; terms: (number | null)[] }, saveAs: SaveAs | null) => void }) {
   const s = d.suppliers.find((x) => x.id === supplierId)!;
-  const list = supplierConditions(s);
+  const list = supplierConditions(s).filter((c) => !c.cancelled);
   const cur = currentCondition(s, baseDate || new Date().toISOString().slice(0, 10));
-  const [sel, setSel] = useState<string>(cur?.id ?? (list.length ? list[0]!.id : "__esp"));
+  const [sel, setSel] = useState<string>(cur?.id ?? "__esp");
   const [touched, setTouched] = useState(false);
-  useEffect(() => { if (!touched && cur) setSel(cur.id); }, [cur?.id, touched]); // sugere a vigente na data base
+  useEffect(() => { if (!touched) setSel(cur?.id ?? "__esp"); }, [cur?.id, touched]); // sugere a vigente na data base
   const [espT, setEspT] = useState<(number | null)[]>([null]);
   const [save, setSave] = useState(false);
   const [saveName, setSaveName] = useState("");

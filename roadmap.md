@@ -1,10 +1,15 @@
 # Roadmap
 
+## Reorganização de fornecedores e condições (2026-11-10)
+- [x] Lista compacta e Gerenciar com duas abas; formulários sem cortes
+- [x] Editar/versionar, cancelar condição/ativação e exclusão protegida
+- [x] Testes isolados, documentação e conferência desktop/mobile
+
 ## Complemento fornecedores (2026-11-10)
 - [x] Edição e apelidos com validação de colisões e vínculos estáveis
 - [x] Vigência de inativação/reativação; exclusão protegida; filtros e histórico
 - [x] Testes isolados sem gravar dados reais
-- [ ] Verificação desktop/mobile no navegador
+- [x] Verificação desktop/mobile no navegador (fornecedores com dados isolados)
 
 - [ ] A Efetivações independentes + correção M legado (plannedRemaining / distributePlanned) + vínculo de título legado + timeline
 - [ ] B Metas mensais versionadas (bruto, r1, r2, bases, divisor, defasagem por mês) + migração

@@ -1,5 +1,13 @@
 # Fluxo de Caixa Sandrini — Regras, schema e critérios de aceite (NÃO homologado)
 
+## Fornecedores e condições — revisão 10/11/2026
+- Lista compacta com fornecedor/apelidos, situação, condição vigente e Gerenciar. Painel em Dados do fornecedor e Condições de pagamento; detalhes e histórico expansíveis.
+- Edição de condição guarda versão anterior (nome, observação, prazos, data/usuário); não altera condições gravadas nos lançamentos e congela prazos das previsões legadas antes de mudar padrão.
+- Cancelar condição exige motivo e confirmação; sai das escolhas para novos lançamentos, mantendo histórico/vínculos. Impacto vigente/futuro exige substituta explícita ou confirmação de ausência de padrão; nunca escolhe outra automaticamente.
+- Cancelar uma ativação mantém o evento com motivo/data/usuário e a condição cadastrada. O período cancelado não restaura silenciosamente outra condição; a substituta é decisão explícita.
+- Excluir condição somente sem utilização/vínculos, histórico ou períodos (inclusive cancelados). Vínculos legados sem identificação exata bloqueiam conservadoramente. Cancelar edição apenas descarta o formulário.
+- Testes isolados: `src/lib/condicoes.test.ts`; nenhum registro real é criado para validação.
+
 Nenhum arquivo real foi importado. Regras do legado extraídas por análise estática; Excel não recalculado; VBA nunca executado. Itens marcados **[aprovado]** são mudanças autorizadas por Eduardo — evolução, não equivalência literal com o Excel.
 
 ## Arquitetura

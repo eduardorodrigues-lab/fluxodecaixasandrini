@@ -74,11 +74,11 @@ export function applyNote(d: ScenarioData, n: NoteDraft, ids: { id: () => string
 
 /** Condições do fornecedor; cadastro antigo sem lista vira "Condição original" (prazos atuais). */
 export function supplierConditions(s: Supplier): SupplierCondition[] {
-  if (s.conditions?.length) return s.conditions;
+  if (s.conditions) return s.conditions;
   return s.terms.some((t) => t !== null) ? [{ id: `${s.id}-orig`, name: "Condição original", terms: [...s.terms], from: null, at: s.termsHistory?.at(-1)?.at ?? "", by: "" }] : [];
 }
 /** Períodos de vigência da condição (cadastro + cada "usar como vigente a partir de"). */
-export const condPeriods = (c: SupplierCondition) => (c.periods?.length ? c.periods : [{ from: c.from, at: c.at, by: c.by }]);
+export const condPeriods = (c: SupplierCondition) => (c.periods ?? [{ from: c.from, at: c.at, by: c.by }]);
 /** Condição vigente em `date`: período com maior início ≤ date (sem início = desde sempre); empate → confirmação mais recente. */
 export function currentCondition(s: Supplier, date: string): SupplierCondition | null {
   let best: { c: SupplierCondition; from: string; at: string } | null = null;
@@ -87,16 +87,18 @@ export function currentCondition(s: Supplier, date: string): SupplierCondition |
     if (from > date) continue;
     if (!best || from > best.from || (from === best.from && p.at > best.at)) best = { c, from, at: p.at };
   }
-  return best?.c ?? null;
+  if (best?.c.cancelled) return null;
+  const winning = best && condPeriods(best.c).find((p) => (p.from ?? "") === best.from && p.at === best.at);
+  return winning?.cancelled ? null : best?.c ?? null;
 }
 /** Prazos vigentes usados pelo motor; previsões antigas por prazos ficam congeladas nos prazos anteriores (lançamentos anteriores não mudam). */
-function syncTerms(d: ScenarioData, s: Supplier, today: string) {
+export function syncTerms(d: ScenarioData, s: Supplier, today: string) {
   const cur = currentCondition(s, today);
-  if (!cur) return;
   const old = [...s.terms];
-  if (JSON.stringify(old) === JSON.stringify(cur.terms)) return;
+  const next = cur?.terms ?? [];
+  if (JSON.stringify(old) === JSON.stringify(next)) return;
   for (const pl of d.planned) if (pl.supplierId === s.id && !pl.terms && !pl.installments?.length) pl.terms = old;
-  s.terms = [...cur.terms];
+  s.terms = [...next];
 }
 export const invalidSupplierName = (n: string) => !n.trim() || n.trim().toLowerCase() === "novo fornecedor";
 export function addSupplier(d: ScenarioData, s: { id: string; name: string; note: string; aliases?: string[] }): void {
@@ -123,6 +125,7 @@ export function reactivateCondition(d: ScenarioData, supplierId: string, condId:
   s.conditions = supplierConditions(s).map((x) => ({ ...x }));
   const c = s.conditions.find((x) => x.id === condId);
   if (!c) throw new Error("Condição não encontrada.");
+  if (c.cancelled) throw new Error("Condição cancelada não pode ser ativada.");
   c.periods = [...condPeriods(c), { from, at, by }];
   syncTerms(d, s, today);
 }
