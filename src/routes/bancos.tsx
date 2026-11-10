@@ -1,14 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { DateInput, MoneyInput, PageHeader } from "@/components/kit";
-import { Field, Section, SidePanel, SupplierSearch } from "@/components/NotaPanel";
+import { CatSubFields, Field, Section, SidePanel, SupplierSearch } from "@/components/NotaPanel";
 import { AccountSearch } from "@/components/BancoPanels";
 import {
   accountBalance, accountName, addAccount, addCard, addTransfer, cardPurchases, confirmBankTransition, consolidatedBalance, createInvoice,
-  invoiceMonthFor, movements, NO_ACCOUNT, previewBankTransition, reverseTransfer, revertBankTransition, updateAccount, type AccountInput,
+  invoiceDueDate, invoiceMonthFor, movements, NO_ACCOUNT, previewBankTransition, reverseTransfer, revertBankTransition, updateAccount, type AccountInput,
 } from "@/lib/engine/banco";
 import { todaySP } from "@/lib/engine/actions";
-import type { BankAccount, ScenarioData } from "@/lib/engine/types";
+import type { BankAccount, CategoryKind, ScenarioData } from "@/lib/engine/types";
 import { fmtDate, fmtMonth } from "@/lib/dates";
 import { fmtBRL } from "@/lib/money";
 import { uid, useApp } from "@/lib/store";
@@ -40,20 +40,20 @@ function Page() {
     <div className="space-y-3">
       <PageHeader title="Bancos">
         {tab === "contas" && <button className="btn btn-primary" onClick={() => setPanel({ t: "conta" })}>+ Conta</button>}
-        {tab === "transf" && <button className="btn btn-primary" disabled={!active.isBase} title={active.isBase ? "" : "Simulação não registra transferências"} onClick={() => setPanel({ t: "transf" })}>+ Transferência</button>}
+        {tab === "transf" && <button className={`btn ${active.isBase ? "btn-primary" : "btn-danger"}`} onClick={() => setPanel({ t: "transf" })}>{active.isBase ? "+ Transferência" : "+ Transferência simulada"}</button>}
         {tab === "cartoes" && <><button className="btn" onClick={() => setPanel({ t: "compra" })}>+ Compra no cartão</button><button className="btn btn-primary" onClick={() => setPanel({ t: "fatura" })}>Fechar fatura</button></>}
       </PageHeader>
       <div className="flex flex-wrap gap-1 border-b border-border">{TABS.map((t) => <button key={t.k} className={`px-3 py-1.5 text-xs ${tab === t.k ? "border-b-2 border-primary font-semibold text-primary" : "text-muted-foreground"}`} onClick={() => setTab(t.k)}>{t.l}</button>)}</div>
       {err && <div className="rounded border border-destructive p-2 text-xs text-destructive">{err}</div>}
       {tab === "contas" && <Contas d={d} onEdit={(acc) => setPanel({ t: "conta", acc })} onCard={(accountId) => setPanel({ t: "cartao", accountId })} onToggle={(a) => act((x) => updateAccount(x, a.id, { active: !a.active }, a.active ? "inativada" : "reativada", now()))} />}
       {tab === "extrato" && <Extrato d={d} />}
-      {tab === "transf" && <Transfers d={d} canReverse={active.isBase} onReverse={(id, n) => act((x) => reverseTransfer(x, id, n, now()))} />}
+      {tab === "transf" && <Transfers d={d} sim={!active.isBase} canReverse onReverse={(id, n) => act((x) => reverseTransfer(x, id, n, now()))} />}
       {tab === "cartoes" && <Cartoes d={d} />}
       {tab === "saldo" && <SaldoInicial d={d} isBase={active.isBase} onConfirm={(note) => act((x) => confirmBankTransition(x, user?.email ?? "", note, now()))} onRevert={() => confirm("Voltar a usar o saldo inicial legado no fluxo?") && act((x) => revertBankTransition(x))} />}
 
       {panel?.t === "conta" && <ContaPanel d={d} acc={panel.acc} onCancel={() => setPanel(null)} onSave={(a, note) => done((x) => (panel.acc ? updateAccount(x, panel.acc.id, a, note, now()) : addAccount(x, uid(), a, now())))} />}
       {panel?.t === "cartao" && <CartaoPanel onCancel={() => setPanel(null)} onSave={(c) => done((x) => addCard(x, { id: uid(), accountId: panel.accountId, active: true, ...c }))} />}
-      {panel?.t === "transf" && <TransfPanel d={d} onCancel={() => setPanel(null)} onSave={(t) => done((x) => addTransfer(x, { id: uid(), ...t, at: now(), by: user?.email ?? "" }))} />}
+      {panel?.t === "transf" && <TransfPanel d={d} sim={!active.isBase} onCancel={() => setPanel(null)} onSave={(t) => done((x) => addTransfer(x, { id: uid(), ...t, at: now(), by: user?.email ?? "" }))} />}
       {panel?.t === "compra" && <CompraCartaoPanel d={d} onCancel={() => setPanel(null)} onSave={(e) => done((x) => { x.expenses.push({ id: uid(), ...e, termDays: null, extensionDate: null, extensionHistory: [], status: "ativo", invoiceId: null }); })} />}
       {panel?.t === "fatura" && <FaturaPanel d={d} onCancel={() => setPanel(null)} onSave={(f) => done((x) => createInvoice(x, { id: uid(), ...f }))} />}
     </div>
@@ -133,13 +133,13 @@ function CartaoPanel({ onCancel, onSave }: { onCancel: () => void; onSave: (c: {
   </SidePanel>;
 }
 
-function TransfPanel({ d, onCancel, onSave }: { d: ScenarioData; onCancel: () => void; onSave: (t: { fromAccountId: string; toAccountId: string; amount: number; date: string; note: string }) => void }) {
+function TransfPanel({ d, sim, onCancel, onSave }: { d: ScenarioData; sim: boolean; onCancel: () => void; onSave: (t: { fromAccountId: string; toAccountId: string; amount: number; date: string; note: string }) => void }) {
   const [f, setF] = useState(""); const [t, setT] = useState(""); const [amount, setAmount] = useState<number | null>(null); const [date, setDate] = useState<string | null>(todaySP()); const [note, setNote] = useState("");
   const [review, setReview] = useState(false);
   const errs = [!f && "Selecione a origem.", !t && "Selecione o destino.", f && f === t && "Origem e destino devem ser diferentes.", !(amount && amount > 0) && "Valor positivo.", !date && "Informe a data."].filter(Boolean) as string[];
   const footer = review ? <><button className="btn" onClick={() => setReview(false)}>Voltar e editar</button><button className="btn btn-primary" onClick={() => onSave({ fromAccountId: f, toAccountId: t, amount: amount!, date: date!, note })}>Confirmar transferência</button></>
     : <><button className="btn" onClick={onCancel}>Cancelar</button><button className="btn btn-primary" disabled={errs.length > 0} title={errs.join(" ")} onClick={() => setReview(true)}>Revisar e confirmar</button></>;
-  return <SidePanel title={review ? "Revisar transferência" : "Transferir entre contas"} onClose={onCancel} footer={footer}>
+  return <SidePanel title={`${sim ? "SIMULAÇÃO · " : ""}${review ? "Revisar transferência" : "Transferir entre contas"}`} sub={sim ? "Transferência de teste: altera só este cenário; nenhum dado real é gravado" : "Grava nas contas reais ao confirmar"} onClose={onCancel} footer={footer}>
     {review ? <Section title="Resumo"><p>Sai {fmtBRL(amount)} de <b>{accountName(d, f)}</b> e entra em <b>{accountName(d, t)}</b> em {fmtDate(date)}. Movimento neutro no consolidado (não é receita nem despesa).{note && ` Observação: ${note}`}</p></Section>
       : <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <Field l="Conta de origem" full><AccountSearch d={d} label="Conta de origem" value={f} onChange={setF} /></Field>
@@ -153,11 +153,11 @@ function TransfPanel({ d, onCancel, onSave }: { d: ScenarioData; onCancel: () =>
   </SidePanel>;
 }
 
-function Transfers({ d, canReverse, onReverse }: { d: ScenarioData; canReverse: boolean; onReverse: (id: string, note: string) => void }) {
+function Transfers({ d, sim, canReverse, onReverse }: { d: ScenarioData; sim: boolean; canReverse: boolean; onReverse: (id: string, note: string) => void }) {
   if (!d.transfers.length) return <p className="text-xs text-muted-foreground">Nenhuma transferência.</p>;
   return <div className="card overflow-auto"><table className="tbl"><thead><tr><th>Data</th><th>Origem</th><th>Destino</th><th className="num">Valor</th><th>Observação</th><th>Registrada por</th><th>Situação</th><th /></tr></thead>
     <tbody>{[...d.transfers].sort((a, b) => b.date.localeCompare(a.date)).map((t) => <tr key={t.id}><td>{fmtDate(t.date)}</td><td>{accountName(d, t.fromAccountId)}</td><td>{accountName(d, t.toAccountId)}</td><td className="num">{fmtBRL(t.amount)}</td><td>{t.note}</td><td>{t.by}</td>
-      <td>{t.reversedAt ? <span className="tag tag-err" title={t.reversalNote}>Estornada {fmtDate(t.reversedAt.slice(0, 10))}</span> : <span className="tag tag-ok">Ativa</span>}</td>
+      <td>{sim && <span className="tag tag-err mr-1">simulação</span>}{t.reversedAt ? <span className="tag tag-err" title={t.reversalNote}>Estornada {fmtDate(t.reversedAt.slice(0, 10))}</span> : <span className="tag tag-ok">Ativa</span>}</td>
       <td>{!t.reversedAt && canReverse && <button className="btn" onClick={() => { const n = prompt("Motivo do estorno da transferência:"); if (n) onReverse(t.id, n); }}>Estornar</button>}</td></tr>)}</tbody></table></div>;
 }
 
@@ -196,17 +196,18 @@ function Cartoes({ d }: { d: ScenarioData }) {
       {!months.length ? <p className="text-xs text-muted-foreground">Sem compras.</p> : <table className="tbl"><thead><tr><th>Fatura</th><th>Data</th><th>Fornecedor</th><th>Documento</th><th className="num">Valor</th><th>Situação</th></tr></thead>
         <tbody>{months.flatMap((m) => cardPurchases(d, c.id, m).map((e) => { const inv = e.invoiceId ? d.expenses.find((x) => x.id === e.invoiceId) : null; return <tr key={e.id}><td>{fmtMonth(m)}</td><td>{fmtDate(e.baseDate)}</td><td>{d.suppliers.find((s) => s.id === e.supplierId)?.name ?? "—"}</td><td>{e.document}</td><td className="num">{fmtBRL(e.value)}</td><td>{inv ? <span className="tag tag-ok">Na fatura (venc. {fmtDate(inv.baseDate)})</span> : <span className="tag tag-warn">Aguardando fechamento</span>}</td></tr>; }))}</tbody></table>}
     </div>;
-  })}<p className="text-[11px] text-muted-foreground">Compras no cartão não debitam o banco nem entram no fluxo; a fatura fechada entra como uma despesa e a saída bancária ocorre ao registrar seu pagamento.</p></div>;
+  })}<p className="text-[11px] text-muted-foreground">Compras no cartão não debitam o banco. Antes do fechamento entram no fluxo projetado como projeção da fatura (no vencimento previsto); ao fechar, a fatura as substitui (sem duplicar) e a saída bancária só ocorre ao registrar o pagamento da fatura.</p></div>;
 }
 
 function CompraCartaoPanel({ d, onCancel, onSave }: { d: ScenarioData; onCancel: () => void; onSave: (e: { cardId: string; supplierId: string; categoryId: string; document: string; value: number; baseDate: string; notes: string }) => void }) {
   const [e, setE] = useState({ cardId: d.cards[0]?.id ?? "", supplierId: "", categoryId: "", document: "", value: null as number | null, baseDate: todaySP() as string | null, notes: "" });
+  const [kind, setKind] = useState<CategoryKind>("despesa");
   const ok = e.cardId && e.supplierId && e.categoryId && e.value && e.value > 0 && e.baseDate;
   return <SidePanel title="Compra no cartão" onClose={onCancel} footer={<><button className="btn" onClick={onCancel}>Cancelar</button><button className="btn btn-primary" disabled={!ok} onClick={() => onSave({ ...e, value: e.value!, baseDate: e.baseDate! })}>Confirmar</button></>}>
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
       <Field l="Cartão" full><select className="inp h-8" value={e.cardId} onChange={(x) => setE({ ...e, cardId: x.target.value })}>{d.cards.map((c) => <option key={c.id} value={c.id}>{c.name} ••{c.last4}</option>)}</select></Field>
       <Field l="Fornecedor" full><SupplierSearch d={d} value={e.supplierId} onChange={(v) => setE({ ...e, supplierId: v })} /></Field>
-      <Field l="Subgrupo (despesa)"><select className="inp h-8" value={e.categoryId} onChange={(x) => setE({ ...e, categoryId: x.target.value })}><option value="">Selecione</option>{d.categories.filter((c) => c.kind === "despesa").map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+      <CatSubFields d={d} kind={kind} categoryId={e.categoryId} onChange={(k, c) => { setKind(k); setE({ ...e, categoryId: c }); }} />
       <Field l="Documento"><input className="inp h-8" value={e.document} onChange={(x) => setE({ ...e, document: x.target.value })} /></Field>
       <Field l="Valor"><MoneyInput className="w-full" value={e.value} onChange={(v) => setE({ ...e, value: v })} /></Field>
       <Field l="Data da compra"><DateInput value={e.baseDate} onChange={(v) => setE({ ...e, baseDate: v })} /></Field>
@@ -222,7 +223,7 @@ function FaturaPanel({ d, onCancel, onSave }: { d: ScenarioData; onCancel: () =>
   const [month, setMonth] = useState(months[0] ?? "");
   const m = months.includes(month) ? month : months[0] ?? "";
   const items = card && m ? cardPurchases(d, card.id, m).filter((e) => !e.invoiceId) : [];
-  const due = card && m ? `${m}-${String(Math.min(card.dueDay, 28)).padStart(2, "0")}` : null;
+  const due = card && m ? invoiceDueDate(card, m) : null;
   const [dueDate, setDue] = useState<string | null>(null);
   const [supplierId, setSup] = useState(""); const [categoryId, setCat] = useState("");
   const ok = card && m && items.length && (dueDate ?? due) && supplierId && categoryId;

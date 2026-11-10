@@ -51,6 +51,13 @@ export function invoiceMonthFor(card: Card, date: string): string {
   if (day <= card.closingDay) return date.slice(0, 7);
   return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
 }
+/** Vencimento previsto da fatura do mês: dia de vencimento no mês da fatura, ou no seguinte se vence antes/no fechamento. */
+export function invoiceDueDate(card: Card, month: string): string {
+  let [y, m] = month.split("-").map(Number) as [number, number];
+  if (card.dueDay <= card.closingDay) { m += 1; if (m > 12) { m = 1; y += 1; } }
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${y}-${String(m).padStart(2, "0")}-${String(Math.min(card.dueDay, last)).padStart(2, "0")}`;
+}
 export function cardPurchases(d: ScenarioData, cardId: string, month?: string) {
   const card = d.cards.find((c) => c.id === cardId);
   return d.expenses.filter((e) => e.cardId === cardId && e.status !== "cancelado" && (!month || (card && invoiceMonthFor(card, e.baseDate) === month)));

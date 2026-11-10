@@ -1,4 +1,4 @@
-import { flowOpening } from "./banco";
+import { flowOpening, invoiceDueDate, invoiceMonthFor } from "./banco";
 import { addDays, dateRange, daysInMonth, ym } from "../dates";
 import { macroCurrency, roundCents } from "../money";
 import type {
@@ -239,7 +239,14 @@ export function computeFlow(data: ScenarioData, opt: FlowOptions): FlowResult {
   }
   for (const e of data.expenses) {
     if (e.status === "cancelado") continue;
-    if (e.cardId) { if (!e.invoiceId) warnings.push({ code: "CARTAO_SEM_FATURA", severity: "info", refId: e.id, message: `Compra no cartão ${e.document}: aguarda fechamento da fatura (não entra no fluxo; a fatura entra).` }); continue; }
+    if (e.cardId) {
+      // Fatura fechada: a despesa-fatura carrega a saída. Ainda não faturada: projeção da fatura no vencimento previsto.
+      if (e.invoiceId) continue;
+      const card = (data.cards ?? []).find((c) => c.id === e.cardId);
+      if (!card) { warnings.push({ code: "CARTAO_INEXISTENTE", severity: "alerta", refId: e.id, message: `Compra no cartão ${e.document}: cartão não encontrado.` }); continue; }
+      if (pass(e.supplierId)) push(invoiceDueDate(card, invoiceMonthFor(card, e.baseDate)), { source: "despesa", refId: e.id, categoryId: e.categoryId, amount: e.value, label: `Projeção de fatura ${card.name} · ${supName(e.supplierId)} · ${e.document}`, note: "compra no cartão ainda não faturada" });
+      continue;
+    }
     const d = expenseDate(e);
     if (!d) {
       warnings.push({ code: "DESP_SEM_PRAZO", severity: "alerta", refId: e.id, message: `Despesa ${e.document}: prazo (G) vazio — não distribuída.` });
