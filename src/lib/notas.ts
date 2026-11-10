@@ -4,6 +4,7 @@ import { distributePlanned, splitCents } from "@/lib/engine/engine";
 import { effectivate, plannedRemaining } from "@/lib/engine/actions";
 import type { CategoryKind, Committed, ExtensionEvent, ScenarioData, Supplier, SupplierCondition } from "@/lib/engine/types";
 import { addDays } from "@/lib/dates";
+import { supplierActive, validateSupplierNames } from "./fornecedores";
 
 export interface DraftParcel { amount: number; date: string | null; ext: string | null }
 export interface NoteDraft {
@@ -49,6 +50,8 @@ const extHist = (p: DraftParcel, at: string): ExtensionEvent[] => (p.ext ? [{ fr
 export function applyNote(d: ScenarioData, n: NoteDraft, ids: { id: () => string; at: string }): void {
   const errs = validateNote(n);
   if (errs.length) throw new Error(errs.join(" "));
+  const supplier = d.suppliers.find((s) => s.id === n.supplierId);
+  if (!n.plannedId && (!supplier || !supplierActive(supplier, ids.at.slice(0, 10)))) throw new Error("Fornecedor inativo: selecione um fornecedor ativo para novo lançamento.");
   const sorted = [...n.parcels];
   if (n.stage === "planned") {
     d.planned.push({ id: ids.id(), supplierId: n.supplierId, purchaseCode: n.purchaseCode, document: n.document, value: n.total!, baseDate: n.baseDate!, categoryId: n.categoryId, notes: n.description, status: "ativo", remainingOverride: null, condition: n.condition ?? null, installments: sorted.map((p) => ({ amount: p.amount, date: p.date!, extensionDate: p.ext, extensionHistory: extHist(p, ids.at) })) });
@@ -96,9 +99,11 @@ function syncTerms(d: ScenarioData, s: Supplier, today: string) {
   s.terms = [...cur.terms];
 }
 export const invalidSupplierName = (n: string) => !n.trim() || n.trim().toLowerCase() === "novo fornecedor";
-export function addSupplier(d: ScenarioData, s: { id: string; name: string; note: string }): void {
+export function addSupplier(d: ScenarioData, s: { id: string; name: string; note: string; aliases?: string[] }): void {
   if (invalidSupplierName(s.name)) throw new Error("Informe o nome do fornecedor.");
-  d.suppliers.push({ id: s.id, name: s.name.trim(), group: "", terms: [], note: s.note.trim() });
+  validateSupplierNames(d, s.id, s.name, s.aliases ?? []);
+  if (d.suppliers.some((x) => x.id === s.id)) throw new Error("Fornecedor já cadastrado.");
+  d.suppliers.push({ aliases: s.aliases ?? [], id: s.id, name: s.name.trim(), group: "", terms: [], note: s.note.trim() });
 }
 /** Adiciona condição sem apagar as anteriores (sem limite de prazos). Exige fornecedor válido. */
 export function addSupplierCondition(d: ScenarioData, supplierId: string, c: { name: string; terms: (number | null)[]; from: string | null; note?: string }, at: string, by: string, today: string): void {

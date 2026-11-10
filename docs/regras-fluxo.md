@@ -163,3 +163,10 @@ Script de reprodução local: `bun scripts/validate-ceo-xlsm.ts <arquivo> /tmp/r
 - Fornecedor único com várias condições de pagamento (nome, prazos, início da vigência, cadastrada em, responsável); novas condições não apagam as anteriores; prazos vigentes do motor = última condição vigente. Planejada: sugere a vigente, permite outra ou específica; parcelas só após confirmar. Efetivação: mesmo fornecedor, mostra condição da previsão, condição real grava só nos títulos daquela efetivação. Condição específica não altera o fornecedor; "Salvar como nova condição" é separado e confirmado.
 
 - Fornecedores: cadastro primeiro (nome obrigatório, observação opcional; "Novo fornecedor"/vazio bloqueados e sinalizados na lista para correção, sem exclusão automática); campo Grupo fora do cadastro. Condições com observação informativa (não afeta cálculo), prazos em lista dinâmica sem limite de 10 (motor, cartão até 360). "Usar como vigente a partir de…" cria novo período na condição existente; sugestão usa a vigente na data base; lançamentos existentes não mudam.
+
+
+## Fornecedores: edição, apelidos e situação
+- O identificador do fornecedor nunca muda ao editar nome principal, apelidos ou observação; condições, lançamentos, pagamentos, relatórios e histórico continuam vinculados.
+- Busca reconhece nome principal ou apelido e mostra o cadastro principal. Colisão com nome/apelido de outro fornecedor bloqueia a gravação; cadastros nunca são unidos automaticamente.
+- Inativação/reativação são eventos com data de início, usuário e horário. A partir da inativação, o fornecedor não é oferecido nem aceito em novos lançamentos; registros e obrigações existentes continuam consultáveis e operáveis.
+- Exclusão só ocorre sem condições, lançamentos ou histórico de importação vinculados; com vínculo é bloqueada e oferece inativação, sem apagar dados relacionados. Alterações aparecem no Histórico / Auditoria com antes/depois.

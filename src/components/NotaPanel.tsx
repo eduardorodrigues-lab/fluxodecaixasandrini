@@ -1,10 +1,12 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { TermsEditor } from "@/components/TermsEditor";
 import { DateInput, MoneyInput } from "@/components/kit";
 import type { CategoryKind, ScenarioData } from "@/lib/engine/types";
 import { fmtDate } from "@/lib/dates";
 import { fmtBRL } from "@/lib/money";
 import { adjustLast, currentCondition, generateParcels, supplierConditions, parcelsTotal, validateNote, type DraftParcel, type NoteDraft } from "@/lib/notas";
+import { resolveSupplier, supplierActive, supplierNames } from "@/lib/fornecedores";
+import { todaySP } from "@/lib/engine/actions";
 import { plannedRemaining } from "@/lib/engine/actions";
 
 /** Painel lateral amplo e responsivo (tela cheia no celular). */
@@ -30,13 +32,16 @@ export const Field = ({ l, full, children }: { l: string; full?: boolean; childr
 );
 
 /** Fornecedor com busca por digitação. */
-export function SupplierSearch({ d, value, onChange }: { d: ScenarioData; value: string; onChange: (id: string) => void }) {
+export function SupplierSearch({ d, value, onChange, existing = false }: { d: ScenarioData; value: string; onChange: (id: string) => void; existing?: boolean }) {
   const cur = d.suppliers.find((s) => s.id === value)?.name ?? "";
   const [t, setT] = useState(cur);
-  const listId = "sup-search";
+  useEffect(() => setT(cur), [cur]);
+  const listId = useId();
+  const eligible = d.suppliers.filter((s) => existing || supplierActive(s, todaySP()));
   return <>
-    <input className="inp h-8 w-full" list={listId} placeholder="Digite para buscar" value={t} onChange={(e) => { setT(e.target.value); const s = d.suppliers.find((x) => x.name === e.target.value); onChange(s?.id ?? ""); }} />
-    <datalist id={listId}>{d.suppliers.map((s) => <option key={s.id} value={s.name} />)}</datalist>
+    <input className="inp h-8 w-full" list={listId} placeholder="Digite para buscar" value={t} onChange={(e) => { setT(e.target.value); const s = resolveSupplier(d, e.target.value, existing ? undefined : todaySP()); onChange(s?.id ?? ""); }} />
+    <datalist id={listId}>{eligible.flatMap((s) => supplierNames(s).map((name) => <option key={`${s.id}:${name}`} value={name}>{s.name}</option>))}</datalist>
+    {value && <span className="text-muted-foreground">Cadastro: {cur}</span>}
   </>;
 }
 export function CatSubFields({ d, kind, categoryId, onChange }: { d: ScenarioData; kind: CategoryKind; categoryId: string; onChange: (kind: CategoryKind, categoryId: string) => void }) {
@@ -119,7 +124,7 @@ export function NovaNota({ d, isBase, onCancel, onConfirm }: { d: ScenarioData; 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <CatSubFields d={d} kind={n.kind} categoryId={n.categoryId} onChange={(kind, categoryId) => up({ kind, categoryId })} />
             {err("Selecione o subgrupo.")}
-            <Field l="Fornecedor" full><SupplierSearch d={d} value={n.supplierId} onChange={(supplierId) => { up({ supplierId, parcels: [], condition: null }); setSaveAs(null); }} />{err("Selecione o fornecedor.")}</Field>
+            <Field l="Fornecedor" full><SupplierSearch d={d} existing={!!n.plannedId} value={n.supplierId} onChange={(supplierId) => { up({ supplierId, parcels: [], condition: null }); setSaveAs(null); }} />{err("Selecione o fornecedor.")}</Field>
             <Field l={stage === "planned" ? "Código do pedido (opcional)" : "Código do pedido"}><input className="inp h-8" value={n.purchaseCode} onChange={(e) => up({ purchaseCode: e.target.value })} /></Field>
             <Field l={stage === "planned" ? "Documento (opcional)" : "Documento"}><input className="inp h-8" value={n.document} onChange={(e) => up({ document: e.target.value })} />{err("Informe o documento.")}</Field>
             <Field l="Descrição" full><input className="inp h-8" value={n.description} onChange={(e) => up({ description: e.target.value })} /></Field>
@@ -199,7 +204,7 @@ export function DadosNotaPanel({ d, init, siblings, onCancel, onSave }: { d: Sce
     <SidePanel wide title="Editar dados gerais da nota" sub={siblings > 1 ? `Aplica às ${siblings} parcelas desta nota` : "Aplica a este lançamento"} onClose={onCancel} footer={<><button className="btn" onClick={onCancel}>Cancelar</button><button className="btn btn-primary" disabled={!f.categoryId || !f.supplierId} onClick={() => onSave(f)}>Salvar dados da nota</button></>}>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <CatSubFields d={d} kind={f.kind} categoryId={f.categoryId} onChange={(kind, categoryId) => up({ kind, categoryId })} />
-        <Field l="Fornecedor" full><SupplierSearch d={d} value={f.supplierId} onChange={(supplierId) => up({ supplierId })} /></Field>
+        <Field l="Fornecedor" full><SupplierSearch d={d} existing value={f.supplierId} onChange={(supplierId) => up({ supplierId })} /></Field>
         <Field l="Código do pedido"><input className="inp h-8" value={f.purchaseCode} onChange={(e) => up({ purchaseCode: e.target.value })} /></Field>
         <Field l="Documento"><input className="inp h-8" value={f.document} onChange={(e) => up({ document: e.target.value })} /></Field>
         <Field l="Descrição" full><input className="inp h-8" value={f.notes} onChange={(e) => up({ notes: e.target.value })} /></Field>

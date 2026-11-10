@@ -4,6 +4,7 @@ import { DateInput } from "@/components/kit";
 import { paymentsFor, titleStatus } from "@/lib/engine/engine";
 import type { ExtensionEvent, Payment, ScenarioData } from "@/lib/engine/types";
 import { addDays, fmtDate } from "@/lib/dates";
+import { resolveSupplier, supplierNames } from "@/lib/fornecedores";
 import { fmtBRL } from "@/lib/money";
 
 export interface ConsultaRow {
@@ -82,7 +83,7 @@ function ConsultaBoletos({ d }: { d: ScenarioData }) {
   const [f, setF] = useState<ConsultaFilter>(EMPTY_FILTER);
   const [sel, setSel] = useState<ConsultaRow | null>(null);
   const [byDoc, setByDoc] = useState(false);
-  const rows = useMemo(() => { const r = filterConsulta(all, f); return (byDoc ? groupByDocument(r) : r).sort((a, b) => (a.effective ?? "").localeCompare(b.effective ?? "")); }, [all, f, byDoc]);
+  const rows = useMemo(() => { const match = resolveSupplier(d, f.supplier); const r = filterConsulta(all, { ...f, supplier: match?.name ?? f.supplier }); return (byDoc ? groupByDocument(r) : r).sort((a, b) => (a.effective ?? "").localeCompare(b.effective ?? "")); }, [all, f, byDoc, d]);
   const suppliers = useMemo(() => [...new Set(all.map((r) => r.supplier))].sort(), [all]);
   const tot = rows.reduce((a, r) => ({ v: a.v + r.value, p: a.p + r.paid, o: a.o + r.open }), { v: 0, p: 0, o: 0 });
   const up = (p: Partial<ConsultaFilter>) => setF({ ...f, ...p });
@@ -112,7 +113,7 @@ function ConsultaBoletos({ d }: { d: ScenarioData }) {
         <label><span className="lbl block">De</span><DateInput value={f.from} onChange={(v) => up({ from: v })} /></label>
         <label><span className="lbl block">Até</span><DateInput value={f.to} onChange={(v) => up({ to: v })} /></label>
         <label><span className="lbl block">Filtrar data por</span><select className="inp" value={f.by} onChange={(e) => up({ by: e.target.value as ConsultaFilter["by"] })}><option value="venc">Vencimento</option><option value="pag">Data do pagamento</option></select></label>
-        <label><span className="lbl block">Fornecedor</span><input className="inp w-48" list="consulta-sup" placeholder="Todos" value={f.supplier} onChange={(e) => up({ supplier: e.target.value })} /><datalist id="consulta-sup">{suppliers.map((s) => <option key={s} value={s} />)}</datalist></label>
+        <label><span className="lbl block">Fornecedor</span><input className="inp w-48" list="consulta-sup" placeholder="Todos" value={f.supplier} onChange={(e) => up({ supplier: e.target.value })} /><datalist id="consulta-sup">{d.suppliers.filter((s) => suppliers.includes(s.name)).flatMap((s) => supplierNames(s).map((n) => <option key={`${s.id}:${n}`} value={n}>{s.name}</option>))}</datalist></label>
         <label><span className="lbl block">Pagamento</span><select className="inp" value={f.pay} onChange={(e) => up({ pay: e.target.value as ConsultaFilter["pay"] })}><option value="">Todos</option><option>Em aberto</option><option>Parcialmente pago</option><option>Pago</option></select></label>
         <label><span className="lbl block">Prorrogação</span><select className="inp" value={f.ext} onChange={(e) => up({ ext: e.target.value as ConsultaFilter["ext"] })}><option value="">Todos</option><option value="sim">Prorrogados</option><option value="nao">Não prorrogados</option></select></label>
         <label><span className="lbl block">Agrupar por</span><select className="inp" value={byDoc ? "doc" : "parc"} onChange={(e) => setByDoc(e.target.value === "doc")}><option value="parc">Parcela</option><option value="doc">Documento</option></select></label>

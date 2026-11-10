@@ -1,5 +1,11 @@
 # Roadmap
 
+## Complemento fornecedores (2026-11-10)
+- [x] Edição e apelidos com validação de colisões e vínculos estáveis
+- [x] Vigência de inativação/reativação; exclusão protegida; filtros e histórico
+- [x] Testes isolados sem gravar dados reais
+- [ ] Verificação desktop/mobile no navegador
+
 - [ ] A Efetivações independentes + correção M legado (plannedRemaining / distributePlanned) + vínculo de título legado + timeline
 - [ ] B Metas mensais versionadas (bruto, r1, r2, bases, divisor, defasagem por mês) + migração
 - [ ] C Alinhamento de tabelas em todas as páginas + screenshots 1440/1280/menor

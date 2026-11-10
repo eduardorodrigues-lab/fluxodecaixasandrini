@@ -40,7 +40,7 @@ function columns(entity: string, d: ScenarioData, sample: R): Col[] {
     case "Despesa":
       return [F("Fornecedor", "supplierId", sup), F("Documento", "document"), F("Valor", "value", money, true), F("Data base", "baseDate", date), F("Prazo (dias)", "termDays"), F("Prorrogação", "extensionDate", date), F("Categoria", "categoryId", cat), F("Situação", "status", st), F("Observações", "notes")];
     case "Fornecedor":
-      return [F("Nome", "name"), F("Grupo", "group"), { label: "Prazos (dias)", get: (o) => ((o["terms"] as unknown[]) ?? []).filter((x) => x != null).join(" / ") }];
+      return [F("Nome", "name"), { label: "Apelidos", get: (o) => ((o["aliases"] as string[]) ?? []).join("; ") }, F("Observação", "note"), { label: "Histórico de situação", get: (o) => ((o["activity"] as { active: boolean; from: string; at: string; by: string }[]) ?? []).map((e) => `${e.active ? "Reativado" : "Inativo"} a partir de ${date(e.from)} · ${new Date(e.at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })} · ${e.by}`).join("; ") }, { label: "Condições", get: (o) => ((o["conditions"] as { name: string; terms: (number | null)[] }[]) ?? []).map((c) => `${c.name}: ${c.terms.filter((x) => x !== null).join("/")} dias`).join("; ") }, { label: "Prazos (dias)", get: (o) => ((o["terms"] as unknown[]) ?? []).filter((x) => x != null).join(" / ") }];
     case "Categoria":
       return [F("Nome", "name"), F("Tipo", "kind"), F("Grupo", "group")];
     case "Ajuste de saldo":

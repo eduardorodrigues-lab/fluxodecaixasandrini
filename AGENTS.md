@@ -23,3 +23,4 @@
 - Real financial files are never copied into the project, assets or bundle; reports with real aggregates stay outside the repo.
 - New notes go through pure helpers in `src/lib/notas.ts` (generate/validate/apply, per-parcel edit/extension); planned notes store `installments`, committed notes one title per parcel sharing `noteId` — keeps per-parcel edits from touching sibling parcels.
 - Banking (accounts, cards, platform default-account periods, multi-account payment batches, transfers, balances, opening-balance transition) lives in pure functions in `src/lib/engine/banco.ts`, stored in the same org document; accounts are stamped on records at write time, never recomputed — keeps history stable when defaults change.
+- Supplier aliases/status/deletion rules live in pure helpers in `src/lib/fornecedores.ts`; supplier IDs are stable and links are never cascade-deleted — preserves history and prevents silent merges.
