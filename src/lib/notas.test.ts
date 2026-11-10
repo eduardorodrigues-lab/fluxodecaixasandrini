@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addSupplierCondition, currentCondition, supplierConditions, applyNote, editCommittedNote, editPlannedParcel, extendPlannedParcel, generateParcels, adjustLast, parcelsTotal, saveSupplierCondition, validateNote, type NoteDraft } from "@/lib/notas";
+import { addSupplier, reactivateCondition, addSupplierCondition, currentCondition, supplierConditions, applyNote, editCommittedNote, editPlannedParcel, extendPlannedParcel, generateParcels, adjustLast, parcelsTotal, saveSupplierCondition, validateNote, type NoteDraft } from "@/lib/notas";
 import { distributePlanned, computeFlow } from "@/lib/engine/engine";
 import { effectivate, normalizeData, registerPayment } from "@/lib/engine/actions";
 import { buildConsulta, groupByDocument } from "@/components/Consultas";
@@ -117,5 +117,41 @@ describe("Condições de pagamento do fornecedor", () => {
     expect(pl.condition!.name).toBe("Parcelado");
     expect(d.committed.filter((c) => c.plannedId === pl.id).every((c) => c.condition!.name === "Específica")).toBe(true);
     expect(d.committed.filter((c) => c.plannedId !== pl.id).some((c) => c.condition?.name === "Específica")).toBe(false);
+  });
+});
+
+describe("Fornecedor primeiro, condições depois; parcelas dinâmicas; reativação", () => {
+  it("bloqueia nome vazio/'Novo fornecedor' e condição sem fornecedor válido", () => {
+    const d = base(); const n0 = d.suppliers.length;
+    expect(() => addSupplier(d, { id: "x", name: "   ", note: "" })).toThrow();
+    expect(() => addSupplier(d, { id: "x", name: "Novo fornecedor", note: "" })).toThrow();
+    expect(d.suppliers.length).toBe(n0);
+    expect(() => addSupplierCondition(d, "inexistente", { name: "A", terms: [0], from: null }, "t", "u", "2026-11-10")).toThrow(/fornecedor válido/);
+    addSupplier(d, { id: "f1", name: " Alfa ", note: "obs" });
+    expect(d.suppliers.at(-1)).toMatchObject({ name: "Alfa", note: "obs", terms: [] });
+  });
+  it("24 parcelas sem truncar após a décima; resíduo na última", () => {
+    const d = base(); addSupplier(d, { id: "f2", name: "Beta", note: "" });
+    const t24 = Array.from({ length: 24 }, (_, i) => 30 * (i + 1));
+    addSupplierCondition(d, "f2", { name: "24x", terms: t24, from: "2026-01-01", note: "só pedido 123" }, "2026-11-01T00:00:00Z", "u", "2026-11-10");
+    const p = generateParcels(100001, "2026-10-01", d.suppliers.at(-1)!.terms);
+    expect(p.length).toBe(24); expect(parcelsTotal(p)).toBe(100001);
+    d.planned.push({ id: "pl24", supplierId: "f2", purchaseCode: "X", document: "", value: 240000, baseDate: "2026-10-01", categoryId: "", notes: "", status: "ativo", remainingOverride: null });
+    const dist = distributePlanned(d.planned.at(-1)!, d.suppliers.at(-1)!, d.committed, "web", []);
+    expect(dist.parcels.length).toBe(24);
+  });
+  it("voltar a uma condição anterior cria novo período sem duplicar e sem mudar lançamentos", () => {
+    const d = base(); addSupplier(d, { id: "f3", name: "Gama", note: "" });
+    addSupplierCondition(d, "f3", { name: "30/60/90", terms: [30, 60, 90], from: "2026-01-01" }, "2026-01-01T00:00:00Z", "u", "2026-11-10");
+    addSupplierCondition(d, "f3", { name: "60/90/120", terms: [60, 90, 120], from: "2026-06-01" }, "2026-06-01T00:00:00Z", "u", "2026-11-10");
+    applyNote(d, { ...draft(d, "planned", 9000, [60, 90, 120]), supplierId: "f3", document: "" }, ids);
+    const pl = JSON.stringify(d.planned.at(-1));
+    const s = d.suppliers.at(-1)!;
+    reactivateCondition(d, "f3", s.conditions![0]!.id, "2026-12-01", "2026-11-10T12:00:00Z", "ana", "2026-11-10");
+    expect(s.conditions!.length).toBe(2); expect(s.conditions![0]!.periods!.length).toBe(2);
+    expect(currentCondition(s, "2026-11-30")!.name).toBe("60/90/120");
+    expect(currentCondition(s, "2026-12-05")!.name).toBe("30/60/90");
+    expect(currentCondition(s, "2026-03-01")!.name).toBe("30/60/90");
+    expect(JSON.stringify(d.planned.at(-1))).toBe(pl);
   });
 });

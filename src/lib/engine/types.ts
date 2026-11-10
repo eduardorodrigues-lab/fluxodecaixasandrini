@@ -17,8 +17,9 @@ export interface Params {
   bankTransition?: { at: string; by: string; legacyValue: number; accountsValue: number; note: string } | null;
 }
 
-export interface SupplierCondition { id: string; name: string; terms: (number | null)[]; from: string | null; at: string; by: string } // prazos até 10; null = vazio
-export interface Supplier { id: string; name: string; group: string; terms: (number | null)[]; termsHistory?: { at: string; terms: (number | null)[] }[]; conditions?: SupplierCondition[] } // terms = condição vigente (usada pelo motor)
+export interface ConditionPeriod { from: string | null; at: string; by: string }
+export interface SupplierCondition { id: string; name: string; terms: (number | null)[]; from: string | null; at: string; by: string; note?: string; periods?: ConditionPeriod[] } // prazos sem limite; null = vazio; note é só informativa
+export interface Supplier { id: string; name: string; group: string; terms: (number | null)[]; termsHistory?: { at: string; terms: (number | null)[] }[]; conditions?: SupplierCondition[]; note?: string } // terms = condição vigente (usada pelo motor)
 // Categoria = etapa NÃO: é a natureza do lançamento (Compra ou Despesa). Cada Category é um SUBGRUPO
 // (ex.: "Energia elétrica"); planejada/efetuada são etapas do lançamento, não categorias.
 export type CategoryKind = "compra" | "despesa";

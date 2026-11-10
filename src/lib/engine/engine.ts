@@ -136,7 +136,7 @@ export function distributePlanned(pl: Planned, sup: Supplier | undefined, commit
     return { ...base, parcels: live, count: live.length, P: 0, Q: 0, R: 0, health: "ok", remaining, mode: "padrao", warnings };
   }
   if (!sup && !pl.terms) return empty(`Planejada ${pl.purchaseCode || pl.id}: fornecedor não encontrado.`);
-  const terms = (pl.terms ?? sup!.terms).slice(0, 10);
+  const terms = [...(pl.terms ?? sup!.terms)];
   // Vínculo legado por código (coluna M) só vale para efetuadas SEM vínculo explícito de efetivação.
   const linkedList = pl.purchaseCode
     ? committed.filter((c) => c.status !== "cancelado" && c.purchaseCode === pl.purchaseCode && !c.plannedId && c.origin !== "efetivacao")

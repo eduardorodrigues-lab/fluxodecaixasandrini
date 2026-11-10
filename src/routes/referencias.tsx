@@ -4,7 +4,8 @@ import { DateInput, IntInput, MoneyInput, PageHeader } from "@/components/kit";
 import type { Params } from "@/lib/engine/types";
 import { fmtDate, fmtMonth } from "@/lib/dates";
 import { uid, useApp } from "@/lib/store";
-import { addSupplierCondition, currentCondition, supplierConditions } from "@/lib/notas";
+import { addSupplier, addSupplierCondition, condPeriods, currentCondition, invalidSupplierName, reactivateCondition, supplierConditions } from "@/lib/notas";
+import { TermsEditor, termsLabel } from "@/components/TermsEditor";
 import { todaySP } from "@/lib/engine/actions";
 import { Field, SidePanel } from "@/components/NotaPanel";
 import type { ScenarioData } from "@/lib/engine/types";
@@ -28,11 +29,16 @@ function Page() {
   const p = d.params;
   const { user } = useApp();
   const [condOf, setCondOf] = useState<string | null>(null);
+  const [newSup, setNewSup] = useState(false);
   const today = todaySP();
   const setP = (patch: Partial<Params>) => update((x) => { Object.assign(x.params, patch); });
   return (
     <div className="space-y-3">
-      {condOf && <CondicoesPanel d={d} supplierId={condOf} onClose={() => setCondOf(null)} onAdd={(c) => { const e = update((x) => addSupplierCondition(x, condOf, c, new Date().toISOString(), user?.email ?? "", today)); return e; }} />}
+      {newSup && <FornecedorPanel onCancel={() => setNewSup(false)} onSave={(f) => { const id = uid(); const e = update((x) => addSupplier(x, { id, ...f })); if (!e) { setNewSup(false); setCondOf(id); } return e; }} />}
+      {condOf && d.suppliers.some((s) => s.id === condOf) && <CondicoesPanel d={d} supplierId={condOf} onClose={() => setCondOf(null)}
+        onAdd={(c) => update((x) => addSupplierCondition(x, condOf, c, new Date().toISOString(), user?.email ?? "", today))}
+        onReactivate={(id, from) => update((x) => reactivateCondition(x, condOf, id, from, new Date().toISOString(), user?.email ?? "", today))}
+        onEdit={(f) => update((x) => { if (invalidSupplierName(f.name)) throw new Error("Informe o nome do fornecedor."); Object.assign(x.suppliers.find((k) => k.id === condOf)!, { name: f.name.trim(), note: f.note.trim() }); })} />}
       <PageHeader title="Referências" sub={`Editando o cenário "${active.name}". Na base, alterações vão para rascunho e exigem confirmação.`}></PageHeader>
 
       <section className="card p-3">
@@ -52,17 +58,18 @@ function Page() {
       </section>
 
       <section className="card overflow-auto p-3">
-        <div className="mb-2 flex justify-between"><span className="lbl">Fornecedores</span><button className="btn" onClick={() => update((x) => { x.suppliers.push({ id: uid(), name: "Novo fornecedor", group: "", terms: Array(10).fill(null) }); })}>+ Fornecedor</button></div>
-        <table className="tbl"><thead><tr><th>Nome</th><th>Grupo</th><th>Condição vigente</th><th>Condições</th><th /></tr></thead>
-          <tbody>{d.suppliers.map((s) => (
+        <div className="mb-2 flex justify-between"><span className="lbl">Fornecedores</span><button className="btn" onClick={() => setNewSup(true)}>+ Fornecedor</button></div>
+        {d.suppliers.some((s) => invalidSupplierName(s.name)) && <p className="mb-2 text-destructive">{d.suppliers.filter((s) => invalidSupplierName(s.name)).length} fornecedor(es) sem nome válido ("Novo fornecedor" ou vazio) — abra para corrigir. Nada é excluído automaticamente.</p>}
+        <table className="tbl"><thead><tr><th>Fornecedor</th><th>Condição vigente</th><th>Prazos</th><th className="num">Condições</th><th>Ações</th></tr></thead>
+          <tbody>{d.suppliers.map((s) => { const c = currentCondition(s, today); return (
             <tr key={s.id}>
-              <td><input className="inp w-44" defaultValue={s.name} onBlur={(e) => update((x) => { x.suppliers.find((i) => i.id === s.id)!.name = e.target.value; })} /></td>
-              <td><input className="inp w-28" defaultValue={s.group} onBlur={(e) => update((x) => { x.suppliers.find((i) => i.id === s.id)!.group = e.target.value; })} /></td>
-              <td>{(() => { const c = currentCondition(s, today); return c ? `${c.name} · ${c.terms.filter((t) => t !== null).join("/")} dias` : <span className="text-muted-foreground">sem condição</span>; })()}</td>
+              <td>{invalidSupplierName(s.name) ? <span className="tag tag-err">Corrigir nome{s.name.trim() ? `: ${s.name}` : ""}</span> : s.name}</td>
+              <td>{c ? c.name : <span className="text-muted-foreground">sem condição</span>}</td>
+              <td>{c ? `${termsLabel(c.terms)} dias` : "—"}</td>
               <td className="num">{supplierConditions(s).length}</td>
               <td><button className="btn" onClick={() => setCondOf(s.id)}>Condições de pagamento</button></td>
-            </tr>
-          ))}</tbody></table>
+            </tr>); })}
+            {!d.suppliers.length && <tr><td colSpan={5} className="text-center text-muted-foreground">Nenhum fornecedor cadastrado.</td></tr>}</tbody></table>
       </section>
 
       <div className="grid gap-3 lg:grid-cols-3">
@@ -98,35 +105,70 @@ function Page() {
   );
 }
 
-function CondicoesPanel({ d, supplierId, onClose, onAdd }: { d: ScenarioData; supplierId: string; onClose: () => void; onAdd: (c: { name: string; terms: (number | null)[]; from: string | null }) => string | null }) {
+function FornecedorPanel({ onCancel, onSave }: { onCancel: () => void; onSave: (f: { name: string; note: string }) => string | null }) {
+  const [name, setName] = useState("");
+  const [note, setNote] = useState("");
+  const [review, setReview] = useState(false);
+  const [err, setErr] = useState("");
+  const bad = invalidSupplierName(name);
+  return (
+    <SidePanel title={review ? "Revisar fornecedor" : "Novo fornecedor"} onClose={onCancel} footer={review
+      ? <><button className="btn" onClick={() => setReview(false)}>Voltar e editar</button><button className="btn btn-primary" onClick={() => setErr(onSave({ name, note }) ?? "")}>Confirmar fornecedor</button></>
+      : <><button className="btn" onClick={onCancel}>Cancelar</button><button className="btn btn-primary" disabled={bad} onClick={() => setReview(true)}>Revisar e confirmar</button></>}>
+      {review ? <div className="space-y-2"><div><span className="lbl">Nome do fornecedor</span><div className="font-medium">{name.trim()}</div></div><div><span className="lbl">Observação</span><div>{note.trim() || "—"}</div></div><p className="text-muted-foreground">Depois de confirmar, você poderá cadastrar as condições de pagamento.</p></div>
+        : <div className="space-y-3">
+          <Field l="Nome do fornecedor *"><input className="inp h-8 w-full" placeholder="Novo fornecedor" value={name} onChange={(e) => setName(e.target.value)} /></Field>
+          <Field l="Observação (opcional)"><textarea className="inp min-h-16 w-full" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+        </div>}
+      {err && <p className="text-destructive">{err}</p>}
+    </SidePanel>
+  );
+}
+
+function CondicoesPanel({ d, supplierId, onClose, onAdd, onReactivate, onEdit }: { d: ScenarioData; supplierId: string; onClose: () => void; onAdd: (c: { name: string; terms: (number | null)[]; from: string | null; note: string }) => string | null; onReactivate: (id: string, from: string) => string | null; onEdit: (f: { name: string; note: string }) => string | null }) {
   const s = d.suppliers.find((x) => x.id === supplierId)!;
   const list = supplierConditions(s);
   const cur = currentCondition(s, todaySP());
+  const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
-  const [terms, setTerms] = useState<(number | null)[]>(Array(10).fill(null));
+  const [cnote, setCnote] = useState("");
+  const [terms, setTerms] = useState<(number | null)[]>([null]);
   const [from, setFrom] = useState<string | null>(todaySP());
+  const [react, setReact] = useState<{ id: string; from: string | null } | null>(null);
+  const [sn, setSn] = useState({ name: s.name, note: s.note ?? "" });
   const [err, setErr] = useState("");
+  const dt = (at: string) => (at ? new Date(at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "—");
   const add = () => {
-    if (!window.confirm(`Adicionar a condição "${name}"? As condições anteriores serão preservadas.`)) return;
-    const e = onAdd({ name, terms, from }); setErr(e ?? "");
-    if (!e) { setName(""); setTerms(Array(10).fill(null)); }
+    if (!window.confirm(`Confirmar a condição "${name}" (${termsLabel(terms)} dias, vigente a partir de ${fmtDate(from)})? As condições anteriores serão preservadas.`)) return;
+    const e = onAdd({ name, terms, from, note: cnote }); setErr(e ?? "");
+    if (!e) { setName(""); setCnote(""); setTerms([null]); setAdding(false); }
   };
   return (
-    <SidePanel wide title="Condições de pagamento" sub={s.name} onClose={onClose} footer={<button className="btn" onClick={onClose}>Fechar</button>}>
-      <table className="tbl"><thead><tr><th>Condição</th><th>Prazos</th><th>Início da vigência</th><th>Cadastrada em</th><th>Responsável</th></tr></thead>
-        <tbody>{list.map((c) => <tr key={c.id}><td>{c.name}{c.id === cur?.id && <span className="tag tag-ok ml-1">vigente</span>}</td><td>{c.terms.filter((t) => t !== null).join("/")} dias</td><td>{c.from ? fmtDate(c.from) : "—"}</td><td>{c.at ? new Date(c.at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "—"}</td><td>{c.by || "—"}</td></tr>)}
-          {!list.length && <tr><td colSpan={5} className="text-center text-muted-foreground">Nenhuma condição cadastrada.</td></tr>}</tbody></table>
+    <SidePanel wide title="Fornecedor e condições de pagamento" sub={s.name} onClose={onClose} footer={<button className="btn" onClick={onClose}>Fechar</button>}>
+      <div className="mb-4 grid grid-cols-1 items-end gap-3 rounded-lg border border-border p-3 md:grid-cols-[1fr_1fr_auto]">
+        <Field l="Nome do fornecedor *"><input className="inp h-8 w-full" placeholder="Novo fornecedor" value={sn.name} onChange={(e) => setSn({ ...sn, name: e.target.value })} /></Field>
+        <Field l="Observação"><input className="inp h-8 w-full" value={sn.note} onChange={(e) => setSn({ ...sn, note: e.target.value })} /></Field>
+        <button className="btn" disabled={invalidSupplierName(sn.name) || (sn.name === s.name && sn.note === (s.note ?? ""))} onClick={() => { if (window.confirm("Salvar os dados do fornecedor?")) setErr(onEdit(sn) ?? ""); }}>Salvar dados</button>
+      </div>
+      <table className="tbl"><thead><tr><th>Condição</th><th>Prazos</th><th>Vigência</th><th>Cadastrada em</th><th>Responsável</th><th>Observação</th><th /></tr></thead>
+        <tbody>{list.map((c) => <tr key={c.id}><td>{c.name}{c.id === cur?.id && <span className="tag tag-ok ml-1">vigente</span>}</td><td>{termsLabel(c.terms)} dias <span className="text-muted-foreground">({c.terms.filter((t) => t !== null).length} parc.)</span></td>
+          <td>{condPeriods(c).map((p, i) => <div key={i} title={`Confirmado em ${dt(p.at)}${p.by ? ` por ${p.by}` : ""}`}>a partir de {p.from ? fmtDate(p.from) : "sempre"}{i > 0 && <span className="text-muted-foreground"> · {dt(p.at)} {p.by}</span>}</div>)}</td>
+          <td>{dt(c.at)}</td><td>{c.by || "—"}</td><td>{c.note || "—"}</td>
+          <td>{react?.id === c.id ? <span className="flex items-center gap-1"><DateInput value={react.from} onChange={(v) => setReact({ id: c.id, from: v })} /><button className="btn btn-primary" disabled={!react.from} onClick={() => { if (window.confirm(`Usar "${c.name}" como vigente a partir de ${fmtDate(react.from)}? Lançamentos já cadastrados não mudam.`)) { const e = onReactivate(c.id, react.from!); setErr(e ?? ""); if (!e) setReact(null); } }}>Confirmar</button><button className="btn" onClick={() => setReact(null)}>Cancelar</button></span>
+            : <button className="btn" onClick={() => setReact({ id: c.id, from: todaySP() })}>Usar como vigente a partir de…</button>}</td></tr>)}
+          {!list.length && <tr><td colSpan={7} className="text-center text-muted-foreground">Nenhuma condição cadastrada.</td></tr>}</tbody></table>
+      {!adding ? <button className="btn btn-primary mt-3" onClick={() => setAdding(true)}>Cadastrar condição de pagamento</button> :
       <div className="mt-4 space-y-2 rounded-lg border border-border p-3">
         <div className="text-sm font-semibold">Nova condição</div>
         <div className="flex flex-wrap items-end gap-3">
-          <Field l="Nome da condição"><input className="inp h-8 w-48" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Parcelado" /></Field>
-          <Field l="Início da vigência"><DateInput value={from} onChange={setFrom} /></Field>
+          <Field l="Nome da condição *"><input className="inp h-8 w-48" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Parcelado" /></Field>
+          <Field l="Início da vigência *"><DateInput value={from} onChange={setFrom} /></Field>
+          <Field l="Observação (opcional, só informativa)"><input className="inp h-8 w-72" value={cnote} onChange={(e) => setCnote(e.target.value)} placeholder="Ex.: negociada só para o pedido 123" /></Field>
         </div>
-        <div><span className="lbl">Prazos em dias (até 10; vazio ≠ zero)</span>
-          <div className="mt-1 flex flex-wrap gap-1">{terms.map((t, i) => <label key={i} className="text-[11px]">P{i + 1}<br /><IntInput value={t} onChange={(v) => setTerms(terms.map((x, k) => (k === i ? v : x)))} /></label>)}</div></div>
-        {err && <p className="text-destructive">{err}</p>}
-        <button className="btn btn-primary" disabled={!name.trim() || !terms.some((t) => t !== null) || !from} onClick={add}>Adicionar condição</button>
-      </div>
+        <TermsEditor terms={terms} onChange={setTerms} />
+        <div className="flex gap-2"><button className="btn" onClick={() => setAdding(false)}>Cancelar</button><button className="btn btn-primary" disabled={!name.trim() || !terms.some((t) => t !== null) || !from} onClick={add}>Revisar e confirmar condição</button></div>
+      </div>}
+      {err && <p className="mt-2 text-destructive">{err}</p>}
     </SidePanel>
   );
 }

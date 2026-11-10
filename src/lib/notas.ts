@@ -74,26 +74,52 @@ export function supplierConditions(s: Supplier): SupplierCondition[] {
   if (s.conditions?.length) return s.conditions;
   return s.terms.some((t) => t !== null) ? [{ id: `${s.id}-orig`, name: "Condição original", terms: [...s.terms], from: null, at: s.termsHistory?.at(-1)?.at ?? "", by: "" }] : [];
 }
-/** Última condição vigente em `today` (maior início de vigência ≤ hoje; sem início = desde sempre; empate → mais recente cadastrada). */
-export function currentCondition(s: Supplier, today: string): SupplierCondition | null {
-  const v = supplierConditions(s).filter((c) => !c.from || c.from <= today);
-  return v.sort((a, b) => (a.from ?? "").localeCompare(b.from ?? "") || a.at.localeCompare(b.at)).at(-1) ?? null;
+/** Períodos de vigência da condição (cadastro + cada "usar como vigente a partir de"). */
+export const condPeriods = (c: SupplierCondition) => (c.periods?.length ? c.periods : [{ from: c.from, at: c.at, by: c.by }]);
+/** Condição vigente em `date`: período com maior início ≤ date (sem início = desde sempre); empate → confirmação mais recente. */
+export function currentCondition(s: Supplier, date: string): SupplierCondition | null {
+  let best: { c: SupplierCondition; from: string; at: string } | null = null;
+  for (const c of supplierConditions(s)) for (const p of condPeriods(c)) {
+    const from = p.from ?? "";
+    if (from > date) continue;
+    if (!best || from > best.from || (from === best.from && p.at > best.at)) best = { c, from, at: p.at };
+  }
+  return best?.c ?? null;
 }
-/** Adiciona condição sem apagar as anteriores. Prazos vigentes (motor) passam a ser os da condição vigente;
- *  previsões antigas por prazos ficam congeladas nos prazos anteriores. */
-export function addSupplierCondition(d: ScenarioData, supplierId: string, c: { name: string; terms: (number | null)[]; from: string | null }, at: string, by: string, today: string): void {
+/** Prazos vigentes usados pelo motor; previsões antigas por prazos ficam congeladas nos prazos anteriores (lançamentos anteriores não mudam). */
+function syncTerms(d: ScenarioData, s: Supplier, today: string) {
+  const cur = currentCondition(s, today);
+  if (!cur) return;
+  const old = [...s.terms];
+  if (JSON.stringify(old) === JSON.stringify(cur.terms)) return;
+  for (const pl of d.planned) if (pl.supplierId === s.id && !pl.terms && !pl.installments?.length) pl.terms = old;
+  s.terms = [...cur.terms];
+}
+export const invalidSupplierName = (n: string) => !n.trim() || n.trim().toLowerCase() === "novo fornecedor";
+export function addSupplier(d: ScenarioData, s: { id: string; name: string; note: string }): void {
+  if (invalidSupplierName(s.name)) throw new Error("Informe o nome do fornecedor.");
+  d.suppliers.push({ id: s.id, name: s.name.trim(), group: "", terms: [], note: s.note.trim() });
+}
+/** Adiciona condição sem apagar as anteriores (sem limite de prazos). Exige fornecedor válido. */
+export function addSupplierCondition(d: ScenarioData, supplierId: string, c: { name: string; terms: (number | null)[]; from: string | null; note?: string }, at: string, by: string, today: string): void {
   const s = d.suppliers.find((x) => x.id === supplierId);
-  if (!s) throw new Error("Fornecedor não encontrado.");
+  if (!s || invalidSupplierName(s.name)) throw new Error("Condição precisa estar vinculada a um fornecedor válido.");
   if (!c.name.trim()) throw new Error("Informe o nome da condição.");
   if (!c.terms.some((t) => t !== null)) throw new Error("Informe ao menos um prazo.");
   s.conditions = supplierConditions(s).map((x) => ({ ...x }));
-  s.conditions.push({ id: `${supplierId}-c${s.conditions.length + 1}-${at}`, name: c.name.trim(), terms: [...c.terms].slice(0, 10), from: c.from, at, by });
-  const cur = currentCondition(s, today)!;
-  const old = [...s.terms];
-  if (JSON.stringify(old) !== JSON.stringify(cur.terms)) {
-    for (const pl of d.planned) if (pl.supplierId === supplierId && !pl.terms && !pl.installments?.length) pl.terms = old;
-    s.terms = [...cur.terms];
-  }
+  s.conditions.push({ id: `${supplierId}-c${s.conditions.length + 1}-${at}`, name: c.name.trim(), terms: [...c.terms], from: c.from, at, by, note: c.note?.trim() ?? "", periods: [{ from: c.from, at, by }] });
+  syncTerms(d, s, today);
+}
+/** "Usar como vigente a partir de…": novo período na condição existente, sem duplicá-la nem sobrescrever períodos. */
+export function reactivateCondition(d: ScenarioData, supplierId: string, condId: string, from: string, at: string, by: string, today: string): void {
+  const s = d.suppliers.find((x) => x.id === supplierId);
+  if (!s) throw new Error("Fornecedor não encontrado.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) throw new Error("Informe a data de início.");
+  s.conditions = supplierConditions(s).map((x) => ({ ...x }));
+  const c = s.conditions.find((x) => x.id === condId);
+  if (!c) throw new Error("Condição não encontrada.");
+  c.periods = [...condPeriods(c), { from, at, by }];
+  syncTerms(d, s, today);
 }
 /** Compatibilidade: salvar condição informada no lançamento como nova condição do fornecedor. */
 export function saveSupplierCondition(d: ScenarioData, supplierId: string, terms: (number | null)[], at: string, name = "Condição específica", by = "", from: string | null = null): void {

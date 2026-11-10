@@ -43,7 +43,7 @@ export function PagamentoPanel({ d, kind, titleId, label, onCancel, onConfirm }:
   const errs = [
     ...(!form ? ["Selecione a forma de pagamento."] : []),
     ...(isCard
-      ? [!cc.cardId && "Selecione o cartão.", !(cc.amount && cc.amount > 0) && "Informe o valor.", !cc.date && "Informe a data da operação.", !(cc.n >= 1 && cc.n <= 24) && "Parcelamento no cartão: de 1 a 24.", !d.cards.some((c) => c.active) && "Cadastre um cartão em Bancos."].filter(Boolean) as string[]
+      ? [!cc.cardId && "Selecione o cartão.", !(cc.amount && cc.amount > 0) && "Informe o valor.", !cc.date && "Informe a data da operação.", !(cc.n >= 1 && cc.n <= 360) && "Parcelamento no cartão: de 1 a 360.", !d.cards.some((c) => c.active) && "Cadastre um cartão em Bancos."].filter(Boolean) as string[]
       : [...lines.flatMap((l, i) => [!l.accountId && `Linha ${i + 1}: selecione a conta.`, !(l.amount && l.amount > 0) && `Linha ${i + 1}: informe o valor.`, !l.date && `Linha ${i + 1}: informe a data.`]).filter(Boolean) as string[],
         ...(!d.bankAccounts.some((a) => a.active) ? ["Cadastre uma conta em Bancos antes de registrar pagamentos."] : [])]),
     ...(sum > open ? ["Valor excede o saldo pendente (juros, multa e desconto não são suportados)."] : []),
@@ -94,7 +94,7 @@ export function PagamentoPanel({ d, kind, titleId, label, onCancel, onConfirm }:
               <Field l="Valor do boleto pago"><MoneyInput value={cc.amount} onChange={(v) => setCc({ ...cc, amount: v })} /></Field>
               <Field l="Data da operação"><DateInput value={cc.date} onChange={(v) => setCc({ ...cc, date: v })} /></Field>
               <Field l="Tarifas (opcional)"><MoneyInput value={cc.fee} onChange={(v) => setCc({ ...cc, fee: v })} /></Field>
-              <Field l="Parcelamento no cartão"><input aria-label="Parcelamento no cartão" type="number" min={1} max={24} className="inp h-8" value={cc.n} onChange={(e) => setCc({ ...cc, n: Number(e.target.value) || 1 })} /></Field>
+              <Field l="Parcelamento no cartão"><input aria-label="Parcelamento no cartão" type="number" min={1} max={360} className="inp h-8" value={cc.n} onChange={(e) => setCc({ ...cc, n: Number(e.target.value) || 1 })} /></Field>
             </div>
             {inst.length > 0 && <div className="mt-2"><table className="tbl"><thead><tr><th>Parcela</th><th className="num">Valor</th><th>Fatura</th><th>Vencimento</th></tr></thead><tbody>{inst.map((p) => <tr key={p.n}><td>{p.n}/{cc.n}</td><td className="num">{fmtBRL(p.amount)}</td><td>{fmtMonth(p.month)}</td><td>{fmtDate(p.due)}</td></tr>)}</tbody></table></div>}
             <p className="mt-2 text-muted-foreground">Não debita conta bancária agora; o valor (com tarifas) passa para a fatura do cartão.</p>

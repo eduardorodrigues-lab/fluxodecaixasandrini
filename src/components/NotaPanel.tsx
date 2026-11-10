@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { TermsEditor } from "@/components/TermsEditor";
 import { DateInput, MoneyInput } from "@/components/kit";
 import type { CategoryKind, ScenarioData } from "@/lib/engine/types";
 import { fmtDate } from "@/lib/dates";
@@ -128,7 +129,7 @@ export function NovaNota({ d, isBase, onCancel, onConfirm }: { d: ScenarioData; 
         </Section>
         <Section n={3} title="Condição de pagamento">
           {!sup ? <p className="text-muted-foreground">Selecione o fornecedor para ver as condições cadastradas.</p>
-            : <ConditionPicker key={sup.id} d={d} supplierId={sup.id} hint={link?.p.condition ? `Condição usada na previsão: ${link.p.condition.name} (${termsTxt(link.p.condition.terms)} dias)` : undefined}
+            : <ConditionPicker key={sup.id} d={d} supplierId={sup.id} baseDate={n.baseDate} hint={link?.p.condition ? `Condição usada na previsão: ${link.p.condition.name} (${termsTxt(link.p.condition.terms)} dias)` : undefined}
                 disabled={!n.total || !n.baseDate} disabledHint="Informe valor total e data base"
                 onConfirm={(c, save) => { setSaveAs(save); up({ condition: c, parcels: generateParcels(n.total!, n.baseDate!, c.terms) }); }} />}
         </Section>
@@ -210,27 +211,30 @@ export function DadosNotaPanel({ d, init, siblings, onCancel, onSave }: { d: Sce
 export interface SaveAs { name: string; terms: (number | null)[]; from: string | null }
 /** Escolha da condição: sugere a última vigente, permite outra cadastrada ou uma específica. Parcelas só após confirmar.
  *  "Salvar como nova condição do fornecedor" é opção separada e exige confirmação. */
-export function ConditionPicker({ d, supplierId, hint, disabled, disabledHint, onConfirm }: { d: ScenarioData; supplierId: string; hint?: string | undefined; disabled?: boolean; disabledHint?: string; onConfirm: (c: { name: string; terms: (number | null)[] }, saveAs: SaveAs | null) => void }) {
+export function ConditionPicker({ d, supplierId, hint, disabled, disabledHint, onConfirm, baseDate }: { d: ScenarioData; supplierId: string; baseDate?: string | null | undefined; hint?: string | undefined; disabled?: boolean; disabledHint?: string; onConfirm: (c: { name: string; terms: (number | null)[] }, saveAs: SaveAs | null) => void }) {
   const s = d.suppliers.find((x) => x.id === supplierId)!;
   const list = supplierConditions(s);
-  const cur = currentCondition(s, new Date().toISOString().slice(0, 10));
+  const cur = currentCondition(s, baseDate || new Date().toISOString().slice(0, 10));
   const [sel, setSel] = useState<string>(cur?.id ?? (list.length ? list[0]!.id : "__esp"));
-  const [esp, setEsp] = useState("");
+  const [touched, setTouched] = useState(false);
+  useEffect(() => { if (!touched && cur) setSel(cur.id); }, [cur?.id, touched]); // sugere a vigente na data base
+  const [espT, setEspT] = useState<(number | null)[]>([null]);
   const [save, setSave] = useState(false);
   const [saveName, setSaveName] = useState("");
   const isEsp = sel === "__esp";
-  const chosen = isEsp ? { name: "Condição específica", terms: parseTerms(esp) } : (() => { const c = list.find((x) => x.id === sel)!; return { name: c.name, terms: c.terms }; })();
+  const chosen = isEsp ? { name: "Condição específica", terms: espT } : (() => { const c = list.find((x) => x.id === sel)!; return { name: c.name, terms: c.terms }; })();
   const ok = chosen.terms.some((t) => t !== null) && !disabled && (!save || !!saveName.trim());
   return (
     <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-4">
       {hint && <p className="font-medium">{hint}</p>}
       <div className="flex flex-wrap items-end gap-3">
-        <Field l="Condição"><select aria-label="Condição" className="inp h-8 min-w-56" value={sel} onChange={(e) => { setSel(e.target.value); setSave(false); }}>
-          {list.map((c) => <option key={c.id} value={c.id}>{c.name} · {termsTxt(c.terms)} dias{c.id === cur?.id ? " (vigente)" : ""}</option>)}
+        <Field l="Condição"><select aria-label="Condição" className="inp h-8 min-w-56" value={sel} onChange={(e) => { setSel(e.target.value); setTouched(true); setSave(false); }}>
+          {list.map((c) => <option key={c.id} value={c.id}>{c.name} · {termsTxt(c.terms)} dias{c.id === cur?.id ? " (vigente na data base)" : ""}</option>)}
           <option value="__esp">Informar condição específica…</option></select></Field>
-        {isEsp && <Field l="Prazos em dias (separados por vírgula)"><input className="inp h-8 w-56" value={esp} onChange={(e) => setEsp(e.target.value)} placeholder="30, 60, 90" /></Field>}
-        {!isEsp && <span className="text-muted-foreground">{termsTxt(chosen.terms)} dias</span>}
+        {!isEsp && <span className="text-muted-foreground">{termsTxt(chosen.terms)} dias · {chosen.terms.filter((t) => t !== null).length} parcela(s)</span>}
       </div>
+      {!isEsp && list.find((x) => x.id === sel)?.note && <p className="rounded bg-muted p-2">Observação da condição: {list.find((x) => x.id === sel)!.note}</p>}
+      {isEsp && <TermsEditor terms={espT} onChange={setEspT} />}
       {isEsp && <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-1"><input type="checkbox" checked={save} onChange={(e) => { if (e.target.checked && !window.confirm("Salvar esta condição como nova condição do fornecedor? As condições anteriores serão preservadas.")) return; setSave(e.target.checked); }} /> Salvar como nova condição do fornecedor</label>
         {save && <input className="inp h-8 w-48" placeholder="Nome da condição" value={saveName} onChange={(e) => setSaveName(e.target.value)} />}

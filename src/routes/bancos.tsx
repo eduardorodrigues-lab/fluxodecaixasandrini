@@ -232,7 +232,7 @@ function CoberturaPanel({ d, onCancel, onSave }: { d: ScenarioData; onCancel: ()
   const [review, setReview] = useState(false);
   const amt = amount ?? sel?.open ?? null;
   const cat = sel ? d.categories.find((c) => c.id === sel.t.categoryId) : null;
-  const errs = [!sel && "Selecione o lançamento em aberto.", !cardId && "Selecione o cartão.", !date && "Informe a data.", !(amt && amt > 0) && "Informe o valor.", sel && amt && amt > sel.open && "Valor excede o saldo em aberto do lançamento.", !(n >= 1 && n <= 24) && "Parcelas de 1 a 24."].filter(Boolean) as string[];
+  const errs = [!sel && "Selecione o lançamento em aberto.", !cardId && "Selecione o cartão.", !date && "Informe a data.", !(amt && amt > 0) && "Informe o valor.", sel && amt && amt > sel.open && "Valor excede o saldo em aberto do lançamento.", !(n >= 1 && n <= 360) && "Parcelas de 1 a 360."].filter(Boolean) as string[];
   const footer = review ? <><button className="btn" onClick={() => setReview(false)}>Voltar e editar</button><button className="btn btn-primary" onClick={() => onSave({ cardId, titleKind: sel!.kind, titleId: sel!.t.id, date: date!, amount: amt!, installments: n })}>Confirmar pagamento no cartão</button></>
     : <><button className="btn" onClick={onCancel}>Cancelar</button><button className="btn btn-primary" disabled={errs.length > 0} title={errs.join(" ")} onClick={() => setReview(true)}>Revisar e confirmar</button></>;
   return <SidePanel wide title={review ? "Revisar pagamento no cartão" : "Pagar lançamento existente com cartão"} sub="Liquidação do fornecedor pelo cartão — não debita banco; a dívida fica no cartão até pagar a fatura" onClose={onCancel} footer={footer}>
@@ -248,7 +248,7 @@ function CoberturaPanel({ d, onCancel, onSave }: { d: ScenarioData; onCancel: ()
       <Field l="Cartão"><select className="inp h-8" value={cardId} onChange={(e) => setCard(e.target.value)}>{d.cards.filter((c) => c.active).map((c) => <option key={c.id} value={c.id}>{c.name} ••{c.last4}</option>)}</select></Field>
       <Field l="Data da compra"><DateInput value={date} onChange={setDate} /></Field>
       <Field l="Valor no cartão"><MoneyInput className="w-full" value={amt} onChange={setAmount} /></Field>
-      <Field l="Parcelas no cartão"><input className="inp h-8" type="number" min={1} max={24} value={n} onChange={(e) => setN(Number(e.target.value))} /></Field>
+      <Field l="Parcelas no cartão"><input className="inp h-8" type="number" min={1} max={360} value={n} onChange={(e) => setN(Number(e.target.value))} /></Field>
     </div></Section>}
     <Section title="Parcelas nas faturas"><CardInstPreview d={d} cardId={cardId} date={date} amount={amt} n={n} />
       {sel && amt && amt <= sel.open && <p className="mt-2">{amt === sel.open ? "O lançamento ficará “Quitado com cartão”." : `Restam ${fmtBRL(sel.open - amt)} em aberto no vencimento original (${fmtDate(sel.due)}).`}</p>}</Section>
@@ -269,7 +269,7 @@ function CompraCartaoPanel({ d, onCancel, onSave }: { d: ScenarioData; onCancel:
       <Field l="Documento"><input className="inp h-8" value={e.document} onChange={(x) => setE({ ...e, document: x.target.value })} /></Field>
       <Field l="Valor"><MoneyInput className="w-full" value={e.value} onChange={(v) => setE({ ...e, value: v })} /></Field>
       <Field l="Data da compra"><DateInput value={e.baseDate} onChange={(v) => setE({ ...e, baseDate: v })} /></Field>
-      <Field l="Parcelas no cartão"><input className="inp h-8" type="number" min={1} max={24} value={n} onChange={(x) => setN(Number(x.target.value))} /></Field>
+      <Field l="Parcelas no cartão"><input className="inp h-8" type="number" min={1} max={360} value={n} onChange={(x) => setN(Number(x.target.value))} /></Field>
       <Field l="Descrição" full><input className="inp h-8" value={e.notes} onChange={(x) => setE({ ...e, notes: x.target.value })} /></Field>
     </div>
     <CardInstPreview d={d} cardId={e.cardId} date={e.baseDate} amount={e.value} n={n} />

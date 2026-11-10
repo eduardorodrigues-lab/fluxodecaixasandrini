@@ -253,7 +253,7 @@ function checkOp(d: ScenarioData, inp: CardOpInput) {
   if (!ISO.test(inp.date)) err("Data inválida.");
   if (!(Number.isInteger(inp.amount) && inp.amount > 0)) err("Valor deve ser positivo.");
   if (inp.fee != null && !(Number.isInteger(inp.fee) && inp.fee >= 0)) err("Tarifa inválida.");
-  if (!(Number.isInteger(inp.installments) && inp.installments >= 1 && inp.installments <= 24)) err("Parcelas no cartão: de 1 a 24.");
+  if (!(Number.isInteger(inp.installments) && inp.installments >= 1 && inp.installments <= 360)) err("Parcelas no cartão: de 1 a 360.");
   return card!;
 }
 function pushParcels(d: ScenarioData, card: Card, inp: CardOpInput, src: { supplierId: string; categoryId: string; document: string; notes: string }) {
