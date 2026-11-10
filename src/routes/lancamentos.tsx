@@ -92,7 +92,7 @@ function Page() {
   return (
     <div>
       <PageHeader title="Lançamentos" sub={active.isBase ? "" : "Simulação: alterações imediatas e apenas visuais."}>
-        {(tab === "planned" || tab === "committed") && <button className="btn btn-primary" onClick={() => setPanel({ t: "new" })}>+ Novo</button>}
+        {(tab === "planned" || tab === "committed") && <button className="btn btn-primary" onClick={() => setPanel({ t: "new" })}>+ Novo lançamento</button>}
       </PageHeader>
       {err && <div className="mb-2 rounded border border-destructive p-2 text-xs text-destructive">{err}</div>}
       <div className="mb-2 flex overflow-x-auto border-b border-border">{TABS.map((t) => <button key={t.k} className={`tab whitespace-nowrap ${tab === t.k ? "tab-on" : ""}`} onClick={() => setTab(t.k)}>{t.l} {t.k === "consultas" ? "" : `(${t.k === "committed" ? d.committed.length + d.expenses.length : (d[t.k] as unknown[]).length})`}</button>)}</div>
@@ -209,7 +209,7 @@ function Page() {
       <p className="mt-2 text-[11px] text-muted-foreground">Registrar pagamento é apenas o registro de uma baixa já realizada — não executa transferência bancária.</p>
 
       {panel?.t === "pay" && <PagamentoPanel d={d} kind={panel.kind} titleId={panel.id} label={panel.label} onCancel={() => setPanel(null)} onConfirm={(lines, note) => { const ok = act((x) => registerPaymentBatch(x, { batchId: uid(), titleKind: panel.kind, titleId: panel.id, lines, note })); if (ok) setPanel(null); return ok; }} />}
-      {panel?.t === "new" && <NovaNota d={d} stage={tab === "committed" ? "committed" : "planned"} isBase={active.isBase} onCancel={() => setPanel(null)} onConfirm={(n, cond) => { const ok = act((x) => { if (cond) saveSupplierCondition(x, n.supplierId, cond, now()); applyNote(x, n, { id: uid, at: now() }); }); if (ok) setPanel(null); return ok; }} />}
+      {panel?.t === "new" && <NovaNota d={d} isBase={active.isBase} onCancel={() => setPanel(null)} onConfirm={(n, cond) => { const ok = act((x) => { if (cond) saveSupplierCondition(x, n.supplierId, cond, now()); applyNote(x, n, { id: uid, at: now() }); }); if (ok) setPanel(null); return ok; }} />}
       {panel?.t === "parcela" && <ParcelaPanel label={panel.label} amount={panel.amount} date={panel.date} onCancel={() => setPanel(null)} onSave={(a, dt) => doPanel((x) => panel.save(x, a, dt))} />}
       {panel?.t === "nota" && <DadosNotaPanel d={d} init={panel.init} siblings={panel.siblings} onCancel={() => setPanel(null)} onSave={(f) => doPanel((x) => panel.save(x, f))} />}
       {panel?.t === "prorrogar" && <ProrrogarPanel label={panel.label} current={panel.current} original={panel.original} history={panel.history} isBase={active.isBase} onCancel={() => setPanel(null)} onSave={(to, note) => doPanel((x) => panel.save(x, to, note))} />}

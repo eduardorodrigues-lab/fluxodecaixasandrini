@@ -4,6 +4,7 @@ import type { CategoryKind, ScenarioData } from "@/lib/engine/types";
 import { fmtDate } from "@/lib/dates";
 import { fmtBRL } from "@/lib/money";
 import { adjustLast, conditionDate, generateParcels, parcelsTotal, validateNote, type DraftParcel, type NoteDraft } from "@/lib/notas";
+import { plannedRemaining } from "@/lib/engine/actions";
 
 /** Painel lateral amplo e responsivo (tela cheia no celular). */
 export function SidePanel({ title, sub, onClose, footer, children, wide }: { title: string; sub?: string; onClose: () => void; footer?: ReactNode; children: ReactNode; wide?: boolean }) {
@@ -47,12 +48,15 @@ export function CatSubFields({ d, kind, categoryId, onChange }: { d: ScenarioDat
 const termsTxt = (t: (number | null)[]) => t.filter((x) => x !== null).join(", ");
 const parseTerms = (s: string) => s.split(/[,;\s]+/).filter(Boolean).map(Number).filter((n) => Number.isFinite(n));
 
-export function NovaNota({ d, stage, isBase, onCancel, onConfirm }: { d: ScenarioData; stage: "planned" | "committed"; isBase: boolean; onCancel: () => void; onConfirm: (n: NoteDraft, saveCondition: (number | null)[] | null) => boolean }) {
-  const [n, setN] = useState<NoteDraft>({ stage, kind: "compra", categoryId: "", supplierId: "", purchaseCode: "", document: "", description: "", total: null, baseDate: null, parcels: [] });
+export function NovaNota({ d, isBase, onCancel, onConfirm }: { d: ScenarioData; stage?: "planned" | "committed"; isBase: boolean; onCancel: () => void; onConfirm: (n: NoteDraft, saveCondition: (number | null)[] | null) => boolean }) {
+  const [chosen, setChosen] = useState(false);
+  const [n, setN] = useState<NoteDraft>({ stage: "planned", kind: "compra", categoryId: "", supplierId: "", purchaseCode: "", document: "", description: "", total: null, baseDate: null, parcels: [], plannedId: null, closeRest: false });
   const [manual, setManual] = useState<string | null>(null);
   const [saveCond, setSaveCond] = useState(false);
   const [review, setReview] = useState(false);
+  const [tried, setTried] = useState(false);
   const up = (p: Partial<NoteDraft>) => setN({ ...n, ...p });
+  const stage = n.stage;
   const sup = d.suppliers.find((s) => s.id === n.supplierId);
   const cond = manual !== null ? parseTerms(manual) : (sup?.terms ?? []);
   const canGen = !!n.total && !!n.baseDate && cond.some((t) => t !== null);
@@ -63,32 +67,71 @@ export function NovaNota({ d, stage, isBase, onCancel, onConfirm }: { d: Scenari
   const errs = validateNote(n);
   const sub = d.categories.find((c) => c.id === n.categoryId)?.name ?? "—";
   const stageL = stage === "planned" ? "Planejada" : "Efetivado";
-  const footer = review
+  // Previsões ativas e conciliadas que podem ser substituídas (mesmas regras do motor de efetivação).
+  const prevs = stage === "committed" ? d.planned.filter((p) => p.status === "ativo").flatMap((p) => { try { const r = plannedRemaining(d, p.id); return r.health === "ok" && r.value > 0 ? [{ p, rem: r.value }] : []; } catch { return []; } }) : [];
+  const link = prevs.find((x) => x.p.id === n.plannedId);
+  const rest = link ? Math.max(0, link.rem - (n.total ?? 0)) : 0;
+  const pick = (st: "planned" | "committed") => { setN({ ...n, stage: st, plannedId: null, closeRest: false }); setChosen(true); setTried(false); };
+  const backToType = () => {
+    if (n.plannedId && !window.confirm("O vínculo com a previsão será descartado ao trocar o tipo. Continuar?")) return;
+    up({ plannedId: null, closeRest: false }); setChosen(false); setReview(false);
+  };
+  const linkTo = (id: string) => {
+    const x = prevs.find((v) => v.p.id === id);
+    if (!x) return up({ plannedId: null });
+    up({ plannedId: id, supplierId: x.p.supplierId, categoryId: x.p.categoryId, kind: d.categories.find((c) => c.id === x.p.categoryId)?.kind ?? n.kind, purchaseCode: x.p.purchaseCode, baseDate: n.baseDate ?? x.p.baseDate, parcels: [] });
+    setManual(null);
+  };
+  const next = () => { setTried(true); if (!errs.length) setReview(true); };
+  const err = (m: string) => tried && errs.includes(m) ? <span className="text-[11px] text-destructive">{m}</span> : null;
+  const title = !chosen ? "Novo lançamento" : review ? `Revisar · Novo lançamento · ${stageL}` : `Novo lançamento · ${stageL}`;
+  const footer = !chosen ? <button className="btn" onClick={onCancel}>Cancelar</button> : review
     ? <><button className="btn" onClick={() => setReview(false)}>Voltar e editar</button><button className="btn btn-primary" onClick={() => onConfirm(n, manual !== null && saveCond ? cond : null)}>Confirmar lançamento</button></>
-    : <><button className="btn" onClick={onCancel}>Cancelar</button><button className="btn btn-primary" disabled={errs.length > 0} title={errs.join(" ")} onClick={() => setReview(true)}>Revisar e confirmar</button></>;
+    : <><button className="btn" onClick={backToType}>Trocar tipo</button><button className="btn" onClick={onCancel}>Cancelar</button><button className="btn btn-primary" onClick={next}>Revisar e confirmar</button></>;
   return (
-    <SidePanel wide title={review ? "Revisar lançamento" : `Nova nota · ${stageL}`} sub={isBase ? "Grava no fluxo real ao confirmar" : "Simulação — não altera o fluxo real"} onClose={onCancel} footer={footer}>
-      {review ? (
+    <SidePanel wide title={title} sub={isBase ? "Grava no fluxo real ao confirmar" : "Simulação — não altera o fluxo real"} onClose={onCancel} footer={footer}>
+      {!chosen ? (
+        <Section n={1} title="Tipo de lançamento">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {([["planned", "Planejada", "Previsão de compra ou despesa. Valores e condições sujeitos a mudança; documento e código podem ficar vazios. Compõe as saídas planejadas; não recebe pagamento."], ["committed", "Efetivado", "Compra, pedido ou despesa já confirmada. Compõe as saídas efetivadas e permite pagamento parcial ou total. Pode substituir uma previsão existente."]] as const).map(([k, l, t]) => (
+              <button key={k} className="rounded-lg border border-border bg-card p-4 text-left hover:border-primary hover:bg-primary/5" onClick={() => pick(k)}><div className="text-sm font-semibold">{l}</div><div className="mt-1 text-muted-foreground">{t}</div></button>
+            ))}
+          </div>
+        </Section>
+      ) : review ? (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-border bg-card p-4 md:grid-cols-3">
-            {[["Etapa", stageL], ["Categoria", n.kind === "compra" ? "Compra" : "Despesa"], ["Subgrupo", sub], ["Fornecedor", sup?.name ?? "—"], ["Código do pedido", n.purchaseCode || "—"], ["Documento", n.document || "—"], ["Descrição", n.description || "—"], ["Valor total", fmtBRL(n.total)], ["Data base", fmtDate(n.baseDate)]].map(([k, v]) => <div key={k}><div className="lbl">{k}</div><div className="font-medium">{v}</div></div>)}
+            {[["Tipo", stageL], ["Categoria", n.kind === "compra" ? "Compra" : "Despesa"], ["Subgrupo", sub], ["Fornecedor", sup?.name ?? "—"], ["Código do pedido", n.purchaseCode || "—"], ["Documento", n.document || "—"], ["Descrição", n.description || "—"], ["Valor total", fmtBRL(n.total)], ["Data base", fmtDate(n.baseDate)]].map(([k, v]) => <div key={k}><div className="lbl">{k}</div><div className="font-medium">{v}</div></div>)}
           </div>
+          {link && <p className="rounded-lg border border-primary/20 bg-primary/5 p-3">Substitui {fmtBRL(Math.min(link.rem, n.total ?? 0))} da previsão {link.p.purchaseCode || link.p.document || "sem código"} (pendente {fmtBRL(link.rem)}). {n.closeRest || rest === 0 ? "O restante será encerrado." : `Restante de ${fmtBRL(rest)} continua planejado.`}</p>}
           <ParcelTable parcels={n.parcels} />
           {manual !== null && <p className="text-muted-foreground">Condição manual {termsTxt(cond)} {saveCond ? "— será salva como nova condição do fornecedor (histórico preservado)." : "— usada só nesta nota."}</p>}
         </div>
       ) : <>
-        <Section n={1} title="Dados da nota">
+        {stage === "committed" && (
+          <Section title="Vínculo com previsão">
+            <div className="grid grid-cols-1 gap-3 rounded-lg border border-border bg-card p-3 md:grid-cols-2">
+              <Field l="Previsão" full><select className="inp h-8" value={n.plannedId ?? ""} onChange={(e) => linkTo(e.target.value)}><option value="">Cadastrar sem previsão</option>{prevs.map(({ p, rem }) => <option key={p.id} value={p.id}>{d.suppliers.find((s) => s.id === p.supplierId)?.name ?? "—"} · {p.purchaseCode || p.document || "sem código"} · pendente {fmtBRL(rem)}</option>)}</select></Field>
+              {link && <div className="md:col-span-2 space-y-1">
+                <div>Pendente na previsão: <b>{fmtBRL(link.rem)}</b> · substituído por este lançamento: <b>{fmtBRL(Math.min(link.rem, n.total ?? 0))}</b> · restante: <b>{fmtBRL(rest)}</b></div>
+                {rest > 0 && <div className="flex flex-wrap gap-4"><label className="flex items-center gap-1"><input type="radio" checked={!n.closeRest} onChange={() => up({ closeRest: false })} /> Restante continua planejado</label><label className="flex items-center gap-1"><input type="radio" checked={!!n.closeRest} onChange={() => up({ closeRest: true })} /> Encerrar o restante</label></div>}
+              </div>}
+            </div>
+          </Section>
+        )}
+        <Section n={2} title="Dados gerais">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <CatSubFields d={d} kind={n.kind} categoryId={n.categoryId} onChange={(kind, categoryId) => up({ kind, categoryId })} />
-            <Field l="Fornecedor" full><SupplierSearch d={d} value={n.supplierId} onChange={(supplierId) => { up({ supplierId, parcels: [] }); setManual(null); }} /></Field>
-            <Field l="Código do pedido"><input className="inp h-8" value={n.purchaseCode} onChange={(e) => up({ purchaseCode: e.target.value })} /></Field>
-            <Field l="Documento"><input className="inp h-8" value={n.document} onChange={(e) => up({ document: e.target.value })} /></Field>
+            {err("Selecione o subgrupo.")}
+            <Field l="Fornecedor" full><SupplierSearch d={d} value={n.supplierId} onChange={(supplierId) => { up({ supplierId, parcels: [] }); setManual(null); }} />{err("Selecione o fornecedor.")}</Field>
+            <Field l={stage === "planned" ? "Código do pedido (opcional)" : "Código do pedido"}><input className="inp h-8" value={n.purchaseCode} onChange={(e) => up({ purchaseCode: e.target.value })} /></Field>
+            <Field l={stage === "planned" ? "Documento (opcional)" : "Documento"}><input className="inp h-8" value={n.document} onChange={(e) => up({ document: e.target.value })} />{err("Informe o documento.")}</Field>
             <Field l="Descrição" full><input className="inp h-8" value={n.description} onChange={(e) => up({ description: e.target.value })} /></Field>
-            <Field l="Valor total"><MoneyInput className="h-8 w-full" value={n.total} onChange={(total) => up({ total })} /></Field>
-            <Field l="Data base para os prazos"><DateInput value={n.baseDate} onChange={(baseDate) => up({ baseDate })} /></Field>
+            <Field l={stage === "planned" ? "Valor total previsto" : "Valor total"}><MoneyInput className="h-8 w-full" value={n.total} onChange={(total) => up({ total })} />{err("Informe o valor total.")}</Field>
+            <Field l="Data base para os prazos"><DateInput value={n.baseDate} onChange={(baseDate) => up({ baseDate })} />{err("Informe a data base.")}</Field>
           </div>
         </Section>
-        <Section n={2} title="Condição de pagamento">
+        <Section n={3} title="Condição de pagamento">
           <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
             {!sup ? <p className="text-muted-foreground">Selecione o fornecedor para ver a condição vigente.</p> : manual === null ? (
               <div className="flex flex-wrap items-center gap-3">
@@ -104,7 +147,7 @@ export function NovaNota({ d, stage, isBase, onCancel, onConfirm }: { d: Scenari
             )}
           </div>
         </Section>
-        <Section n={3} title="Parcelas">
+        <Section n={4} title={stage === "planned" ? "Parcelas previstas" : "Parcelas efetivas"}>
           <div className="overflow-auto rounded-lg border border-border">
             <table className="tbl"><thead><tr><th>Parcela</th><th className="num">Valor</th><th>Vencimento</th><th>Prorrogar para</th><th /></tr></thead>
               <tbody>{n.parcels.map((p, i) => <tr key={i}><td>{i + 1}/{n.parcels.length}</td><td className="num"><MoneyInput value={p.amount} onChange={(v) => setP(i, { amount: v ?? 0 })} /></td><td><DateInput value={p.date} onChange={(v) => setP(i, { date: v })} /></td><td><DateInput allowEmpty value={p.ext} onChange={(v) => setP(i, { ext: v })} /></td><td><button className="btn btn-danger" aria-label={`Remover parcela ${i + 1}`} onClick={() => up({ parcels: n.parcels.filter((_, k) => k !== i) })}>Remover</button></td></tr>)}
@@ -115,13 +158,13 @@ export function NovaNota({ d, stage, isBase, onCancel, onConfirm }: { d: Scenari
             <button className="btn" disabled={!n.parcels.length || !diff} onClick={() => up({ parcels: adjustLast(n.parcels, n.total ?? 0) })}>Ajustar diferença na última parcela</button>
           </div>
         </Section>
-        <Section n={4} title="Resumo">
+        <Section n={5} title="Resumo">
           <div className="grid grid-cols-3 gap-3 rounded-lg border border-border bg-card p-4">
             <div><div className="lbl">Total da nota</div><div className="num text-sm font-semibold">{fmtBRL(n.total ?? 0)}</div></div>
             <div><div className="lbl">Total das parcelas</div><div className="num text-sm font-semibold">{fmtBRL(tot)}</div></div>
             <div><div className="lbl">Diferença</div><div className={`num text-sm font-semibold ${diff ? "text-destructive" : "text-primary"}`}>{fmtBRL(diff)}</div></div>
           </div>
-          {errs.length > 0 && <ul className="mt-2 list-disc pl-5 text-destructive">{errs.map((e) => <li key={e}>{e}</li>)}</ul>}
+          {tried && errs.length > 0 && <ul className="mt-2 list-disc pl-5 text-destructive">{errs.map((e) => <li key={e}>{e}</li>)}</ul>}
         </Section>
       </>}
     </SidePanel>

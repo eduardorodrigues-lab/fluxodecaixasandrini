@@ -78,3 +78,23 @@ describe("Nova nota por parcela", () => {
     for (const p of legacy) expect(p.terms).toEqual(old);
   });
 });
+
+describe("Novo lançamento: tipo escolhido e vínculo com previsão", () => {
+  it("Planejada aceita documento vazio; Efetivado exige documento", () => {
+    const d = base();
+    expect(validateNote({ ...draft(d, "planned"), document: "", purchaseCode: "" })).toEqual([]);
+    expect(validateNote({ ...draft(d, "committed"), document: "" })).toContain("Informe o documento.");
+  });
+  it("Efetivado vinculado substitui parte da previsão sem duplicar; restante continua ou é encerrado", () => {
+    for (const closeRest of [false, true]) {
+      const d = base(); applyNote(d, { ...draft(d, "planned", 1000000, [30]), document: "" }, ids);
+      const pl = d.planned.at(-1)!;
+      applyNote(d, { ...draft(d, "committed", 600000, [45, 75]), plannedId: pl.id, closeRest }, ids);
+      const eff = d.committed.filter((c) => c.plannedId === pl.id);
+      expect(eff.reduce((a, c) => a + c.value, 0)).toBe(600000);
+      expect(eff.map((c) => c.parcelNo)).toEqual([1, 2]);
+      const dist = distributePlanned(pl, d.suppliers.find((s) => s.id === pl.supplierId), d.committed, d.params.profile, d.effectivations);
+      expect(pl.status === "encerrado" ? 0 : pl.remainingOverride?.value ?? dist.remaining).toBe(closeRest ? 0 : 400000);
+    }
+  });
+});

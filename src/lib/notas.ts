@@ -1,6 +1,7 @@
 // Nova nota (painel lateral): geração de parcelas, validação e gravação como lançamentos por parcela.
 // Funções puras sobre o rascunho do cenário — chamadas via update() só após "Revisar e confirmar".
 import { distributePlanned, splitCents } from "@/lib/engine/engine";
+import { effectivate, plannedRemaining } from "@/lib/engine/actions";
 import type { CategoryKind, Committed, ExtensionEvent, ScenarioData } from "@/lib/engine/types";
 import { addDays } from "@/lib/dates";
 
@@ -9,6 +10,8 @@ export interface NoteDraft {
   stage: "planned" | "committed"; kind: CategoryKind; categoryId: string; supplierId: string;
   purchaseCode: string; document: string; description: string; total: number | null; baseDate: string | null;
   parcels: DraftParcel[];
+  plannedId?: string | null; // Efetivado vinculado a uma previsão existente
+  closeRest?: boolean; // vinculado: true = encerra o restante da previsão; false = restante continua planejado
 }
 
 /** Prazos numéricos (0 conta; vazio não) → parcelas com resíduo de centavos na última. */
@@ -29,6 +32,7 @@ export function validateNote(n: NoteDraft): string[] {
   const e: string[] = [];
   if (!n.categoryId) e.push("Selecione o subgrupo.");
   if (!n.supplierId) e.push("Selecione o fornecedor.");
+  if (n.stage === "committed" && !n.document.trim()) e.push("Informe o documento.");
   if (!n.total || n.total <= 0) e.push("Informe o valor total.");
   if (!n.baseDate) e.push("Informe a data base.");
   if (!n.parcels.length) e.push("Gere ou adicione as parcelas.");
@@ -47,6 +51,17 @@ export function applyNote(d: ScenarioData, n: NoteDraft, ids: { id: () => string
   const sorted = [...n.parcels];
   if (n.stage === "planned") {
     d.planned.push({ id: ids.id(), supplierId: n.supplierId, purchaseCode: n.purchaseCode, document: n.document, value: n.total!, baseDate: n.baseDate!, categoryId: n.categoryId, notes: n.description, status: "ativo", remainingOverride: null, installments: sorted.map((p) => ({ amount: p.amount, date: p.date!, extensionDate: p.ext, extensionHistory: extHist(p, ids.at) })) });
+    return;
+  }
+  if (n.plannedId) {
+    // Substitui parte da previsão pelo efetivado via motor de efetivação (sem duplicar saídas).
+    const r = plannedRemaining(d, n.plannedId);
+    const effId = ids.id();
+    const rest = Math.max(0, r.value - n.total!);
+    effectivate(d, { id: effId, plannedId: n.plannedId, at: ids.at, kind: n.closeRest || rest === 0 ? "concluida" : "parcial",
+      installments: sorted.map((p) => ({ value: p.amount, date: p.date!, document: n.document })),
+      remaining: n.closeRest || rest === 0 ? null : { value: rest, dates: r.dates } });
+    sorted.forEach((p, i) => { const c = d.committed.find((x) => x.id === `${effId}-${i + 1}`)!; Object.assign(c, { noteId: effId, parcelNo: i + 1, parcelCount: sorted.length, extensionDate: p.ext, extensionHistory: extHist(p, ids.at), ...(n.description ? { notes: n.description } : {}) }); });
     return;
   }
   const noteId = ids.id();

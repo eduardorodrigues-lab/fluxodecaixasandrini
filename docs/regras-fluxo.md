@@ -153,3 +153,5 @@ Script de reprodução local: `bun scripts/validate-ceo-xlsm.ts <arquivo> /tmp/r
   - Cobertura grava baixa `method: "cartao"` (liquidação do fornecedor, "Quitado com cartão"): reduz a pendência, não debita banco, não entra no extrato; a parte não coberta segue no vencimento original. Não pode exceder a pendência; idempotente por id; revisão antes de gravar. Previsões precisam ser efetivadas antes.
   - Rastreio: título → operação no cartão → parcelas → fatura → baixas bancárias da fatura (uma ou mais contas). Parcela de cartão não recebe baixa direta.
   - Estorno da operação cancela parcelas e estorna a liquidação, mantendo histórico; bloqueado se alguma parcela está em fatura fechada. "Reabrir fatura" só sem pagamento ativo.
+
+- Novo lançamento: primeiro passo escolhe Planejada ou Efetivado (não pela aba). Planejada aceita código/documento vazios; Efetivado exige documento e pode vincular previsão ativa: substitui parte via efetivação, restante continua planejado ou é encerrado. Validações só ao avançar.
