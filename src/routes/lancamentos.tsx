@@ -7,6 +7,7 @@ import type { CategoryKind, Committed, Expense, Planned, ScenarioData } from "@/
 import { addDays, fmtDate, parseBRDate } from "@/lib/dates";
 import { fmtBRL } from "@/lib/money";
 import { uid, useApp } from "@/lib/store";
+import { Consultas } from "@/components/Consultas";
 
 export const Route = createFileRoute("/lancamentos")({
   head: () => ({
@@ -21,8 +22,8 @@ export const Route = createFileRoute("/lancamentos")({
 });
 
 // Duas etapas (Planejada/Efetivado) × duas categorias (Compra/Despesa). Pagamentos = controle separado (baixas).
-type Tab = "planned" | "committed" | "payments";
-const TABS: { k: Tab; l: string }[] = [{ k: "planned", l: "Planejada" }, { k: "committed", l: "Efetivado" }, { k: "payments", l: "Pagamentos (baixas)" }];
+type Tab = "planned" | "committed" | "payments" | "consultas";
+const TABS: { k: Tab; l: string }[] = [{ k: "planned", l: "Planejada" }, { k: "committed", l: "Efetivado" }, { k: "payments", l: "Pagamentos (baixas)" }, { k: "consultas", l: "Consultas" }];
 const now = () => new Date().toISOString();
 
 function Page() {
@@ -76,17 +77,17 @@ function Page() {
   return (
     <div>
       <PageHeader title="Lançamentos" sub={active.isBase ? "" : "Simulação: alterações imediatas e apenas visuais."}>
-        {tab !== "payments" && <button className="btn btn-primary" onClick={add}>+ Novo</button>}
+        {tab !== "payments" && tab !== "consultas" && <button className="btn btn-primary" onClick={add}>+ Novo</button>}
       </PageHeader>
       {err && <div className="mb-2 rounded border border-destructive p-2 text-xs text-destructive">{err}</div>}
-      <div className="mb-2 flex border-b border-border">{TABS.map((t) => <button key={t.k} className={`tab ${tab === t.k ? "tab-on" : ""}`} onClick={() => setTab(t.k)}>{t.l} ({t.k === "committed" ? d.committed.length + d.expenses.length : (d[t.k] as unknown[]).length})</button>)}</div>
-      {tab !== "payments" && (
+      <div className="mb-2 flex border-b border-border">{TABS.map((t) => <button key={t.k} className={`tab ${tab === t.k ? "tab-on" : ""}`} onClick={() => setTab(t.k)}>{t.l} {t.k === "consultas" ? "" : `(${t.k === "committed" ? d.committed.length + d.expenses.length : (d[t.k] as unknown[]).length})`}</button>)}</div>
+      {tab !== "payments" && tab !== "consultas" && (
         <div className="mb-2 flex items-center gap-2 text-xs">
           <span className="lbl">Categoria</span>
           <select className="inp" value={fKind} onChange={(e) => setFKind(e.target.value as "" | CategoryKind)}><option value="">Todas</option><option value="compra">Compra</option><option value="despesa">Despesa</option></select>
         </div>
       )}
-      <div className="card overflow-auto">
+      {tab === "consultas" ? <Consultas d={d} /> : <div className="card overflow-auto">
         {tab === "planned" && (
           <table className="tbl"><thead><tr><th>Fornecedor</th><th>Cód. compra</th><th>Documento</th><th className="num">Valor previsto</th><th>Data base</th><th>Categoria / Subgrupo</th><th>Descrição</th><th>Restante previsto / parcelas</th><th>Estado</th><th>Ações</th></tr></thead>
             <tbody>{d.planned.filter((p: Planned) => !fKind || (kindOfCat(p.categoryId) || "compra") === fKind).map((p: Planned) => {
@@ -131,7 +132,7 @@ function Page() {
                 <td>{!p.reversedAt && <button className="btn" disabled={!active.isBase} onClick={() => { const n = prompt("Motivo do estorno (auditado):"); if (n) act((x) => reversePayment(x, p.id, n, now())); }}>Estornar</button>}</td></tr>;
             })}</tbody></table>
         )}
-      </div>
+      </div>}
       <p className="mt-2 text-[11px] text-muted-foreground">Registrar pagamento é apenas o registro de uma baixa já realizada — não executa transferência bancária. Pagamentos nunca são apagados por prorrogação; estornos ficam no histórico.</p>
     </div>
   );
