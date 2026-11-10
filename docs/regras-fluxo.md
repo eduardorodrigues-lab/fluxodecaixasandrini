@@ -119,3 +119,13 @@ Arquivo anexado ao chat (31,8 MB). Analisado só no ambiente de desenvolvimento;
 4. Revisar o antes/depois na barra superior e confirmar (ou cancelar sem alterar nada).
 5. FLUXO DE CAIXA → "Conciliar com motor" com o período 01/10/2026–31/10/2026.
 Script de reprodução local: `bun scripts/validate-ceo-xlsm.ts <arquivo> /tmp/relatorio.json` (relatório contém agregados reais — manter fora do projeto). Teste `src/lib/ceoReal.test.ts` roda a conciliação quando o arquivo está disponível localmente.
+
+## Categorias, subgrupos e apresentação das saídas (atualização 2026-11-10)
+
+- **Categoria** é só a natureza do lançamento: **Compra** ou **Despesa**. Planejada/efetuada são ETAPAS do lançamento, não categorias. Cada registro de `categories` é um **subgrupo** (ex.: "Energia elétrica"); lançamentos vinculam ao subgrupo (`categoryId`).
+- Migração: kinds antigos por etapa (`planejada`/`comprometida`) viram `compra` em `normalizeData`; IDs e vínculos preservados. Subgrupos com o MESMO nome somam juntos no fluxo (mescla por nome, não por ID).
+- **Lançamentos** tem duas abas (Planejada, Efetivado) + Pagamentos (controle separado de baixas). Efetivado reúne compras/pedidos efetivados e despesas efetuadas na mesma lista, com filtro por categoria. A efetivação HERDA o subgrupo da previsão.
+- **Fluxo**: saídas ficam sob Compras e Despesas. Filtro de apresentação (só muda a exibição, totais idênticos): **Consolidada por subgrupo** (Categoria → Subgrupo; planejado restante + efetuado juntos) ou **Separada por etapa** (Categoria → Planejada/Efetuada → Subgrupo). Planejado restante + efetuado sem duplicar previsão efetivada (inclusive parcial).
+- Item sem subgrupo: despesa importada classifica como Despesa; previsão/efetivado sem subgrupo como Compra; rótulo "(sem subgrupo)".
+- **Relatório de despesas** (/despesas): mesmos lançamentos do fluxo (sem cadastro separado), filtros por período, subgrupo e etapa.
+- Testes: `src/lib/engine/subgrupos.test.ts` (migração de kinds, igualdade de totais entre modos, mescla por nome, despesa planejada + efetivação sem duplicar, fallback sem subgrupo).

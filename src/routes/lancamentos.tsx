@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, type ReactElement } from "react";
 import { DateInput, IntInput, MoneyInput, PageHeader, ProfileBadge } from "@/components/kit";
 import { committedDate, distributePlanned, expenseDate, paymentsFor, splitCents, titleStatus } from "@/lib/engine/engine";
 import { closePlanned, confirmExtension, effectivate, linkLegacyTitle, plannedSummary, registerPayment, reopenPlanned, reverseEffectivation, reversePayment, setPlannedRemaining, suggestEffectivation, todaySP } from "@/lib/engine/actions";
@@ -143,13 +143,13 @@ type RowProps = {
   set: <T extends "planned" | "committed" | "expenses">(k: T, id: string, patch: Partial<ScenarioData[T][number]>) => boolean;
   del: (k: "planned" | "committed" | "expenses", id: string) => boolean;
   act: (fn: (x: ScenarioData) => void) => boolean;
-  CatSub: (p: { v: string; on: (catId: string) => void }) => JSX.Element;
-  Txt: (p: { v: string; on: (v: string) => void; w?: string; ph?: string }) => JSX.Element;
-  StSel: (p: { v: string; on: (v: "ativo" | "cancelado") => void }) => JSX.Element;
+  CatSub: (p: { v: string; on: (catId: string) => void }) => ReactElement;
+  Txt: (p: { v: string; on: (v: string) => void; w?: string; ph?: string }) => ReactElement;
+  StSel: (p: { v: string; on: (v: "ativo" | "cancelado") => void }) => ReactElement;
   isBase: boolean; isOpen: (kind: string, id: string) => boolean; toggle: (kind: string, id: string) => void;
 };
 
-function CommittedRow({ c, d, sup, set, del, act, CatSub, Txt, StSel, isBase, isOpen, toggle }: RowProps & { c: Committed }) {
+function CommittedRow({ c, d, set, del, act, CatSub, Txt, StSel, isBase, isOpen, toggle }: RowProps & { c: Committed }) {
   const ts = titleStatus(c.value, c.status, paymentsFor(d, "committed", c.id));
   const pl = c.plannedId ? d.planned.find((p) => p.id === c.plannedId) : null;
   const tipo = c.origin === "efetivacao" ? "Efetivação" : c.origin === "legado" ? "Legado" : "Manual";

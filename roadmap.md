@@ -11,3 +11,10 @@
 - [x] Validação do XLSM real (leitor seletivo, layouts reais, conciliação outubro/2026)
 
 Pendências externas: gravação oficial do XLSM (login de Eduardo + organização), login real ponta a ponta.
+
+## Categorias/subgrupos e saídas (2026-11-10) — concluído
+- [x] Categoria = Compra/Despesa; subgrupos; migração de kinds antigos preservando vínculos
+- [x] Lançamentos com 2 abas + pagamentos; efetivação herda subgrupo
+- [x] Fluxo: Compras/Despesas com filtro consolidada/etapa (totais idênticos, testado)
+- [x] Relatório de despesas (/despesas) com filtros período/subgrupo/etapa
+- [ ] Verificação visual das telas no navegador

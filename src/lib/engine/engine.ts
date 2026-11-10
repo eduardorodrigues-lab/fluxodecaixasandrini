@@ -1,7 +1,7 @@
 import { addDays, dateRange, daysInMonth, ym } from "../dates";
 import { macroCurrency, roundCents } from "../money";
 import type {
-  Category, Committed, Day, Effectivation, Expense, FlowResult, Item, MonthTarget, Params, Payment, Planned, Platform, Profile, Receipt, ScenarioData, Supplier, Warning,
+  Category, CategoryKind, Committed, Day, Effectivation, Expense, FlowResult, Item, MonthTarget, Params, Payment, Planned, Platform, Profile, Receipt, ScenarioData, Supplier, Warning,
 } from "./types";
 
 const isNum = (t: number | null | undefined): t is number => t !== null && t !== undefined && Number.isFinite(t);
@@ -343,12 +343,20 @@ export function buildRows(res: FlowResult, cats: Category[], mode: FlowMode = "c
   const isOut = (it: Item) => isPlan(it) || isEfet(it);
   const inCompras = (it: Item) => isOut(it) && it.source !== "despesa" && kindOf(it) === "compra";
   const inDespesas = (it: Item) => isOut(it) && (it.source === "despesa" || kindOf(it) === "despesa");
-  const sumDay = (d: Day, m: (it: Item) => boolean) => d.items.reduce((a, it) => (m(it) ? a + it.amount : 0), 0);
-  const vals = (m: (it: Item) => boolean) => D.map((d) => sumDay(d, m));
+  const sumDay = (day: Day, m: (it: Item) => boolean) => {
+    let s = 0;
+    for (const it of day.items) if (m(it)) s += it.amount;
+    return s;
+  };
+  const vals = (m: (it: Item) => boolean) => {
+    const out: number[] = [];
+    for (const day of D) out.push(sumDay(day, m));
+    return out;
+  };
   // Subgrupos com movimento no período, por categoria (mesclados por nome: IDs duplicados somam juntos).
   const subNames = (k: CategoryKind, m: (it: Item) => boolean) => {
     const seen = new Set<string>();
-    for (const d of D) for (const it of d.items) if (m(it)) seen.add(subName(it));
+    for (const day of D) for (const it of day.items) if (m(it)) seen.add(subName(it));
     return [...seen].sort((a, b) => a.localeCompare(b, "pt-BR"));
   };
 
