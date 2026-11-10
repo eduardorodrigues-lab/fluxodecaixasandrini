@@ -15,7 +15,7 @@ const date = (v: unknown) => (v ? fmtDate(String(v)) : "");
 const pct = (v: unknown) => (v == null || v === "" ? "" : `${(Number(v) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`);
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 const mes = (ym: string) => { const [y, m] = ym.split("-"); return `${MESES[Number(m) - 1] ?? m}/${y}`; };
-const EMPTY = "Sem preenchimento";
+const EMPTY = "Não preenchido";
 const ABA: Record<string, string> = { "Recebimento": "Recebimentos", "Plataformas": "Recebimentos", "Previsão (planejada)": "Lançamentos", "Efetivado (compra/pedido)": "Lançamentos", "Despesa": "Lançamentos", "Efetivação": "Lançamentos", "Pagamento (baixa)": "Lançamentos", "Fornecedor": "Referências", "Categoria": "Referências", "Parâmetros": "Referências", "Ajuste de saldo": "Referências", "Meta de faturamento": "Meta de Faturamento" };
 const ACAO: Record<string, string> = { "inclusão": "Inclusão", "alteração": "Alteração", "exclusão": "Remoção" };
 const txt = (v: unknown) => (v == null ? "" : String(v));
@@ -93,26 +93,44 @@ function recordLabel(c: Change, d: ScenarioData): string {
   const o = ((c.after ?? c.before) ?? {}) as R;
   const sup = d.suppliers.find((x) => x.id === o["supplierId"])?.name;
   switch (c.entity) {
-    case "Meta de faturamento": return `Meta de faturamento — ${mes(c.id)}`;
+    case "Meta de faturamento": return mes(c.id);
     case "Plataformas": return "Cadastro de plataformas";
     case "Parâmetros": return "Parâmetros gerais";
-    case "Recebimento": return `Recebimento — ${date(o["date"]) || "sem data"}`;
+    case "Recebimento": return `Recebimento de ${date(o["date"]) || "sem data"}`;
     case "Ajuste de saldo": return `Ajuste de saldo — ${date(o["date"])}`;
     case "Fornecedor": case "Categoria": return `${c.entity} — ${txt(o["name"])}`;
     default: return [c.entity.replace(/ \(.*\)/, ""), sup, o["document"] ? `doc. ${txt(o["document"])}` : ""].filter(Boolean).join(" — ");
   }
 }
 
+function PlatCompare({ c }: { c: Change }) {
+  const map = (a: unknown) => new Map(((a as R[]) ?? []).map((p) => [String(p["id"]), p]));
+  const b = map(c.before), a = map(c.after);
+  const ids = [...new Set([...b.keys(), ...a.keys()])];
+  const F: [string, (p: R | undefined) => string][] = [["Nome", (p) => (p ? txt(p["name"]) : "")], ["Início", (p) => (p ? date(p["start"]) : "")], ["Inativação", (p) => (p ? date(p["end"]) : "")]];
+  return (
+    <div className="overflow-x-auto"><table className="tbl hist-cmp"><thead><tr><th>Plataforma</th><th />{F.map(([l]) => <th key={l}>{l}</th>)}</tr></thead>
+      <tbody>{ids.flatMap((id) => {
+        const pb = b.get(id), pa = a.get(id), name = txt((pa ?? pb)?.["name"]);
+        return [
+          <tr key={id + "b"}><td className="font-semibold" rowSpan={2}>{name}</td><td>Antes</td>{F.map(([l, g]) => <td key={l}>{pb ? g(pb) || EMPTY : "Não existia"}</td>)}</tr>,
+          <tr key={id + "a"}><td>Depois</td>{F.map(([l, g]) => { const x = pa ? g(pa) : "", y = pb ? g(pb) : ""; return <td key={l} className={x !== y ? "bg-destructive/15 font-semibold text-destructive" : ""}>{pa ? x || EMPTY : "Removida"}</td>; })}</tr>,
+        ];
+      })}</tbody></table></div>
+  );
+}
+
 function Compare({ c, d }: { c: Change; d: ScenarioData }) {
+  if (c.entity === "Plataformas") return <PlatCompare c={c} />;
   const { cols, before, after } = rowsFor(c, d);
   return (
     <div className="overflow-x-auto">
       <table className="tbl hist-cmp"><thead><tr><th />{cols.map((k, n) => <th key={n} className={k.num ? "num" : ""}>{k.label}</th>)}</tr></thead>
         <tbody>
-          <tr><td className="font-semibold">Antes</td>{cols.map((k, n) => <td key={n} className={k.num ? "num" : ""}>{before ? k.get(before) || EMPTY : EMPTY}</td>)}</tr>
+          <tr><td className="font-semibold">Antes</td>{cols.map((k, n) => <td key={n} className={k.num ? "num" : ""}>{before ? k.get(before) || EMPTY : "Registro não existia"}</td>)}</tr>
           <tr><td className="font-semibold">Depois</td>{cols.map((k, n) => {
             const a = after ? k.get(after) : "", b = before ? k.get(before) : "";
-            return <td key={n} className={`${k.num ? "num" : ""} ${a !== b ? "bg-destructive/15 font-semibold text-destructive" : ""}`}>{after ? a || EMPTY : EMPTY}</td>;
+            return <td key={n} className={`${k.num ? "num" : ""} ${a !== b ? "bg-destructive/15 font-semibold text-destructive" : ""}`}>{after ? a || EMPTY : "Registro removido"}</td>;
           })}</tr>
         </tbody></table>
     </div>
@@ -138,49 +156,63 @@ function printDetail() {
     .then(() => w.document.fonts?.ready).then(() => setTimeout(go, 150));
 }
 
+interface Line { at: string; user: string; seq: number; entry: HistEntry; c: Change; aba: string; reg: string; campo: string; b: string; a: string }
+
+function describe(c: Change, d: ScenarioData): { campo: string; b: string; a: string } {
+  if (c.entity === "Meta de faturamento") return { campo: "Meta mensal", b: c.before == null ? "Não cadastrado" : money(c.before), a: c.after == null ? "Removido" : money(c.after) };
+  const { cols, before, after } = rowsFor(c, d);
+  const filled = (o: R) => cols.map((k) => [k.label, k.get(o)] as const).filter(([, v]) => v);
+  if (c.kind === "inclusão") { const f = filled(after ?? {}); return { campo: f.map(([l]) => l).join(", ") || "—", b: "Não cadastrado", a: f.map(([l, v]) => `${l}: ${v}`).join("; ") || "Incluído" }; }
+  if (c.kind === "exclusão") { const f = filled(before ?? {}); return { campo: f.map(([l]) => l).join(", ") || "—", b: f.map(([l, v]) => `${l}: ${v}`).join("; ") || "Existente", a: "Removido" }; }
+  const diff = cols.filter((k) => (before ? k.get(before) : "") !== (after ? k.get(after) : ""));
+  if (diff.length === 1) { const k = diff[0]!; return { campo: k.label, b: (before && k.get(before)) || EMPTY, a: (after && k.get(after)) || EMPTY }; }
+  return { campo: diff.map((k) => k.label).join(", "), b: diff.map((k) => `${k.label}: ${(before && k.get(before)) || EMPTY}`).join("; "), a: diff.map((k) => `${k.label}: ${(after && k.get(after)) || EMPTY}`).join("; ") };
+}
+
 export function HistoryView({ entries, data, scope = "Fluxo real", onRestore }: { entries: HistEntry[]; data: ScenarioData; scope?: string; onRestore?: ((c: Change) => void) | undefined }) {
-  const [open, setOpen] = useState<number | null>(null);
-  const list = coalesce(entries);
-  if (!list.length) return <p className="text-xs text-muted-foreground">Nenhuma alteração registrada.</p>;
-  const sel = open != null ? list[open] : null;
+  const [open, setOpen] = useState<{ line: Line; full: boolean } | null>(null);
+  // Cada confirmação é preservada (sem fundir); ordem: mais recente primeiro, desempate pela sequência de gravação.
+  const lines: Line[] = entries.flatMap((e, ei) => e.changes.filter((c) => JSON.stringify(c.before) !== JSON.stringify(c.after)).map((c, ci) => ({ at: e.at, user: e.user, seq: ei * 1000 + ci, entry: e, c, aba: ABA[c.entity] ?? c.entity, reg: recordLabel(c, data), ...describe(c, data) })))
+    .sort((x, y) => y.at.localeCompare(x.at) || x.seq - y.seq);
+  if (!lines.length) return <p className="text-xs text-muted-foreground">Nenhuma alteração registrada.</p>;
+  const days = new Map<string, Line[]>();
+  for (const l of lines) { const k = dt(l.at); days.set(k, [...(days.get(k) ?? []), l]); }
+  const sel = open?.line;
+  const shown = sel ? (open!.full ? sel.entry.changes.filter((c) => JSON.stringify(c.before) !== JSON.stringify(c.after)) : [sel.c]) : [];
+  const title = sel ? [sel.aba, sel.reg.replace(/^.*? — /, ""), `${ACAO[sel.c.kind]}${sel.c.kind === "alteração" && sel.campo && !sel.campo.includes(",") ? ` do ${sel.campo}` : ""}`].join(" · ") : "";
   return (
     <>
-      <div className="max-h-[75vh] overflow-auto">
-        <table className="tbl"><thead><tr><th>Data</th><th>Horário</th><th>Usuário</th><th>Aba</th><th>Registro</th><th>Ação</th><th>Campo</th><th>Antes</th><th>Depois</th></tr></thead>
-          <tbody>{list.map((e, i) => {
-            const lines = e.changes.map((c) => {
-              const { cols, before, after } = rowsFor(c, data);
-              const diff = c.kind === "alteração" ? cols.filter((k) => (before ? k.get(before) : "") !== (after ? k.get(after) : "")) : [];
-              const reg = recordLabel(c, data);
-              if (c.kind !== "alteração") return { c, reg, campo: "—", b: c.kind === "inclusão" ? EMPTY : "Existente", a: c.kind === "exclusão" ? "Removido" : "Incluído" };
-              if (diff.length === 1) { const k = diff[0]!; return { c, reg, campo: k.label, b: (before && k.get(before)) || EMPTY, a: (after && k.get(after)) || EMPTY }; }
-              const names = diff.map((k) => k.label);
-              return { c, reg, campo: `${diff.length} campos: ${names.slice(0, 3).join(", ")}${names.length > 3 ? "…" : ""}`, b: "Ver detalhe", a: "Ver detalhe" };
-            });
-            return lines.map((l, j) => (
-              <tr key={`${i}-${j}`} className={`cursor-pointer hover:bg-secondary ${j === 0 ? "border-t-2 border-border" : ""}`} onClick={() => setOpen(i)}>
-                <td>{j === 0 ? dt(e.at) : ""}</td><td>{j === 0 ? hr(e.at) : ""}</td><td>{j === 0 ? e.user || "—" : ""}</td>
-                <td>{ABA[l.c.entity] ?? l.c.entity}</td><td>{l.reg}</td><td>{ACAO[l.c.kind]}</td><td className="max-w-xs truncate" title={l.campo}>{l.campo}</td>
-                <td className="max-w-xs truncate" title={l.b}>{l.b}</td><td className="max-w-xs truncate font-semibold" title={l.a}>{l.a}</td>
-              </tr>
-            ));
-          })}</tbody></table>
+      <div className="max-h-[75vh] space-y-4 overflow-auto">
+        {[...days].map(([day, ls]) => (
+          <section key={day}>
+            <div className="mb-1 text-sm font-semibold">{day} — {ls.length} {ls.length === 1 ? "alteração" : "alterações"}</div>
+            <table className="tbl"><thead><tr><th>Horário</th><th>Usuário</th><th>Aba</th><th>Registro</th><th>Ação</th><th>Campo</th><th>Antes</th><th>Depois</th></tr></thead>
+              <tbody>{ls.map((l) => (
+                <tr key={l.seq + l.at} className="cursor-pointer hover:bg-secondary" onClick={() => setOpen({ line: l, full: false })}>
+                  <td>{hr(l.at)}</td><td>{l.user || "—"}</td><td>{l.aba}</td><td>{l.reg}</td><td>{ACAO[l.c.kind]}</td>
+                  <td className="max-w-xs truncate" title={l.campo}>{l.campo}</td><td className="max-w-xs truncate" title={l.b}>{l.b}</td><td className="max-w-xs truncate font-semibold" title={l.a}>{l.a}</td>
+                </tr>
+              ))}</tbody></table>
+          </section>
+        ))}
       </div>
       {sel && (
         <div className="fixed inset-0 z-50 flex justify-end bg-foreground/30" onClick={() => setOpen(null)}>
           <aside className="print-area h-full w-[96vw] overflow-y-auto bg-background p-4 shadow-xl" onClick={(ev) => ev.stopPropagation()}>
             <div className="mb-3 flex items-start justify-between border-b border-border pb-2">
-              <div><div className="text-base font-semibold">Detalhamento da alteração</div>
-                <div className="text-xs text-muted-foreground">{sel.changes.length} registro(s) nesta confirmação</div></div>
-              <div className="no-print flex gap-1"><button className="btn btn-primary" onClick={printDetail}>Imprimir</button><button className="btn" onClick={() => setOpen(null)}>Fechar</button></div>
+              <div><div className="text-base font-semibold">{open!.full ? "Confirmação completa" : title}</div>
+                <div className="text-xs text-muted-foreground">Detalhamento da alteração{open!.full ? ` · ${shown.length} registro(s)` : ""}</div></div>
+              <div className="no-print flex gap-1">
+                {sel.entry.changes.length > 1 && <button className="btn" onClick={() => setOpen({ line: sel, full: !open!.full })}>{open!.full ? "Ver só este registro" : "Ver confirmação completa"}</button>}
+                <button className="btn btn-primary" onClick={printDetail}>Imprimir</button><button className="btn" onClick={() => setOpen(null)}>Fechar</button></div>
             </div>
             <div className="mb-4 grid grid-cols-2 gap-2 rounded border border-border bg-secondary p-2 text-xs md:grid-cols-4">
               <div><div className="lbl">Usuário</div>{sel.user || "—"}</div>
               <div><div className="lbl">Data</div>{dt(sel.at)}</div>
               <div><div className="lbl">Horário</div>{hr(sel.at)}</div>
-              <div><div className="lbl">Onde</div>{scope}</div>
+              <div><div className="lbl">Ambiente</div>{scope}</div>
             </div>
-            <div className="space-y-4">{sel.changes.map((c, j) => (
+            <div className="space-y-4">{shown.map((c, j) => (
               <section key={j} className="rounded border border-border p-3">
                 <div className="mb-2 flex flex-wrap items-center gap-2">
                   <span className="tag">{ABA[c.entity] ?? c.entity}</span>
