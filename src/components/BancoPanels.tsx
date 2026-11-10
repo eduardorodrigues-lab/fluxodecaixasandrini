@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { DateInput, MoneyInput } from "@/components/kit";
-import { Field, Section, SidePanel } from "@/components/NotaPanel";
+import { Field, guardClose, Section, SidePanel } from "@/components/NotaPanel";
 import { accountName, cardInstallments, invoiceMonthFor, NO_ACCOUNT, titleOpen, type PayLine } from "@/lib/engine/banco";
 import { todaySP } from "@/lib/engine/actions";
 import type { Payment, PaymentForm, ScenarioData } from "@/lib/engine/types";
@@ -52,12 +52,14 @@ export function PagamentoPanel({ d, kind, titleId, label, onCancel, onConfirm }:
   const result = (): PayResult => isCard
     ? { origin: "cartao", form: "boleto", cardId: cc.cardId, amount: cc.amount!, date: cc.date!, fee: cc.fee ?? 0, installments: cc.n }
     : { origin: "conta", form: form as PaymentForm, lines: lines.map((l) => ({ accountId: l.accountId, amount: l.amount!, date: l.date! })), note };
+  const dirty = form !== "" || !!note.trim();
+  const cancel = guardClose(dirty, onCancel);
   const footer = review
     ? <><button className="btn" onClick={() => setReview(false)}>Voltar e editar</button><button className="btn btn-primary" onClick={() => onConfirm(result())}>Confirmar pagamento</button></>
-    : <><button className="btn" onClick={onCancel}>Cancelar</button><button className="btn btn-primary" onClick={() => { setTried(true); if (!errs.length) setReview(true); }}>Revisar e confirmar</button></>;
+    : <><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" onClick={() => { setTried(true); if (!errs.length) setReview(true); }}>Revisar e confirmar</button></>;
   const formL = form ? FORM_LABEL[form] : "—";
   return (
-    <SidePanel wide title={review ? "Revisar pagamento" : "Registrar pagamento"} sub={label} onClose={onCancel} footer={footer}>
+    <SidePanel wide title={review ? "Revisar pagamento" : "Registrar pagamento"} sub={label} onClose={onCancel} dirty={dirty} footer={footer}>
       <div className="grid grid-cols-3 gap-2 rounded-md bg-muted p-3">
         <div><div className="lbl">Saldo pendente</div><div className="text-sm font-semibold tabular-nums">{fmtBRL(open)}</div></div>
         <div><div className="lbl">{isCard ? "Quitado com cartão" : "Soma informada"}</div><div className="text-sm font-semibold tabular-nums">{fmtBRL(sum)}</div></div>

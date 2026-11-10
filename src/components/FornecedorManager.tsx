@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ChevronDown, ChevronRight, MoreHorizontal } from "lucide-react";
 import { Button } from "./ui/button";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "./ui/dropdown-menu";
-import { Field, SidePanel } from "./NotaPanel";
+import { Field, guardClose, SidePanel } from "./NotaPanel";
 import { DateInput } from "./kit";
 import { TermsEditor, termsLabel } from "./TermsEditor";
 import { useApp } from "@/lib/store";
@@ -60,8 +60,10 @@ export function FornecedorManager({ supplierId, onClose }: { supplierId: string;
   const valid = op ? draft ? !!cn.trim() && terms.some((v) => v !== null) && terms.every((v) => v === null || Number.isInteger(v) && v >= 0) && (op.kind !== "new" || !!from) : cancelling ? !!reason.trim() && (!impact.length || ack) : ["activate", "inativar", "reativar"].includes(op.kind) ? !!from : true : !invalidSupplierName(name);
   const title = !op ? "Dados do fornecedor" : ({ new: "Nova condição", edit: "Editar condição", activate: "Usar como vigente", cancel: "Cancelar condição", period: "Cancelar ativação de vigência", delete: "Excluir condição", inativar: "Inativar fornecedor", reativar: "Reativar fornecedor", excluir: "Excluir fornecedor" }[op.kind]);
   const editing = !!op || tab === "dados";
-  return <SidePanel title="Gerenciar fornecedor" sub={s.name} onClose={onClose} footer={<>
-    {editing && (op || review) ? <Button variant="outline" onClick={() => { setOp(null); setReview(false); setError(""); }}>Cancelar edição</Button> : <Button variant="outline" onClick={onClose}>Fechar</Button>}
+  const dirty = !!op || name !== s.name || aliases !== (s.aliases ?? []).join("\n") || note !== (s.note ?? "");
+  const close = guardClose(dirty, onClose);
+  return <SidePanel title="Gerenciar fornecedor" sub={s.name} onClose={onClose} dirty={dirty} footer={<>
+    {editing && (op || review) ? <Button variant="outline" onClick={() => { setOp(null); setReview(false); setError(""); }}>Cancelar edição</Button> : <Button variant="outline" onClick={close}>Fechar</Button>}
     {editing && <Button disabled={!valid} onClick={() => review ? confirm() : setReview(true)}>{review ? "Confirmar" : "Revisar e confirmar"}</Button>}
   </>}>
     <div className="min-w-0 space-y-4 break-words [overflow-wrap:anywhere]">

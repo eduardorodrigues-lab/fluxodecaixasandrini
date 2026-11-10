@@ -54,6 +54,7 @@ export interface EffectivateInput {
   installments: { value: number; date: string; document: string }[];
   condition?: { name: string; terms: (number | null)[] } | null; // condição real desta efetivação (não altera fornecedor nem restante)
   remaining?: { value: number; dates: string[] } | null; // parcial: restante confirmado/ajustado pelo usuário
+  substituted?: number; // parte da previsão substituída (pode diferir do valor efetivado); padrão = valor efetivado
 }
 export function plannedRemaining(d: ScenarioData, plannedId: string) {
   const pl = d.planned.find((p) => p.id === plannedId);
@@ -97,7 +98,7 @@ export function effectivate(d: ScenarioData, inp: EffectivateInput): ScenarioDat
     };
     d.committed.push(c);
   });
-  d.effectivations.push({ id: inp.id, plannedId: pl.id, at: inp.at, kind: inp.kind, value, committedIds: ids, prev: { status: pl.status, remainingOverride: pl.remainingOverride }, reversedAt: null, reversalNote: "" });
+  d.effectivations.push({ id: inp.id, plannedId: pl.id, at: inp.at, kind: inp.kind, value, substituted: inp.substituted ?? value, committedIds: ids, prev: { status: pl.status, remainingOverride: pl.remainingOverride }, reversedAt: null, reversalNote: "" });
   if (inp.kind === "concluida") { pl.status = "encerrado"; pl.remainingOverride = null; }
   else if (inp.remaining) {
     pl.remainingOverride = inp.remaining.value === 0 && !inp.remaining.dates.length ? null : { value: inp.remaining.value, dates: [...inp.remaining.dates].sort() };
@@ -117,11 +118,12 @@ export function reverseEffectivation(d: ScenarioData, effId: string, note: strin
     if (e.linkedLegacy) { c.plannedId = null; c.effectivationId = null; c.origin = "legado"; c.notes = `${c.notes} · vínculo desfeito: ${note}`; }
     else { c.status = "cancelado"; c.notes = `${c.notes} · revertida: ${note}`; }
   }
-  // Reversão INDEPENDENTE: não exige reverter outras efetivações; devolve só o valor desta.
+  // Reversão INDEPENDENTE: não exige reverter outras efetivações; devolve só a parte que esta substituiu
+  // (substituted pode diferir do valor efetivado; registros antigos sem o campo usam o valor).
   const pl = d.planned.find((p) => p.id === e.plannedId);
   if (pl) {
     if (e.kind === "concluida" && pl.status === "encerrado") { pl.status = e.prev.status === "encerrado" ? "ativo" : e.prev.status; pl.remainingOverride = e.prev.remainingOverride; }
-    else if (pl.remainingOverride) pl.remainingOverride = { ...pl.remainingOverride, value: pl.remainingOverride.value + e.value };
+    else if (pl.remainingOverride) pl.remainingOverride = { ...pl.remainingOverride, value: pl.remainingOverride.value + (e.substituted ?? e.value) };
   }
   e.reversedAt = at; e.reversalNote = note;
   return d;

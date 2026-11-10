@@ -16,7 +16,7 @@ describe("Consultas de boletos", () => {
     expect(r.map((x) => x.key.split("|")[0]).sort()).toEqual(["committed:a", "committed:b"]);
   });
   it("filtros combinados: em aberto + prorrogados", () => {
-    expect(filterConsulta(rows, { ...EMPTY_FILTER, pay: "Em aberto", ext: "sim", supplier: "Alfa" }).length).toBe(1);
+    expect(filterConsulta(rows, { ...EMPTY_FILTER, pay: "Em aberto", ext: "sim", supplier: "s1" }).length).toBe(1);
   });
   it("período por data do pagamento", () => {
     expect(filterConsulta(rows, { ...EMPTY_FILTER, by: "pag", from: "2026-10-01", to: "2026-10-31" }).length).toBe(1);

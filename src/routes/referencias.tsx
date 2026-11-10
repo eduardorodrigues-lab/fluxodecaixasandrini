@@ -7,7 +7,7 @@ import { uid, useApp } from "@/lib/store";
 import { addSupplier, currentCondition, invalidSupplierName, supplierConditions } from "@/lib/notas";
 import { termsLabel } from "@/components/TermsEditor";
 import { todaySP } from "@/lib/engine/actions";
-import { Field, SidePanel } from "@/components/NotaPanel";
+import { Field, guardClose, SidePanel } from "@/components/NotaPanel";
 import { Button } from "@/components/ui/button";
 import { supplierActive } from "@/lib/fornecedores";
 import type { Supplier } from "@/lib/engine/types";
@@ -114,10 +114,11 @@ function FornecedorPanel({ initial, onCancel, onSave }: { initial?: Supplier | u
   const [review, setReview] = useState(false);
   const [err, setErr] = useState("");
   const bad = invalidSupplierName(name);
+  const dirty = name !== (initial?.name ?? "") || note !== (initial?.note ?? "") || JSON.stringify(aliases) !== JSON.stringify(initial?.aliases ?? []);
   return (
-    <SidePanel title={review ? "Revisar fornecedor" : initial ? "Editar fornecedor" : "Novo fornecedor"} onClose={onCancel} footer={review
+    <SidePanel title={review ? "Revisar fornecedor" : initial ? "Editar fornecedor" : "Novo fornecedor"} onClose={onCancel} dirty={dirty} footer={review
       ? <><button className="btn" onClick={() => setReview(false)}>Voltar e editar</button><button className="btn btn-primary" onClick={() => setErr(onSave({ name, aliases, note }) ?? "")}>Confirmar fornecedor</button></>
-      : <><button className="btn" onClick={onCancel}>Cancelar</button><button className="btn btn-primary" disabled={bad} onClick={() => setReview(true)}>Revisar e confirmar</button></>}>
+      : <><button className="btn" onClick={guardClose(dirty, onCancel)}>Cancelar</button><button className="btn btn-primary" disabled={bad} onClick={() => setReview(true)}>Revisar e confirmar</button></>}>
       {review ? <div className="space-y-2"><div><span className="lbl">Nome do fornecedor</span><div className="font-medium">{name.trim()}</div></div><div><span className="lbl">Observação</span><div>{note.trim() || "—"}</div></div><div><span className="lbl">Apelidos</span><div>{aliases.join("; ") || "—"}</div></div>{initial && <div className="border-t border-border pt-2">Antes: {initial.name} · {initial.aliases?.join("; ") || "sem apelidos"} · {initial.note || "sem observação"}</div>}</div>
         : <div className="space-y-3">
           <Field l="Nome do fornecedor *"><input className="inp h-8 w-full" placeholder="Novo fornecedor" value={name} onChange={(e) => setName(e.target.value)} /></Field>

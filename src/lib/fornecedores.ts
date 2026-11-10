@@ -41,3 +41,13 @@ export function deleteSupplier(d: ScenarioData, id: string) {
 export function resolveSupplier(d: ScenarioData, name: string, date?: string) {
   return d.suppliers.find((s) => (!date || supplierActive(s, date)) && supplierNames(s).some((n) => normalizeSupplierName(n) === normalizeSupplierName(name)));
 }
+
+/** Busca de fornecedores por nome principal e apelidos, ignorando maiúsculas e acentos.
+ *  `date` restringe aos ativos na data; `includeInactive` traz inativos também (para consultas históricas). */
+export function filterSuppliers(d: ScenarioData, query: string, opts: { includeInactive?: boolean; date?: string | undefined } = {}): Supplier[] {
+  const q = normalizeSupplierName(query);
+  return d.suppliers
+    .filter((s) => opts.includeInactive || !opts.date || supplierActive(s, opts.date))
+    .filter((s) => !q || supplierNames(s).some((n) => normalizeSupplierName(n).includes(q)))
+    .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+}

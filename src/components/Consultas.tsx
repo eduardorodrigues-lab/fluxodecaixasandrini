@@ -4,11 +4,11 @@ import { DateInput } from "@/components/kit";
 import { paymentsFor, titleStatus } from "@/lib/engine/engine";
 import type { ExtensionEvent, Payment, ScenarioData } from "@/lib/engine/types";
 import { addDays, fmtDate } from "@/lib/dates";
-import { resolveSupplier, supplierNames } from "@/lib/fornecedores";
+import { SupplierSearch } from "@/components/NotaPanel";
 import { fmtBRL } from "@/lib/money";
 
 export interface ConsultaRow {
-  key: string; supplier: string; document: string; parcel: string; category: string; sub: string;
+  key: string; supplierId: string; supplier: string; document: string; parcel: string; category: string; sub: string;
   value: number; due: string | null; extended: string | null; effective: string | null;
   paid: number; open: number; state: string; lastPay: string | null; payments: Payment[]; history: ExtensionEvent[];
 }
@@ -22,7 +22,7 @@ export function buildConsulta(d: ScenarioData): ConsultaRow[] {
     const ts = titleStatus(value, status, paymentsFor(d, kind, id));
     const c = cat(categoryId);
     const pays = [...ts.payments].sort((a, b) => a.date.localeCompare(b.date));
-    rows.push({ key: `${kind}:${id}|${groupKey}`, supplier: sup(supplierId), document, parcel: "", category: c ? (c.kind === "compra" ? "Compra" : "Despesa") : "—", sub: c?.name ?? "—", value, due, extended: ext, effective: ext || due, paid: ts.paid, open: Math.max(0, ts.open), state: ts.state === "Parcial" ? "Parcialmente pago" : ts.state, lastPay: pays.at(-1)?.date ?? null, payments: pays, history });
+    rows.push({ key: `${kind}:${id}|${groupKey}`, supplierId, supplier: sup(supplierId), document, parcel: "", category: c ? (c.kind === "compra" ? "Compra" : "Despesa") : "—", sub: c?.name ?? "—", value, due, extended: ext, effective: ext || due, paid: ts.paid, open: Math.max(0, ts.open), state: ts.state === "Parcial" ? "Parcialmente pago" : ts.state, lastPay: pays.at(-1)?.date ?? null, payments: pays, history });
   };
   for (const c of d.committed) push("committed", c.id, c.supplierId, c.document, `${c.supplierId}|${c.purchaseCode}|${c.document}`, c.value, c.status, c.dueDate, c.extensionDate, c.categoryId, c.extensionHistory ?? []);
   for (const e of d.expenses) {
@@ -45,7 +45,7 @@ export const EMPTY_FILTER: ConsultaFilter = { from: null, to: null, by: "venc", 
 export function filterConsulta(rows: ConsultaRow[], f: ConsultaFilter): ConsultaRow[] {
   const inRange = (x: string | null) => !!x && (!f.from || x >= f.from) && (!f.to || x <= f.to);
   return rows.filter((r) => {
-    if (f.supplier && r.supplier !== f.supplier) return false;
+    if (f.supplier && r.supplierId !== f.supplier) return false;
     if (f.pay && r.state !== f.pay) return false;
     if (f.ext === "sim" && !r.extended) return false;
     if (f.ext === "nao" && r.extended) return false;
@@ -83,8 +83,7 @@ function ConsultaBoletos({ d }: { d: ScenarioData }) {
   const [f, setF] = useState<ConsultaFilter>(EMPTY_FILTER);
   const [sel, setSel] = useState<ConsultaRow | null>(null);
   const [byDoc, setByDoc] = useState(false);
-  const rows = useMemo(() => { const match = resolveSupplier(d, f.supplier); const r = filterConsulta(all, { ...f, supplier: match?.name ?? f.supplier }); return (byDoc ? groupByDocument(r) : r).sort((a, b) => (a.effective ?? "").localeCompare(b.effective ?? "")); }, [all, f, byDoc, d]);
-  const suppliers = useMemo(() => [...new Set(all.map((r) => r.supplier))].sort(), [all]);
+  const rows = useMemo(() => { const r = filterConsulta(all, f); return (byDoc ? groupByDocument(r) : r).sort((a, b) => (a.effective ?? "").localeCompare(b.effective ?? "")); }, [all, f, byDoc]);
   const tot = rows.reduce((a, r) => ({ v: a.v + r.value, p: a.p + r.paid, o: a.o + r.open }), { v: 0, p: 0, o: 0 });
   const up = (p: Partial<ConsultaFilter>) => setF({ ...f, ...p });
 
@@ -113,7 +112,7 @@ function ConsultaBoletos({ d }: { d: ScenarioData }) {
         <label><span className="lbl block">De</span><DateInput value={f.from} onChange={(v) => up({ from: v })} /></label>
         <label><span className="lbl block">Até</span><DateInput value={f.to} onChange={(v) => up({ to: v })} /></label>
         <label><span className="lbl block">Filtrar data por</span><select className="inp" value={f.by} onChange={(e) => up({ by: e.target.value as ConsultaFilter["by"] })}><option value="venc">Vencimento</option><option value="pag">Data do pagamento</option></select></label>
-        <label><span className="lbl block">Fornecedor</span><input className="inp w-48" list="consulta-sup" placeholder="Todos" value={f.supplier} onChange={(e) => up({ supplier: e.target.value })} /><datalist id="consulta-sup">{d.suppliers.filter((s) => suppliers.includes(s.name)).flatMap((s) => supplierNames(s).map((n) => <option key={`${s.id}:${n}`} value={n}>{s.name}</option>))}</datalist></label>
+        <label><span className="lbl block">Fornecedor</span><span className="block w-56"><SupplierSearch d={d} value={f.supplier} onChange={(v) => up({ supplier: v })} existing allowAll placeholder="Todos" /></span></label>
         <label><span className="lbl block">Pagamento</span><select className="inp" value={f.pay} onChange={(e) => up({ pay: e.target.value as ConsultaFilter["pay"] })}><option value="">Todos</option><option>Em aberto</option><option>Parcialmente pago</option><option>Pago</option></select></label>
         <label><span className="lbl block">Prorrogação</span><select className="inp" value={f.ext} onChange={(e) => up({ ext: e.target.value as ConsultaFilter["ext"] })}><option value="">Todos</option><option value="sim">Prorrogados</option><option value="nao">Não prorrogados</option></select></label>
         <label><span className="lbl block">Agrupar por</span><select className="inp" value={byDoc ? "doc" : "parc"} onChange={(e) => setByDoc(e.target.value === "doc")}><option value="parc">Parcela</option><option value="doc">Documento</option></select></label>
@@ -133,8 +132,8 @@ function ConsultaBoletos({ d }: { d: ScenarioData }) {
             {!rows.length && <tr><td colSpan={HEAD.length} className="text-center text-muted-foreground">Nenhuma parcela encontrada.</td></tr>}</tbody></table>
       </div>
       {sel && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-foreground/20" onClick={() => setSel(null)}>
-          <div className="h-full w-[min(560px,95vw)] overflow-auto bg-background p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex justify-end bg-foreground/20">
+          <div className="h-full w-[min(560px,95vw)] overflow-auto bg-background p-4 shadow-xl">
             <div className="mb-3 flex items-start justify-between"><div><div className="text-sm font-semibold">{sel.supplier} — {sel.document || "sem documento"}</div><div className="text-xs text-muted-foreground">Parcela {sel.parcel} · {sel.category} / {sel.sub}</div></div><button className="btn" onClick={() => setSel(null)}>Fechar</button></div>
             <table className="tbl mb-3"><tbody>
               {[["Valor da parcela", fmtBRL(sel.value)], ["Vencimento", sel.due ? fmtDate(sel.due) : "—"], ["Prorrogado para", sel.extended ? fmtDate(sel.extended) : "—"], ["Valor pago", fmtBRL(sel.paid)], ["Saldo em aberto", fmtBRL(sel.open)], ["Situação", sel.state]].map(([k, v]) => <tr key={k}><td className="lbl">{k}</td><td className="num">{v}</td></tr>)}

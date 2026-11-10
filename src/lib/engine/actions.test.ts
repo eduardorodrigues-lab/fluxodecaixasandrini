@@ -32,6 +32,25 @@ describe("Efetivação de compra/pedido", () => {
     expect(total).toBe(1000000); // 6000 efetivado + 4000 previsto, nada contado duas vezes
     expect(outflows(d)).toEqual([["2026-11-15", 0, 300000, 0], ["2026-12-15", 0, 300000, 0], ["2027-01-10", 200000, 0, 0], ["2027-01-20", 200000, 0, 0]]);
   });
+  it("valor efetivado pode diferir da parte substituída: restante = antes − substituída, sem duplicidade", () => {
+    const d = scen();
+    // Efetiva 6000 mas substitui só 4000 da previsão: restante 6000, total no fluxo 12000 (divergência explícita, visível na conciliação).
+    effectivate(d, { id: "ef1", plannedId: "p", kind: "parcial", at: "x", installments: [{ value: 600000, date: "2026-11-15", document: "" }], remaining: { value: 600000, dates: ["2026-10-31", "2026-11-30"] } });
+    const r = plannedRemaining(d, "p");
+    expect(r.value).toBe(600000);
+    expect(computeFlow(d, { start: "2026-10-01", end: "2027-01-31" }).kpis.saidas).toBe(1200000);
+    const sm = plannedSummary(d, "p");
+    expect(sm.effectivated + sm.legacyAbated + sm.remaining).not.toBe(sm.original); // divergência sinalizada, não truncada
+  });
+  it("reversão devolve a parte substituída (não o valor efetivado) ao restante", () => {
+    const d = scen();
+    effectivate(d, { id: "ef1", plannedId: "p", kind: "parcial", at: "x", installments: [{ value: 600000, date: "2026-11-15", document: "" }], substituted: 400000, remaining: { value: 600000, dates: ["2026-10-31", "2026-11-30"] } });
+    expect(plannedRemaining(d, "p").value).toBe(600000);
+    reverseEffectivation(d, "ef1", "desfazendo", "y");
+    const r = plannedRemaining(d, "p");
+    expect(r.value).toBe(1000000); // 600.000 + 400.000 substituídos, não + 600.000 efetivados
+    expect(d.committed.every((c) => c.status === "cancelado")).toBe(true);
+  });
   it("idempotente: mesmo id não efetiva duas vezes", () => {
     const d = scen();
     const inp = { id: "ef1", plannedId: "p", kind: "concluida" as const, at: "x", installments: [{ value: 600000, date: "2026-11-15", document: "" }] };

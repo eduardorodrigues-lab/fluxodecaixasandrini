@@ -69,6 +69,7 @@ export interface Expense {
 }
 export interface Effectivation {
   id: string; plannedId: string; at: string; kind: "parcial" | "concluida"; value: number;
+  substituted?: number; // parte da previsão substituída (pode diferir de value); ausente em registros antigos = value
   committedIds: string[];
   linkedLegacy?: boolean; // efetivação que reclassificou um título legado existente (sem criar novo)
   prev: { status: Planned["status"]; remainingOverride: Planned["remainingOverride"] };

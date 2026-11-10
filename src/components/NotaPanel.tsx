@@ -1,22 +1,30 @@
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { TermsEditor } from "@/components/TermsEditor";
 import { DateInput, MoneyInput } from "@/components/kit";
 import type { CategoryKind, ScenarioData } from "@/lib/engine/types";
 import { fmtDate } from "@/lib/dates";
 import { fmtBRL } from "@/lib/money";
 import { adjustLast, currentCondition, generateParcels, supplierConditions, parcelsTotal, validateNote, type DraftParcel, type NoteDraft } from "@/lib/notas";
-import { resolveSupplier, supplierActive, supplierNames } from "@/lib/fornecedores";
+import { filterSuppliers, supplierActive } from "@/lib/fornecedores";
 import { todaySP } from "@/lib/engine/actions";
 import { plannedRemaining } from "@/lib/engine/actions";
 
-/** Painel lateral amplo e responsivo (tela cheia no celular). */
-export function SidePanel({ title, sub, onClose, footer, children, wide }: { title: string; sub?: string; onClose: () => void; footer?: ReactNode; children: ReactNode; wide?: boolean }) {
+/** Pede confirmação antes de descartar alterações não salvas. */
+export const guardClose = (dirty: boolean, close: () => void) => () => {
+  if (!dirty || window.confirm("Há alterações não salvas. Descartar?")) close();
+};
+
+/** Painel lateral amplo e responsivo (tela cheia no celular).
+ *  Fecha SOMENTE por X, Cancelar ou conclusão — nunca por clique no fundo ou mouse fora. */
+export function SidePanel({ title, sub, onClose, footer, children, wide, dirty }: { title: string; sub?: string; onClose: () => void; footer?: ReactNode; children: ReactNode; wide?: boolean; dirty?: boolean }) {
+  const requestClose = guardClose(!!dirty, onClose);
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-foreground/30" onClick={onClose}>
-      <div role="dialog" aria-label={title} className={`flex h-full w-full flex-col bg-background shadow-2xl ${wide ? "sm:w-[min(880px,94vw)]" : "sm:w-[min(520px,94vw)]"}`} onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex justify-end bg-foreground/30">
+      <div role="dialog" aria-label={title} className={`flex h-full w-full flex-col bg-background shadow-2xl ${wide ? "sm:w-[min(880px,94vw)]" : "sm:w-[min(520px,94vw)]"}`}>
         <div className="flex items-start justify-between border-b border-border bg-primary px-5 py-3 text-primary-foreground">
           <div><div className="text-base font-semibold">{title}</div>{sub && <div className="text-xs opacity-80">{sub}</div>}</div>
-          <button className="rounded px-2 text-lg leading-none hover:bg-primary-foreground/10" aria-label="Fechar" onClick={onClose}>×</button>
+          <button className="rounded px-2 text-lg leading-none hover:bg-primary-foreground/10" aria-label="Fechar" onClick={requestClose}>×</button>
         </div>
         <div className="flex-1 space-y-5 overflow-auto px-5 py-4 text-xs">{children}</div>
         {footer && <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border bg-card px-5 py-3">{footer}</div>}
@@ -31,18 +39,69 @@ export const Field = ({ l, full, children }: { l: string; full?: boolean; childr
   <label className={`flex flex-col gap-1 ${full ? "md:col-span-2" : ""}`}><span className="lbl">{l}</span>{children}</label>
 );
 
-/** Fornecedor com busca por digitação. */
-export function SupplierSearch({ d, value, onChange, existing = false }: { d: ScenarioData; value: string; onChange: (id: string) => void; existing?: boolean }) {
+/** Fornecedor com busca: clique abre a lista; digitar filtra por nome e apelidos (sem diferenciar
+ *  maiúsculas/acentos). Só a seleção (clique ou Enter) vincula o cadastro — texto digitado não vale.
+ *  A lista abre em portal acima do painel, sem cortá-lo nem fechá-lo. */
+export function SupplierSearch({ d, value, onChange, existing = false, allowAll = false, placeholder }: { d: ScenarioData; value: string; onChange: (id: string) => void; existing?: boolean; allowAll?: boolean; placeholder?: string }) {
   const cur = d.suppliers.find((s) => s.id === value)?.name ?? "";
   const [t, setT] = useState(cur);
+  const [open, setOpen] = useState(false);
+  const [hi, setHi] = useState(0);
+  const box = useRef<HTMLInputElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number; width: number } | null>(null);
   useEffect(() => setT(cur), [cur]);
-  const listId = useId();
-  const eligible = d.suppliers.filter((s) => existing || supplierActive(s, todaySP()));
-  return <>
-    <input className="inp h-8 w-full" list={listId} placeholder="Digite para buscar" value={t} onChange={(e) => { setT(e.target.value); const s = resolveSupplier(d, e.target.value, existing ? undefined : todaySP()); onChange(s?.id ?? ""); }} />
-    <datalist id={listId}>{eligible.flatMap((s) => supplierNames(s).map((name) => <option key={`${s.id}:${name}`} value={name}>{s.name}</option>))}</datalist>
-    {value && <span className="text-muted-foreground">Cadastro: {cur}</span>}
-  </>;
+  const opts = filterSuppliers(d, t, { includeInactive: existing, date: existing ? undefined : todaySP() });
+  const show = open && document.activeElement === box.current;
+  const place = () => { const r = box.current?.getBoundingClientRect(); if (r) setPos({ left: r.left, top: r.bottom + 2, width: Math.max(r.width, 260) }); };
+  useLayoutEffect(() => { if (show) place(); }, [show, t]);
+  useEffect(() => {
+    if (!show) return;
+    const down = (e: MouseEvent) => { if (!(e.target as HTMLElement).closest?.("[data-supplier-combobox]")) setOpen(false); };
+    document.addEventListener("mousedown", down);
+    return () => document.removeEventListener("mousedown", down);
+  }, [show]);
+  const pick = (id: string) => { onChange(id); setT(id ? d.suppliers.find((s) => s.id === id)?.name ?? "" : ""); setOpen(false); };
+  const items: { id: string; label: ReactNode }[] = [
+    ...(allowAll ? [{ id: "", label: <span className="font-medium">Todos</span> }] : []),
+    ...opts.map((s) => ({
+      id: s.id,
+      label: <span>{s.name}{!supplierActive(s, todaySP()) && <span className="tag tag-warn ml-1">inativo</span>}{s.aliases?.length ? <span className="block text-[11px] text-muted-foreground">Apelidos: {s.aliases.join(", ")}</span> : null}</span>,
+    })),
+  ];
+  const total = items.length;
+  return (
+    <div data-supplier-combobox className="relative">
+      <input
+        ref={box}
+        className="inp h-8 w-full"
+        placeholder={placeholder ?? "Clique ou digite para buscar"}
+        value={t}
+        onFocus={() => { setOpen(true); setHi(0); }}
+        onChange={(e) => { setT(e.target.value); setOpen(true); setHi(0); if (value) onChange(""); }}
+        onKeyDown={(e) => {
+          if (!show && (e.key === "ArrowDown" || e.key === "Enter")) { setOpen(true); return; }
+          if (e.key === "Escape") { e.stopPropagation(); setOpen(false); }
+          else if (e.key === "ArrowDown") { e.preventDefault(); setHi((hi + 1) % Math.max(total, 1)); }
+          else if (e.key === "ArrowUp") { e.preventDefault(); setHi((hi - 1 + total) % Math.max(total, 1)); }
+          else if (e.key === "Enter" && show && items[hi]) { e.preventDefault(); pick(items[hi]!.id); }
+        }}
+        aria-expanded={show}
+        role="combobox"
+      />
+      {show && pos && createPortal(
+        <ul data-supplier-combobox role="listbox" className="fixed z-[80] max-h-64 overflow-auto rounded-md border border-border bg-popover py-1 text-xs shadow-xl" style={{ left: pos.left, top: pos.top, width: pos.width }}>
+          {items.map((it, i) => (
+            <li key={it.id || "__all"} role="option" aria-selected={it.id === value}>
+              <button type="button" className={`w-full px-3 py-1.5 text-left ${i === hi ? "bg-accent" : "hover:bg-accent/60"}`} onMouseDown={(e) => { e.preventDefault(); pick(it.id); }} onMouseEnter={() => setHi(i)}>{it.label}</button>
+            </li>
+          ))}
+          {!total && <li className="px-3 py-2 text-muted-foreground">Nenhum fornecedor encontrado.</li>}
+        </ul>,
+        document.body,
+      )}
+      {value && <span className="text-muted-foreground">Cadastro: {cur}</span>}
+    </div>
+  );
 }
 export function CatSubFields({ d, kind, categoryId, onChange }: { d: ScenarioData; kind: CategoryKind; categoryId: string; onChange: (kind: CategoryKind, categoryId: string) => void }) {
   const subs = d.categories.filter((c) => c.kind === kind);
@@ -86,11 +145,12 @@ export function NovaNota({ d, isBase, onCancel, onConfirm }: { d: ScenarioData; 
   const next = () => { setTried(true); if (!errs.length) setReview(true); };
   const err = (m: string) => tried && errs.includes(m) ? <span className="text-[11px] text-destructive">{m}</span> : null;
   const title = !chosen ? "Novo lançamento" : review ? `Revisar · Novo lançamento · ${stageL}` : `Novo lançamento · ${stageL}`;
+  const cancel = guardClose(chosen, onCancel);
   const footer = !chosen ? <button className="btn" onClick={onCancel}>Cancelar</button> : review
     ? <><button className="btn" onClick={() => setReview(false)}>Voltar e editar</button><button className="btn btn-primary" onClick={() => onConfirm(n, saveAs)}>Confirmar lançamento</button></>
-    : <><button className="btn" onClick={backToType}>Trocar tipo</button><button className="btn" onClick={onCancel}>Cancelar</button><button className="btn btn-primary" onClick={next}>Revisar e confirmar</button></>;
+    : <><button className="btn" onClick={backToType}>Trocar tipo</button><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" onClick={next}>Revisar e confirmar</button></>;
   return (
-    <SidePanel wide title={title} sub={isBase ? "Grava no fluxo real ao confirmar" : "Simulação — não altera o fluxo real"} onClose={onCancel} footer={footer}>
+    <SidePanel wide title={title} sub={isBase ? "Grava no fluxo real ao confirmar" : "Simulação — não altera o fluxo real"} onClose={onCancel} dirty={chosen} footer={footer}>
       {!chosen ? (
         <Section n={1} title="Tipo de lançamento">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -171,8 +231,10 @@ function ParcelTable({ parcels }: { parcels: DraftParcel[] }) {
 export function ProrrogarPanel({ label, current, original, history, isBase, onCancel, onSave }: { label: string; current: string | null; original: string | null; history: { from: string | null; to: string | null; at: string; note: string }[]; isBase: boolean; onCancel: () => void; onSave: (to: string | null, note: string) => void }) {
   const [to, setTo] = useState<string | null>(current);
   const [note, setNote] = useState("");
+  const dirty = to !== current || !!note.trim();
+  const cancel = guardClose(dirty, onCancel);
   return (
-    <SidePanel title="Prorrogar parcela" sub={label} onClose={onCancel} footer={<><button className="btn" onClick={onCancel}>Cancelar</button><button className="btn btn-primary" disabled={!note.trim() || to === current} onClick={() => onSave(to, note)}>{isBase ? "Confirmar prorrogação" : "Aplicar teste na simulação"}</button></>}>
+    <SidePanel title="Prorrogar parcela" sub={label} onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" disabled={!note.trim() || to === current} onClick={() => onSave(to, note)}>{isBase ? "Confirmar prorrogação" : "Aplicar teste na simulação"}</button></>}>
       <p className={isBase ? "text-muted-foreground" : "font-medium text-destructive"}>{isBase ? "Prorrogação confirmada altera a programação real somente desta parcela; o vencimento original é preservado." : "Teste de prorrogação: vale apenas nesta simulação."}</p>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <Field l="Vencimento original"><div className="h-8 py-1.5">{fmtDate(original)}</div></Field>
@@ -186,8 +248,10 @@ export function ProrrogarPanel({ label, current, original, history, isBase, onCa
 export function ParcelaPanel({ label, amount, date, onCancel, onSave }: { label: string; amount: number; date: string; onCancel: () => void; onSave: (amount: number, date: string) => void }) {
   const [a, setA] = useState<number | null>(amount);
   const [dt, setDt] = useState<string | null>(date);
+  const dirty = a !== amount || dt !== date;
+  const cancel = guardClose(dirty, onCancel);
   return (
-    <SidePanel title="Editar esta parcela" sub={label} onClose={onCancel} footer={<><button className="btn" onClick={onCancel}>Cancelar</button><button className="btn btn-primary" disabled={!a || a <= 0 || !dt} onClick={() => onSave(a!, dt!)}>Salvar parcela</button></>}>
+    <SidePanel title="Editar esta parcela" sub={label} onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" disabled={!a || a <= 0 || !dt} onClick={() => onSave(a!, dt!)}>Salvar parcela</button></>}>
       <p className="text-muted-foreground">Altera somente esta parcela; as demais parcelas da nota não mudam.</p>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <Field l="Valor da parcela"><MoneyInput className="h-8 w-full" value={a} onChange={setA} /></Field>
@@ -200,8 +264,10 @@ export interface NoteFields { kind: CategoryKind; categoryId: string; supplierId
 export function DadosNotaPanel({ d, init, siblings, onCancel, onSave }: { d: ScenarioData; init: NoteFields; siblings: number; onCancel: () => void; onSave: (f: NoteFields) => void }) {
   const [f, setF] = useState(init);
   const up = (p: Partial<NoteFields>) => setF({ ...f, ...p });
+  const dirty = JSON.stringify(f) !== JSON.stringify(init);
+  const cancel = guardClose(dirty, onCancel);
   return (
-    <SidePanel wide title="Editar dados gerais da nota" sub={siblings > 1 ? `Aplica às ${siblings} parcelas desta nota` : "Aplica a este lançamento"} onClose={onCancel} footer={<><button className="btn" onClick={onCancel}>Cancelar</button><button className="btn btn-primary" disabled={!f.categoryId || !f.supplierId} onClick={() => onSave(f)}>Salvar dados da nota</button></>}>
+    <SidePanel wide title="Editar dados gerais da nota" sub={siblings > 1 ? `Aplica às ${siblings} parcelas desta nota` : "Aplica a este lançamento"} onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" disabled={!f.categoryId || !f.supplierId} onClick={() => onSave(f)}>Salvar dados da nota</button></>}>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <CatSubFields d={d} kind={f.kind} categoryId={f.categoryId} onChange={(kind, categoryId) => up({ kind, categoryId })} />
         <Field l="Fornecedor" full><SupplierSearch d={d} existing value={f.supplierId} onChange={(supplierId) => up({ supplierId })} /></Field>
