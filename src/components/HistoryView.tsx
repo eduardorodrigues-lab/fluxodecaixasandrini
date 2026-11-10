@@ -46,7 +46,7 @@ function columns(entity: string, d: ScenarioData, sample: R): Col[] {
     case "Ajuste de saldo":
       return [F("Data", "date", date), F("Valor", "value", money, true), F("Observação", "note")];
     case "Pagamento (baixa)":
-      return [{ label: "Título", get: (o) => (o["titleKind"] === "expense" ? "Despesa" : "Compra") }, F("Data", "date", date), F("Valor", "amount", money, true), F("Observação", "note"), { label: "Conta", get: (o) => accountName(d, o["accountId"] as string | null) }, { label: "Estorno", get: (o) => (o["reversedAt"] ? `Estornado ${date(String(o["reversedAt"]).slice(0, 10))}` : "") }];
+      return [{ label: "Título", get: (o) => (o["titleKind"] === "expense" ? "Despesa" : "Compra") }, F("Data", "date", date), F("Valor", "amount", money, true), F("Observação", "note"), { label: "Forma", get: (o) => ({ pix: "Pix", ted: "TED", doc: "DOC", boleto: "Boleto" } as Record<string, string>)[String(o["form"] ?? "")] ?? "—" }, { label: "Origem", get: (o) => (o["method"] === "cartao" ? `Cartão ${d.cards.find((c) => c.id === d.cardOps.find((x) => x.id === o["cardOpId"])?.cardId)?.name ?? ""}`.trim() : accountName(d, o["accountId"] as string | null)) }, { label: "Estorno", get: (o) => (o["reversedAt"] ? `Estornado ${date(String(o["reversedAt"]).slice(0, 10))}` : "") }];
     case "Conta bancária":
       return [F("Banco", "bank"), F("Identificação", "label"), F("Titular", "holder"), F("Agência", "agency"), F("Conta", "account"), { label: "Situação", get: (o) => (o["active"] ? "Ativa" : "Inativa") }, F("Saldo inicial", "openingBalance", money, true), F("Data de referência", "openingDate", date)];
     case "Cartão":

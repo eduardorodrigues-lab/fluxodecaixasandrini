@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { emptyData, registerPayment, reversePayment, setReceiptPlatform, addPlatform } from "./actions";
 import {
+  titleOpen,
   accountBalance, addAccount, addCard, addTransfer, confirmBankTransition, consolidatedBalance, createInvoice, defaultAccountFor,
   invoiceMonthFor, movements, previewBankTransition, coverTitleWithCard, reverseCardOp, addCardPurchase, cancelInvoice, registerPaymentBatch, reverseTransfer, setPlatformDefaultAccount, setReceiptAccount,
 } from "./banco";
@@ -165,6 +166,16 @@ describe("operações no cartão", () => {
     registerPaymentBatch(d, { batchId: "pf", titleKind: "expense", titleId: "inv", note: "", lines: [{ accountId: "A", amount: 350_000, date: "2026-12-20" }, { accountId: "B", amount: 250_000, date: "2026-12-20" }] });
     expect(accountBalance(d, "A", "2027-02-28").realized).toBe(100_000 - 350_000);
     expect(() => cancelInvoice(d, "inv", "x")).toThrow(/pagamento ativo/);
+  });
+  it("boleto pago no cartão com tarifa: quita só o valor do boleto, tarifa vai para a fatura, banco intacto; forma registrada", () => {
+    const d = withCard();
+    coverTitleWithCard(d, { id: "opf", cardId: "k", titleKind: "committed", titleId: "c1", date: "2026-11-12", amount: 1_000_000, fee: 2_500, installments: 2, at: AT, by: "x", form: "boleto" });
+    expect(titleOpen(d, "committed", "c1").open).toBe(0);
+    const parts = d.expenses.filter((e) => e.cardOpId === "opf");
+    expect(parts.reduce((a, e) => a + e.value, 0)).toBe(1_002_500);
+    expect(d.payments[0]!.form).toBe("boleto"); expect(d.payments[0]!.method).toBe("cartao");
+    expect(accountBalance(d, "A", "2027-02-28").realized).toBe(100_000);
+    expect(() => registerPaymentBatch(d, { batchId: "px", titleKind: "expense", titleId: parts[0]!.id, note: "", lines: [{ accountId: "A", amount: 1, date: "2026-12-01" }] })).toThrow(/fatura/);
   });
   it("estorno antes do fechamento desfaz cobertura e projeção, preservando histórico", () => {
     const d = withCard();

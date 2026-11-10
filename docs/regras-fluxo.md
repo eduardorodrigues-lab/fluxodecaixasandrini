@@ -155,3 +155,5 @@ Script de reprodução local: `bun scripts/validate-ceo-xlsm.ts <arquivo> /tmp/r
   - Estorno da operação cancela parcelas e estorna a liquidação, mantendo histórico; bloqueado se alguma parcela está em fatura fechada. "Reabrir fatura" só sem pagamento ativo.
 
 - Novo lançamento: primeiro passo escolhe Planejada ou Efetivado (não pela aba). Planejada aceita código/documento vazios; Efetivado exige documento e pode vincular previsão ativa: substitui parte via efetivação, restante continua planejado ou é encerrado. Validações só ao avançar.
+
+- Registrar pagamento: forma (Pix/TED/DOC/Boleto) e origem. Conta bancária: uma ou mais contas, cada uma debitada só pela sua parte. Cartão (só Boleto): cartão, valor, data, tarifas e parcelamento; quita o boleto total/parcial, valor+tarifas viram parcelas da fatura, sem débito bancário até pagar a fatura. Revisão, baixas e histórico mostram forma, origem e vínculo boleto→operação→fatura.

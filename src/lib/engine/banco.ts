@@ -128,7 +128,7 @@ export function titleOpen(d: ScenarioData, kind: Payment["titleKind"], id: strin
   return { title: t!, open: t!.value - activePays(d, kind, id).reduce((a, p) => a + p.amount, 0) };
 }
 /** Valida e grava TODAS as linhas ou nenhuma. Excedente bloqueado: juros/multa/desconto não são suportados. */
-export function registerPaymentBatch(d: ScenarioData, inp: { batchId: string; titleKind: Payment["titleKind"]; titleId: string; lines: PayLine[]; note: string }): ScenarioData {
+export function registerPaymentBatch(d: ScenarioData, inp: { batchId: string; titleKind: Payment["titleKind"]; titleId: string; lines: PayLine[]; note: string; form?: Payment["form"] }): ScenarioData {
   if (d.payments.some((p) => p.batchId === inp.batchId)) return d; // idempotente (reenvio)
   const { title, open } = titleOpen(d, inp.titleKind, inp.titleId);
   if (title.status === "cancelado") err("Título cancelado não recebe pagamento.");
@@ -145,7 +145,7 @@ export function registerPaymentBatch(d: ScenarioData, inp: { batchId: string; ti
   if (new Set(keys).size !== keys.length) err("Linhas duplicadas (mesma conta, data e valor).");
   const sum = inp.lines.reduce((a, l) => a + l.amount, 0);
   if (sum > open) err(`Soma informada excede o saldo pendente em ${((sum - open) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}. Juros, multa e desconto ainda não são suportados — registre apenas até o saldo pendente.`);
-  inp.lines.forEach((l, i) => d.payments.push({ id: `${inp.batchId}-${i + 1}`, batchId: inp.batchId, titleKind: inp.titleKind, titleId: inp.titleId, accountId: l.accountId, amount: l.amount, date: l.date, note: inp.note, reversedAt: null, reversalNote: "" }));
+  inp.lines.forEach((l, i) => d.payments.push({ id: `${inp.batchId}-${i + 1}`, batchId: inp.batchId, titleKind: inp.titleKind, titleId: inp.titleId, accountId: l.accountId, amount: l.amount, date: l.date, note: inp.note, reversedAt: null, reversalNote: "", method: "banco", form: inp.form ?? null }));
   return d;
 }
 
@@ -246,17 +246,18 @@ export function cardInstallments(card: Card, date: string, amount: number, n: nu
     return { n: i + 1, amount: i === n - 1 ? amount - base * (n - 1) : base, date: d, month, due: invoiceDueDate(card, month) };
   });
 }
-export interface CardOpInput { id: string; cardId: string; date: string; amount: number; installments: number; at: string; by: string }
+export interface CardOpInput { id: string; cardId: string; date: string; amount: number; installments: number; at: string; by: string; fee?: number; form?: Payment["form"] }
 function checkOp(d: ScenarioData, inp: CardOpInput) {
   const card = d.cards.find((c) => c.id === inp.cardId) ?? err("Cartão não encontrado.");
   if (!card!.active) err("Cartão inativo.");
   if (!ISO.test(inp.date)) err("Data inválida.");
   if (!(Number.isInteger(inp.amount) && inp.amount > 0)) err("Valor deve ser positivo.");
+  if (inp.fee != null && !(Number.isInteger(inp.fee) && inp.fee >= 0)) err("Tarifa inválida.");
   if (!(Number.isInteger(inp.installments) && inp.installments >= 1 && inp.installments <= 24)) err("Parcelas no cartão: de 1 a 24.");
   return card!;
 }
 function pushParcels(d: ScenarioData, card: Card, inp: CardOpInput, src: { supplierId: string; categoryId: string; document: string; notes: string }) {
-  return cardInstallments(card, inp.date, inp.amount, inp.installments).map((p) => {
+  return cardInstallments(card, inp.date, inp.amount + (inp.fee ?? 0), inp.installments).map((p) => {
     const id = `${inp.id}-p${p.n}`;
     d.expenses.push({ id, supplierId: src.supplierId, document: `${src.document} · cartão ${p.n}/${inp.installments}`, value: p.amount, baseDate: p.date, termDays: null, extensionDate: null, extensionHistory: [], categoryId: src.categoryId, notes: src.notes, status: "ativo", cardId: card.id, invoiceId: null, cardOpId: inp.id });
     return id;
@@ -272,9 +273,9 @@ export function coverTitleWithCard(d: ScenarioData, inp: CardOpInput & { titleKi
   if ((title as Expense).cardId) err("Este lançamento já é parcela de cartão.");
   if (inp.amount > open) err(`Valor no cartão excede a pendência do título (${(open / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}).`);
   const pid = `${inp.id}-liq`;
-  d.payments.push({ id: pid, titleKind: inp.titleKind, titleId: inp.titleId, date: inp.date, amount: inp.amount, note: `Quitado com cartão ${card.name} ••${card.last4}`, reversedAt: null, reversalNote: "", accountId: null, method: "cartao", cardOpId: inp.id });
+  d.payments.push({ id: pid, titleKind: inp.titleKind, titleId: inp.titleId, date: inp.date, amount: inp.amount, note: `${inp.form === "boleto" ? "Boleto pago" : "Quitado"} com cartão ${card.name} ••${card.last4}${inp.installments > 1 ? ` em ${inp.installments}x` : ""}${inp.fee ? ` · tarifa ${(inp.fee / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` : ""}`, reversedAt: null, reversalNote: "", accountId: null, method: "cartao", cardOpId: inp.id, form: inp.form ?? null });
   const expenseIds = pushParcels(d, card, inp, { supplierId: title.supplierId, categoryId: title.categoryId, document: title.document || (title as Committed).purchaseCode || "título", notes: `Origem: ${inp.titleKind === "committed" ? "efetivado" : "despesa"} ${title.document}` });
-  d.cardOps.push({ id: inp.id, cardId: card.id, kind: "cobertura", date: inp.date, amount: inp.amount, installments: inp.installments, titleKind: inp.titleKind, titleId: inp.titleId, paymentId: pid, expenseIds, at: inp.at, by: inp.by, reversedAt: null, reversalNote: "" });
+  d.cardOps.push({ id: inp.id, cardId: card.id, kind: "cobertura", date: inp.date, amount: inp.amount, installments: inp.installments, titleKind: inp.titleKind, titleId: inp.titleId, paymentId: pid, expenseIds, at: inp.at, by: inp.by, reversedAt: null, reversalNote: "", fee: inp.fee ?? 0, form: inp.form ?? null });
   return d;
 }
 /** Nova compra no cartão (sem título prévio): só as parcelas do cartão entram no fluxo, via fatura. */

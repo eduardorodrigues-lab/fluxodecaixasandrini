@@ -1,5 +1,5 @@
 import { BaixasList, PagamentoPanel } from "@/components/BancoPanels";
-import { accountName, NO_ACCOUNT, registerPaymentBatch } from "@/lib/engine/banco";
+import { accountName, NO_ACCOUNT, registerPaymentBatch, coverTitleWithCard } from "@/lib/engine/banco";
 import { createFileRoute } from "@tanstack/react-router";
 import { Children, cloneElement, isValidElement, useState, type ReactElement, type ReactNode } from "react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -54,7 +54,7 @@ function Acoes({ children }: { children: ReactNode }) {
 }
 
 function Page() {
-  const { active, update, changes } = useApp();
+  const { active, update, changes, user } = useApp();
   const d = active.data;
   const [tab, setTab] = useState<Tab>("planned");
   const [err, setErr] = useState("");
@@ -206,9 +206,9 @@ function Page() {
             })}</tbody></table>
         )}
       </div>}
-      <p className="mt-2 text-[11px] text-muted-foreground">Registrar pagamento é apenas o registro de uma baixa já realizada — não executa transferência bancária.</p>
+      <p className="mt-2 text-[11px] text-muted-foreground">Registrar pagamento é o registro de uma baixa já realizada (Pix, TED, DOC ou Boleto) — não executa transferência bancária. Boleto pago com cartão não debita conta: passa para a fatura.</p>
 
-      {panel?.t === "pay" && <PagamentoPanel d={d} kind={panel.kind} titleId={panel.id} label={panel.label} onCancel={() => setPanel(null)} onConfirm={(lines, note) => { const ok = act((x) => registerPaymentBatch(x, { batchId: uid(), titleKind: panel.kind, titleId: panel.id, lines, note })); if (ok) setPanel(null); return ok; }} />}
+      {panel?.t === "pay" && <PagamentoPanel d={d} kind={panel.kind} titleId={panel.id} label={panel.label} onCancel={() => setPanel(null)} onConfirm={(r) => { const ok = act((x) => r.origin === "conta" ? registerPaymentBatch(x, { batchId: uid(), titleKind: panel.kind, titleId: panel.id, lines: r.lines, note: r.note, form: r.form }) : coverTitleWithCard(x, { id: uid(), at: now(), by: user?.email ?? "", titleKind: panel.kind, titleId: panel.id, cardId: r.cardId, date: r.date, amount: r.amount, fee: r.fee, installments: r.installments, form: "boleto" })); if (ok) setPanel(null); return ok; }} />}
       {panel?.t === "new" && <NovaNota d={d} isBase={active.isBase} onCancel={() => setPanel(null)} onConfirm={(n, cond) => { const ok = act((x) => { if (cond) saveSupplierCondition(x, n.supplierId, cond, now()); applyNote(x, n, { id: uid, at: now() }); }); if (ok) setPanel(null); return ok; }} />}
       {panel?.t === "parcela" && <ParcelaPanel label={panel.label} amount={panel.amount} date={panel.date} onCancel={() => setPanel(null)} onSave={(a, dt) => doPanel((x) => panel.save(x, a, dt))} />}
       {panel?.t === "nota" && <DadosNotaPanel d={d} init={panel.init} siblings={panel.siblings} onCancel={() => setPanel(null)} onSave={(f) => doPanel((x) => panel.save(x, f))} />}

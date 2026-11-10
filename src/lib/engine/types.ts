@@ -78,12 +78,16 @@ export interface Payment {
   batchId?: string | null; // baixas multicontas confirmadas juntas
   method?: "banco" | "cartao"; // "cartao" = liquidação do fornecedor pelo cartão (NÃO é débito bancário)
   cardOpId?: string | null;
+  form?: PaymentForm | null; // forma de pagamento: Pix, TED, DOC ou Boleto
 }
+export type PaymentForm = "pix" | "ted" | "doc" | "boleto";
 // Operação no cartão: cobertura de título existente OU nova compra. Gera parcelas (Expense.cardId) que entram nas faturas.
 export interface CardOperation {
   id: string; cardId: string; kind: "cobertura" | "compra"; date: string; amount: number; installments: number;
   titleKind: "committed" | "expense" | null; titleId: string | null; paymentId: string | null; expenseIds: string[];
   at: string; by: string; reversedAt: string | null; reversalNote: string;
+  fee?: number; // tarifas da operação no cartão (entram na fatura, não quitam o boleto)
+  form?: PaymentForm | null;
 }
 // Contas bancárias e cartões. Saldo inicial = saldo ao FIM do dia openingDate; entram só movimentos com data > openingDate.
 export interface BankAccount {
