@@ -21,7 +21,6 @@ import { Route as LancamentosRouteImport } from './routes/lancamentos'
 import { Route as MetasRouteImport } from './routes/metas'
 import { Route as RecebimentosRouteImport } from './routes/recebimentos'
 import { Route as ReferenciasRouteImport } from './routes/referencias'
-import { Route as RegrasRouteImport } from './routes/regras'
 import { Route as SimulacoesRouteImport } from './routes/simulacoes'
 
 const IndexRoute = IndexRouteImport.update({
@@ -84,11 +83,6 @@ const ReferenciasRoute = ReferenciasRouteImport.update({
   path: '/referencias',
   getParentRoute: () => rootRouteImport,
 } as any)
-const RegrasRoute = RegrasRouteImport.update({
-  id: '/regras',
-  path: '/regras',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const SimulacoesRoute = SimulacoesRouteImport.update({
   id: '/simulacoes',
   path: '/simulacoes',
@@ -108,7 +102,6 @@ export interface FileRoutesByFullPath {
   '/metas': typeof MetasRoute
   '/recebimentos': typeof RecebimentosRoute
   '/referencias': typeof ReferenciasRoute
-  '/regras': typeof RegrasRoute
   '/simulacoes': typeof SimulacoesRoute
 }
 export interface FileRoutesByTo {
@@ -124,7 +117,6 @@ export interface FileRoutesByTo {
   '/metas': typeof MetasRoute
   '/recebimentos': typeof RecebimentosRoute
   '/referencias': typeof ReferenciasRoute
-  '/regras': typeof RegrasRoute
   '/simulacoes': typeof SimulacoesRoute
 }
 export interface FileRoutesById {
@@ -141,7 +133,6 @@ export interface FileRoutesById {
   '/metas': typeof MetasRoute
   '/recebimentos': typeof RecebimentosRoute
   '/referencias': typeof ReferenciasRoute
-  '/regras': typeof RegrasRoute
   '/simulacoes': typeof SimulacoesRoute
 }
 export interface FileRouteTypes {
@@ -159,7 +150,6 @@ export interface FileRouteTypes {
     | '/metas'
     | '/recebimentos'
     | '/referencias'
-    | '/regras'
     | '/simulacoes'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -175,7 +165,6 @@ export interface FileRouteTypes {
     | '/metas'
     | '/recebimentos'
     | '/referencias'
-    | '/regras'
     | '/simulacoes'
   id:
     | '__root__'
@@ -191,7 +180,6 @@ export interface FileRouteTypes {
     | '/metas'
     | '/recebimentos'
     | '/referencias'
-    | '/regras'
     | '/simulacoes'
   fileRoutesById: FileRoutesById
 }
@@ -208,7 +196,6 @@ export interface RootRouteChildren {
   MetasRoute: typeof MetasRoute
   RecebimentosRoute: typeof RecebimentosRoute
   ReferenciasRoute: typeof ReferenciasRoute
-  RegrasRoute: typeof RegrasRoute
   SimulacoesRoute: typeof SimulacoesRoute
 }
 
@@ -298,13 +285,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReferenciasRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/regras': {
-      id: '/regras'
-      path: '/regras'
-      fullPath: '/regras'
-      preLoaderRoute: typeof RegrasRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/simulacoes': {
       id: '/simulacoes'
       path: '/simulacoes'
@@ -328,7 +308,6 @@ const rootRouteChildren: RootRouteChildren = {
   MetasRoute: MetasRoute,
   RecebimentosRoute: RecebimentosRoute,
   ReferenciasRoute: ReferenciasRoute,
-  RegrasRoute: RegrasRoute,
   SimulacoesRoute: SimulacoesRoute,
 }
 export const routeTree = rootRouteImport

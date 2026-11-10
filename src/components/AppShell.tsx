@@ -15,7 +15,6 @@ const NAV = [
   { to: "/metas", label: "Meta de Faturamento" },
   { to: "/referencias", label: "Referências" },
   { to: "/simulacoes", label: "Simulações" },
-  { to: "/regras", label: "Regras e Conciliação" },
   { to: "/historico", label: "Histórico / Auditoria" },
   { to: "/equipe", label: "Equipe e acesso" },
 ] as const;
@@ -83,7 +82,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
       )}
       <div className="min-w-0 flex-1">
-        {official.status === "ready" && isEmpty(base.data) && active.isBase && <div className="border-b border-border bg-muted px-4 py-2 text-xs">Nenhum dado cadastrado em {official.orgName}. Comece pelo cadastro inicial em <Link to="/referencias" className="underline">Referências</Link> (saldo inicial, fornecedores, categorias) ou carregue a planilha atual em <Link to="/regras" className="underline">Regras e Conciliação → Importação</Link>.</div>}
+        {official.status === "ready" && isEmpty(base.data) && active.isBase && <div className="border-b border-border bg-muted px-4 py-2 text-xs">Nenhum dado cadastrado em {official.orgName}. Comece pelo cadastro inicial em <Link to="/referencias" className="underline">Referências</Link> (saldo inicial, fornecedores, categorias).</div>}
         {!active.isBase && <div className="sticky top-0 z-30 border-b-2 border-destructive bg-destructive px-4 py-1.5 text-xs font-semibold text-destructive-foreground">SIMULAÇÃO "{active.name}" — exclusivamente visual, local a este navegador. Nada aqui é gravado nos dados reais, marca pagamentos ou é promovido.</div>}
         {active.isBase && (draft || saveMsg) && (
           <div className={`sticky top-0 z-30 flex items-center gap-2 px-4 py-1 text-xs ${saveState === "error" || saveState === "conflict" ? "bg-destructive text-destructive-foreground" : "bg-muted"}`}>
