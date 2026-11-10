@@ -193,3 +193,9 @@ Script de reprodução local: `bun scripts/validate-ceo-xlsm.ts <arquivo> /tmp/r
 - Sugestões só ao clicar "Aplicar sugestão" (confirmação se houver valores personalizados; datas preservadas): Manter (9.900), Igualar — só com uma parcela de origem (9.000), Aplicar diferença também às restantes (9.800; redução adicional explícita), Manter total original (10.000). Centavos inteiros, resíduo na última; sem restantes nada é redistribuído. Quando a quantidade foi alterada manualmente, a sugestão usa as parcelas presentes na tabela (registrado na regra).
 - Confirmação atômica (`effectivateManual` em `src/lib/efetivacao.ts`): títulos efetivados + restante por parcela com IDs estáveis (`remainingOverride.items`), sem abatimento FIFO; antes/depois por parcela gravado na efetivação e exibido em Detalhes. Previsão original, efetivações anteriores e pagamentos preservados; efetivar não paga. Reversão restaura o estado anterior, exigindo reverter primeiro efetivações manuais posteriores.
 - Pendência: o antes/depois aparece em Lançamentos → Detalhes e no Histórico; ainda não há visão dedicada em Consultas.
+
+## Novo lançamento · Efetivado (Compra e Despesa)
+- Após o fornecedor: escolher "Preencher manualmente" (quantidade → linhas com total dividido em centavos, vencimentos em branco) ou "Usar uma condição cadastrada como sugestão". A condição vigente nunca é aplicada automaticamente.
+- Tabela editável Valor real / Vencimento real com calendário, adicionar/remover parcelas. Regerar linhas pede confirmação.
+- Revisão mostra todas as parcelas e a conferência da soma; "Confirmar lançamento" exige marcar "Conferi os valores e vencimentos com o documento ou a negociação desta operação."
+- Condições da operação não alteram o fornecedor nem outros lançamentos; salvar como nova condição é opcional. Efetivado = obrigação real confirmada, não paga.

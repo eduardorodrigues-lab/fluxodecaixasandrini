@@ -7,7 +7,7 @@ import { DateInput, MoneyInput } from "@/components/kit";
 import type { CategoryKind, ScenarioData } from "@/lib/engine/types";
 import { fmtDate } from "@/lib/dates";
 import { fmtBRL } from "@/lib/money";
-import { adjustLast, currentCondition, generateParcels, supplierConditions, parcelsTotal, validateNote, type DraftParcel, type NoteDraft } from "@/lib/notas";
+import { adjustLast, currentCondition, generateParcels, manualParcels, supplierConditions, parcelsTotal, validateNote, type DraftParcel, type NoteDraft } from "@/lib/notas";
 import { filterSuppliers, supplierActive } from "@/lib/fornecedores";
 import { todaySP } from "@/lib/engine/actions";
 import { plannedRemaining } from "@/lib/engine/actions";
@@ -122,6 +122,9 @@ export function NovaNota({ d, isBase, onCancel, onConfirm }: { d: ScenarioData; 
   const [saveAs, setSaveAs] = useState<SaveAs | null>(null);
   const [review, setReview] = useState(false);
   const [tried, setTried] = useState(false);
+  const [how, setHow] = useState<"manual" | "condicao" | null>(null); // Efetivado: forma de informar valores reais
+  const [qty, setQty] = useState(1);
+  const [checked, setChecked] = useState(false);
   const up = (p: Partial<NoteDraft>) => setN({ ...n, ...p });
   const stage = n.stage;
   const sup = d.suppliers.find((s) => s.id === n.supplierId);
@@ -135,7 +138,7 @@ export function NovaNota({ d, isBase, onCancel, onConfirm }: { d: ScenarioData; 
   const prevs = stage === "committed" ? d.planned.filter((p) => p.status === "ativo").flatMap((p) => { try { const r = plannedRemaining(d, p.id); return r.health === "ok" && r.value > 0 ? [{ p, rem: r.value }] : []; } catch { return []; } }) : [];
   const link = prevs.find((x) => x.p.id === n.plannedId);
   const rest = link ? Math.max(0, link.rem - (n.total ?? 0)) : 0;
-  const pick = (st: "planned" | "committed") => { setN({ ...n, stage: st, plannedId: null, closeRest: false }); setChosen(true); setTried(false); };
+  const pick = (st: "planned" | "committed") => { setHow(null); setChecked(false); setN({ ...n, stage: st, plannedId: null, closeRest: false }); setChosen(true); setTried(false); };
   const backToType = async () => {
     if (n.plannedId && !await askConfirm("O vínculo com a previsão será descartado ao trocar o tipo. Continuar?")) return;
     up({ plannedId: null, closeRest: false }); setChosen(false); setReview(false);
@@ -150,7 +153,7 @@ export function NovaNota({ d, isBase, onCancel, onConfirm }: { d: ScenarioData; 
   const title = !chosen ? "Novo lançamento" : review ? `Revisar · Novo lançamento · ${stageL}` : `Novo lançamento · ${stageL}`;
   const cancel = guardClose(chosen, onCancel);
   const footer = !chosen ? <button className="btn" onClick={onCancel}>Cancelar</button> : review
-    ? <><button className="btn" onClick={() => setReview(false)}>Cancelar</button><button className="btn btn-primary" onClick={() => onConfirm(n, saveAs)}>Confirmar lançamento</button></>
+    ? <><button className="btn" onClick={() => { setReview(false); setChecked(false); }}>Voltar</button><button className="btn btn-primary" disabled={stage === "committed" && !checked} title={stage === "committed" && !checked ? "Confirme a conferência dos valores e vencimentos" : ""} onClick={() => onConfirm(n, saveAs)}>Confirmar lançamento</button></>
     : <><button className="btn" onClick={backToType}>Trocar tipo</button><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" onClick={next}>Revisar e confirmar</button></>;
   return (
     <SidePanel centered={review} wide title={title} sub={isBase ? "Grava no fluxo real ao confirmar" : "Simulação — não altera o fluxo real"} onClose={onCancel} dirty={chosen} footer={footer}>
@@ -168,7 +171,10 @@ export function NovaNota({ d, isBase, onCancel, onConfirm }: { d: ScenarioData; 
             {[["Tipo", stageL], ["Categoria", n.kind === "compra" ? "Compra" : "Despesa"], ["Subgrupo", sub], ["Fornecedor", sup?.name ?? "—"], ["Código do pedido", n.purchaseCode || "—"], ["Documento", n.document || "—"], ["Descrição", n.description || "—"], ["Valor total", fmtBRL(n.total)], ["Data base", fmtDate(n.baseDate)]].map(([k, v]) => <div key={k}><div className="lbl">{k}</div><div className="font-medium">{v}</div></div>)}
           </div>
           {link && <p className="rounded-lg border border-primary/20 bg-primary/5 p-3">Substitui {fmtBRL(Math.min(link.rem, n.total ?? 0))} da previsão {link.p.purchaseCode || link.p.document || "sem código"} (pendente {fmtBRL(link.rem)}). {n.closeRest || rest === 0 ? "O restante será encerrado." : `Restante de ${fmtBRL(rest)} continua planejado.`}</p>}
-          <ParcelTable parcels={n.parcels} />
+          <ParcelTable parcels={n.parcels} real={stage === "committed"} />
+          {n.total !== parcelsTotal(n.parcels) ? <p className="text-destructive">A soma das parcelas difere do valor total.</p> : <p className="text-primary">Soma das parcelas confere com o valor total ({fmtBRL(n.total)}).</p>}
+          {stage === "committed" && <label className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3 font-medium"><input type="checkbox" className="mt-0.5" checked={checked} onChange={(e) => setChecked(e.target.checked)} />Conferi os valores e vencimentos com o documento ou a negociação desta operação.</label>}
+          {stage === "committed" && <p className="text-muted-foreground">Efetivado é uma obrigação real confirmada; não significa que foi paga. As condições desta operação não alteram o cadastro do fornecedor nem outros lançamentos.</p>}
           {n.condition && <p className="text-muted-foreground">Condição: {n.condition.name} ({termsTxt(n.condition.terms)} dias) {saveAs ? `— será salva como nova condição do fornecedor "${saveAs.name}" (anteriores preservadas).` : "— usada só neste lançamento; o padrão do fornecedor não muda."}</p>}
         </div>
       ) : <>
@@ -195,17 +201,39 @@ export function NovaNota({ d, isBase, onCancel, onConfirm }: { d: ScenarioData; 
             <Field l="Data base para os prazos"><DateInput value={n.baseDate} onChange={(baseDate) => up({ baseDate })} />{err("Informe a data base.")}</Field>
           </div>
         </Section>
+        {stage === "committed" ? (
+        <Section n={3} title="Como deseja informar os valores e vencimentos reais?">
+          {!sup ? <p className="text-muted-foreground">Selecione o fornecedor para continuar.</p> : <>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              {([["manual", "Preencher manualmente", "Informe a quantidade de parcelas, o valor e o vencimento de cada uma."], ["condicao", "Usar uma condição cadastrada como sugestão", "Selecione a condição e gere parcelas para conferência."]] as const).map(([k, l, t]) => (
+                <label key={k} className={`flex cursor-pointer gap-2 rounded-lg border p-3 ${how === k ? "border-primary bg-primary/5" : "border-border"}`}><input type="radio" name="how" checked={how === k} onChange={() => setHow(k)} /><span><span className="block font-semibold">{l}</span><span className="text-muted-foreground">{t}</span></span></label>
+              ))}
+            </div>
+            {how === "manual" && <div className="mt-3 flex flex-wrap items-end gap-2">
+              <Field l="Quantidade de parcelas"><input type="number" min={1} max={120} className="inp h-8 w-24" value={qty} onChange={(e) => setQty(Math.max(1, Math.min(120, Number(e.target.value) || 1)))} /></Field>
+              <button className="btn" disabled={!n.total} title={n.total ? "" : "Informe o valor total"} onClick={async () => { if (n.parcels.length && !await askConfirm("As parcelas atuais serão substituídas por novas linhas para preenchimento.", { title: "Gerar linhas?", action: "Gerar linhas", destructive: true })) return; up({ parcels: manualParcels(n.total, qty), condition: null }); setSaveAs(null); }}>Gerar linhas</button>
+              <span className="text-muted-foreground">Os valores são divididos igualmente (centavos na última) e os vencimentos ficam em branco para você informar.</span>
+            </div>}
+            {how === "condicao" && <div className="mt-3">
+              <ConditionPicker key={sup.id} d={d} supplierId={sup.id} baseDate={n.baseDate} hint={`Sugestão para preenchimento — a condição vigente não é aplicada automaticamente.${link?.p.condition ? ` Condição usada na previsão: ${link.p.condition.name} (${termsTxt(link.p.condition.terms)} dias).` : ""}`}
+                disabled={!n.total || !n.baseDate} disabledHint="Informe valor total e data base"
+                onConfirm={async (c, save) => { if (n.parcels.length && !await askConfirm("As parcelas atuais serão substituídas pelas geradas pela condição.", { title: "Gerar parcelas?", action: "Gerar parcelas", destructive: true })) return; setSaveAs(save); up({ condition: c, parcels: generateParcels(n.total!, n.baseDate!, c.terms) }); }} />
+            </div>}
+          </>}
+        </Section>
+        ) : (
         <Section n={3} title="Condição de pagamento">
           {!sup ? <p className="text-muted-foreground">Selecione o fornecedor para ver as condições cadastradas.</p>
             : <ConditionPicker key={sup.id} d={d} supplierId={sup.id} baseDate={n.baseDate} hint={link?.p.condition ? `Condição usada na previsão: ${link.p.condition.name} (${termsTxt(link.p.condition.terms)} dias)` : undefined}
                 disabled={!n.total || !n.baseDate} disabledHint="Informe valor total e data base"
                 onConfirm={(c, save) => { setSaveAs(save); up({ condition: c, parcels: generateParcels(n.total!, n.baseDate!, c.terms) }); }} />}
         </Section>
+        )}
         <Section n={4} title={stage === "planned" ? "Parcelas previstas" : "Parcelas efetivas"}>
           <div className="overflow-auto rounded-lg border border-border">
-            <table className="tbl"><thead><tr><th>Parcela</th><th className="num">Valor</th><th>Vencimento</th><th>Prorrogar para</th><th /></tr></thead>
+            <table className="tbl"><thead><tr><th>Parcela</th><th className="num">{stage === "committed" ? "Valor real" : "Valor"}</th><th>{stage === "committed" ? "Vencimento real" : "Vencimento"}</th><th>Prorrogar para</th><th /></tr></thead>
               <tbody>{n.parcels.map((p, i) => <tr key={i}><td>{i + 1}/{n.parcels.length}</td><td className="num"><MoneyInput value={p.amount} onChange={(v) => setP(i, { amount: v ?? 0 })} /></td><td><DateInput value={p.date} onChange={(v) => setP(i, { date: v })} /></td><td><DateInput allowEmpty value={p.ext} onChange={(v) => setP(i, { ext: v })} /></td><td><button className="btn btn-danger" aria-label={`Remover parcela ${i + 1}`} onClick={() => up({ parcels: n.parcels.filter((_, k) => k !== i) })}>Remover</button></td></tr>)}
-                {!n.parcels.length && <tr><td colSpan={5} className="text-center text-muted-foreground">Gere as parcelas pela condição ou adicione manualmente.</td></tr>}</tbody></table>
+                {!n.parcels.length && <tr><td colSpan={5} className="text-center text-muted-foreground">{stage === "committed" ? "Escolha como informar os valores reais e gere as linhas." : "Gere as parcelas pela condição ou adicione manualmente."}</td></tr>}</tbody></table>
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button className="btn" onClick={() => up({ parcels: [...n.parcels, { amount: 0, date: n.parcels.at(-1)?.date ?? n.baseDate, ext: null }] })}>+ Adicionar parcela</button>
@@ -224,8 +252,8 @@ export function NovaNota({ d, isBase, onCancel, onConfirm }: { d: ScenarioData; 
     </SidePanel>
   );
 }
-function ParcelTable({ parcels }: { parcels: DraftParcel[] }) {
-  return <div className="overflow-auto rounded-lg border border-border"><table className="tbl"><thead><tr><th>Parcela</th><th className="num">Valor</th><th>Vencimento</th><th>Prorrogar para</th></tr></thead>
+function ParcelTable({ parcels, real }: { parcels: DraftParcel[]; real?: boolean }) {
+  return <div className="overflow-auto rounded-lg border border-border"><table className="tbl"><thead><tr><th>Parcela</th><th className="num">{real ? "Valor real" : "Valor"}</th><th>{real ? "Vencimento real" : "Vencimento"}</th><th>Prorrogar para</th></tr></thead>
     <tbody>{parcels.map((p, i) => <tr key={i}><td>{i + 1}/{parcels.length}</td><td className="num">{fmtBRL(p.amount)}</td><td>{fmtDate(p.date)}</td><td>{p.ext ? fmtDate(p.ext) : "—"}</td></tr>)}
       <tr className="font-semibold"><td>Total</td><td className="num">{fmtBRL(parcelsTotal(parcels))}</td><td colSpan={2} /></tr></tbody></table></div>;
 }

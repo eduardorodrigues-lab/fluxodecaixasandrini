@@ -155,3 +155,12 @@ describe("Fornecedor primeiro, condições depois; parcelas dinâmicas; reativa�
     expect(JSON.stringify(d.planned.at(-1))).toBe(pl);
   });
 });
+
+describe("Efetivado: preenchimento manual", () => {
+  it("gera N linhas com resíduo de centavos na última e vencimentos em branco", async () => {
+    const { manualParcels } = await import("@/lib/notas");
+    const p = manualParcels(100000, 3);
+    expect(p.map((x) => x.amount)).toEqual([33333, 33333, 33334]); expect(p.every((x) => x.date === null)).toBe(true);
+    expect(manualParcels(100, 0)).toEqual([]);
+  });
+});

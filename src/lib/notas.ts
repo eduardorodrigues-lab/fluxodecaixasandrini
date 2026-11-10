@@ -30,6 +30,12 @@ export function adjustLast(p: DraftParcel[], total: number): DraftParcel[] {
   const diff = total - parcelsTotal(p);
   return p.map((x, i) => (i === p.length - 1 ? { ...x, amount: x.amount + diff } : x));
 }
+/** Preenchimento manual: N linhas com o total dividido em centavos (resíduo na última) e vencimentos em branco para informar. */
+export function manualParcels(total: number | null, count: number): DraftParcel[] {
+  if (!Number.isInteger(count) || count < 1) return [];
+  const base = Math.floor(Math.max(total ?? 0, 0) / count);
+  return Array.from({ length: count }, (_, i) => ({ amount: i === count - 1 ? Math.max(total ?? 0, 0) - base * (count - 1) : base, date: null, ext: null }));
+}
 export function validateNote(n: NoteDraft): string[] {
   const e: string[] = [];
   if (!n.categoryId) e.push("Selecione o subgrupo.");
