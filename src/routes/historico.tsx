@@ -33,17 +33,26 @@ function Page() {
     });
     alert(e ?? "Registro restaurado.");
   };
-  const sim = sims.find((s) => s.id === tab);
+  const [simId, setSimId] = useState<string | null>(null);
+  const sim = tab === "sims" ? sims.find((s) => s.id === simId) : undefined;
   const entries = tab === "real" ? audit.map((a) => ({ at: a.at, user: a.user_email ?? "", changes: a.changes })) : sim?.history ?? [];
+  const when = (at: string) => new Date(at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
   return (
     <div className="space-y-3">
       <PageHeader title="Histórico / Auditoria" sub="Cada registro mostra data, horário, quem alterou e a linha completa antes e depois; em vermelho o que mudou." />
       <div className="flex flex-wrap gap-1 text-xs">
         <button className={`btn ${tab === "real" ? "btn-primary" : ""}`} onClick={() => setTab("real")}>Fluxo real</button>
-        {sims.map((s) => <button key={s.id} className={`btn ${tab === s.id ? "btn-danger" : ""}`} onClick={() => setTab(s.id)}>Simulação: {s.name}</button>)}
+        <button className={`btn ${tab === "sims" ? "btn-danger" : ""}`} onClick={() => { setTab("sims"); setSimId(null); }}>Simulações</button>
       </div>
+      {tab === "sims" && !sim ? (
+        sims.length ? <table className="tbl"><thead><tr><th>Simulação</th><th>Criada por</th><th>Data e horário</th><th className="num">Alterações</th></tr></thead>
+          <tbody>{sims.map((s) => <tr key={s.id} className="cursor-pointer hover:bg-secondary" onClick={() => setSimId(s.id)}><td className="font-semibold">{s.name}</td><td>{s.createdBy || "—"}</td><td>{when(s.createdAt)}</td><td className="num">{s.history?.length ?? 0}</td></tr>)}</tbody></table>
+          : <p className="text-xs text-muted-foreground">Nenhuma simulação criada.</p>
+      ) : <>
+      {sim && <div className="flex items-center gap-2 text-sm"><button className="btn" onClick={() => setSimId(null)}>← Voltar às simulações</button><b>Simulação: {sim.name}</b></div>}
       <HistoryView entries={entries} data={tab === "real" ? base.data : sim?.data ?? base.data} scope={sim ? `Simulação: ${sim.name}` : "Fluxo real"}
         onRestore={tab === "real" && active.isBase ? (c) => ENTITY_KEY[c.entity] && restore(c.entity, c.before) : undefined} />
+      </>}
     </div>
   );
 }

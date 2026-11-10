@@ -13,7 +13,7 @@ import { baseMovedSince, editSession, migrateSims, purgeUser, scopeKey, visibleD
 // Sem dados demonstrativos e sem fallback: sem login/erro não há dados financeiros.
 // Modo Simulação: cópias locais por usuário+organização, isoladas, sem promoção para a base.
 export interface SimEdit { at: string; user: string; changes: Change[] }
-export interface Sim { id: string; name: string; createdAt: string; data: ScenarioData; baseVersion: number | null; history?: SimEdit[] }
+export interface Sim { id: string; name: string; createdAt: string; data: ScenarioData; baseVersion: number | null; history?: SimEdit[]; createdBy?: string }
 export interface AuditEntry { id: string; at: string; user_email: string | null; version_from: number; version_to: number; summary: string; changes: Change[] }
 interface LocalState { v: 4; activeId: string; sims: SimStore }
 export interface UiState { view: "vertical" | "horizontal"; start: string; end: string; supplierId: string; group: string }
@@ -179,7 +179,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setActive: (id) => mutLocal((s) => { s.activeId = id; }),
     update, draft, draftBaseVersion: cur?.baseVersion ?? null, baseMoved: baseMovedSince(cur, official.version), changes, discardDraft, commitDraft, saveState, saveMsg,
     reloadOfficial: () => { setSession(null); setSaveState("idle"); setSaveMsg(""); qc.invalidateQueries({ queryKey: ["official"] }); },
-    createSim: (name) => { if (!baseData) return; const id = uid(); if (!scope) return; mutLocal((s) => { (s.sims[scope] ??= []).push({ id, name, createdAt: new Date().toISOString(), data: clone(baseData), baseVersion }); s.activeId = id; }); },
+    createSim: (name) => { if (!baseData) return; const id = uid(); if (!scope) return; mutLocal((s) => { (s.sims[scope] ??= []).push({ id, name, createdAt: new Date().toISOString(), createdBy: user?.email ?? "", data: clone(baseData), baseVersion }); s.activeId = id; }); },
     discardSim: (id) => { if (!baseData) return; mutLocal((s) => { const x = scope ? s.sims[scope]?.find((i) => i.id === id) : null; if (x) { x.data = clone(baseData); x.baseVersion = baseVersion; } }); },
     deleteSim: (id) => mutLocal((s) => { if (scope) s.sims[scope] = (s.sims[scope] ?? []).filter((x) => x.id !== id); if (s.activeId === id) s.activeId = "base"; }),
     audit: (auditQ.data ?? []).map((r) => ({ ...r, changes: JSON.parse(r.changesJson) as Change[] })),
