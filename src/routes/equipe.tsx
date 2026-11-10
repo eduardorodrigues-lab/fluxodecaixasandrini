@@ -1,3 +1,4 @@
+import { askConfirm } from "@/lib/decisions";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -57,10 +58,10 @@ function Page() {
       {t?.allowed && <>
         <section className="card p-3"><div className="lbl mb-2">Membros</div>
           <table className="tbl"><thead><tr><th>Nome</th><th>E-mail</th><th>Setor</th><th>Permissão</th><th>Desde</th><th /></tr></thead>
-            <tbody>{t.members.map((m) => <tr key={m.user_id}><td>{m.full_name ?? "—"}</td><td>{m.email ?? m.user_id}{m.user_id === user.id && " (você)"}</td><td>{m.sector ?? "—"}</td><td>{m.role}</td><td>{dt(m.created_at)}</td><td><button className="btn" disabled={busy} onClick={() => confirm(`Revogar acesso de ${m.email ?? m.user_id}?`) && run(() => fRemove({ data: { orgId, userId: m.user_id } }))}>Revogar acesso</button></td></tr>)}</tbody></table></section>
+            <tbody>{t.members.map((m) => <tr key={m.user_id}><td>{m.full_name ?? "—"}</td><td>{m.email ?? m.user_id}{m.user_id === user.id && " (você)"}</td><td>{m.sector ?? "—"}</td><td>{m.role}</td><td>{dt(m.created_at)}</td><td><button className="btn" disabled={busy} onClick={async () => await askConfirm(`Revogar acesso de ${m.email ?? m.user_id}?`) && run(() => fRemove({ data: { orgId, userId: m.user_id } }))}>Revogar acesso</button></td></tr>)}</tbody></table></section>
         <section className="card p-3"><div className="lbl mb-2">Convites</div>
           {t.invites.length === 0 ? <p className="text-xs">Nenhum convite.</p> : <table className="tbl"><thead><tr><th>Nome</th><th>E-mail</th><th>Setor</th><th>Permissão</th><th>Criado</th><th>Expira</th><th>Estado</th><th /></tr></thead>
-            <tbody>{t.invites.map((i) => { const st = i.revoked_at ? "revogado" : i.accepted_at ? "aceito" : new Date(i.expires_at) <= new Date() ? "expirado" : "pendente"; return <tr key={i.id}><td>{i.full_name ?? "—"}</td><td>{i.email}</td><td>{i.sector ?? "—"}</td><td>{i.role}</td><td>{dt(i.created_at)}</td><td>{dt(i.expires_at)}</td><td>{st}</td><td>{st === "pendente" && <button className="btn" disabled={busy} onClick={() => run(() => fRevoke({ data: { orgId, inviteId: i.id } }))}>Revogar</button>}</td></tr>; })}</tbody></table>}</section>
+            <tbody>{t.invites.map((i) => { const st = i.revoked_at ? "revogado" : i.accepted_at ? "aceito" : new Date(i.expires_at) <= new Date() ? "expirado" : "pendente"; return <tr key={i.id}><td>{i.full_name ?? "—"}</td><td>{i.email}</td><td>{i.sector ?? "—"}</td><td>{i.role}</td><td>{dt(i.created_at)}</td><td>{dt(i.expires_at)}</td><td>{st}</td><td>{st === "pendente" && <button className="btn" disabled={busy} onClick={async () => await askConfirm(`O convite de ${i.email} deixará de permitir acesso. O histórico será preservado.`, { title: "Revogar convite?", action: "Revogar convite", destructive: true }) && run(() => fRevoke({ data: { orgId, inviteId: i.id } }))}>Revogar</button>}</td></tr>; })}</tbody></table>}</section>
         <section className="card p-3"><div className="lbl mb-2">Auditoria de acesso</div>
           {t.log.length === 0 ? <p className="text-xs">Sem eventos.</p> : <table className="tbl"><thead><tr><th>Quando</th><th>Quem</th><th>Ação</th><th>Alvo</th><th>Papel</th></tr></thead>
             <tbody>{t.log.map((l) => <tr key={l.id}><td>{dt(l.at)}</td><td>{l.actor_email}</td><td>{ACTION[l.action] ?? l.action}</td><td>{l.target_email ?? l.target_user}</td><td>{l.role}</td></tr>)}</tbody></table>}</section>

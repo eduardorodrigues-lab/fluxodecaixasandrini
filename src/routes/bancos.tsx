@@ -1,3 +1,4 @@
+import { askConfirm, askText } from "@/lib/decisions";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { pendingSearch } from "@/lib/pendencias";
@@ -51,7 +52,7 @@ function Page() {
       {tab === "extrato" && <Extrato d={d} />}
       {tab === "transf" && <Transfers d={d} sim={!active.isBase} canReverse onReverse={(id, n) => act((x) => reverseTransfer(x, id, n, now()))} />}
       {tab === "cartoes" && <Cartoes d={d} onReverse={(id, n) => act((x) => reverseCardOp(x, id, n, now()))} onCancelInvoice={(id, n) => act((x) => cancelInvoice(x, id, n))} />}
-      {tab === "saldo" && <SaldoInicial d={d} isBase={active.isBase} onConfirm={(note) => act((x) => confirmBankTransition(x, user?.email ?? "", note, now()))} onRevert={() => confirm("Voltar a usar o saldo inicial legado no fluxo?") && act((x) => revertBankTransition(x))} />}
+      {tab === "saldo" && <SaldoInicial d={d} isBase={active.isBase} onConfirm={(note) => act((x) => confirmBankTransition(x, user?.email ?? "", note, now()))} onRevert={async () => await askConfirm("Voltar a usar o saldo inicial legado no fluxo?") && act((x) => revertBankTransition(x))} />}
 
       {panel?.t === "conta" && <ContaPanel d={d} acc={panel.acc} onCancel={() => setPanel(null)} onSave={(a, note) => done((x) => (panel.acc ? updateAccount(x, panel.acc.id, a, note, now()) : addAccount(x, uid(), a, now())))} />}
       {panel?.t === "cartao" && <CartaoPanel onCancel={() => setPanel(null)} onSave={(c) => done((x) => addCard(x, { id: uid(), accountId: panel.accountId, active: true, ...c }))} />}
@@ -79,7 +80,7 @@ function Contas({ d, onEdit, onCard, onToggle }: { d: ScenarioData; onEdit: (a: 
           <td className="num">{a.openingBalance === null ? <span className="tag tag-warn">não informado</span> : fmtBRL(a.openingBalance)}</td><td>{fmtDate(a.openingDate) || "—"}</td>
           <td className="num">{b.realized === null ? "—" : fmtBRL(b.realized)}</td>
           <td>{cards.map((c) => <div key={c.id}>{c.name} ••{c.last4} · fecha {c.closingDay} · vence {c.dueDay}</div>)}</td>
-          <td className="space-x-1 whitespace-nowrap"><button className="btn" onClick={() => onEdit(a)}>Editar</button><button className="btn" onClick={() => onCard(a.id)}>+ Cartão</button><button className="btn" onClick={() => onToggle(a)}>{a.active ? "Inativar" : "Reativar"}</button></td>
+          <td className="space-x-1 whitespace-nowrap"><button className="btn" onClick={() => onEdit(a)}>Editar</button><button className="btn" onClick={() => onCard(a.id)}>+ Cartão</button><button className="btn" onClick={async () => await askConfirm(`A conta ${accountName(d, a.id)} será ${a.active ? "inativada" : "reativada"}. Movimentos anteriores e histórico serão preservados.`, { title: a.active ? "Inativar conta?" : "Reativar conta?", action: a.active ? "Inativar" : "Reativar", destructive: a.active }) && onToggle(a)}>{a.active ? "Inativar" : "Reativar"}</button></td>
         </tr>;
       })}</tbody>
     </table></div>
@@ -96,10 +97,10 @@ function ContaPanel({ d, acc, onCancel, onSave }: { d: ScenarioData; acc?: BankA
   const dirty = !!a.bank || !!a.label || !!note;
   const cancel = guardClose(dirty, onCancel);
   const footer = review
-    ? <><button className="btn" onClick={() => setReview(false)}>Voltar e editar</button><button className="btn btn-primary" onClick={() => onSave(a, note)}>Confirmar</button></>
+    ? <><button className="btn" onClick={() => setReview(false)}>Cancelar</button><button className="btn btn-primary" onClick={() => onSave(a, note)}>Salvar conta</button></>
     : <><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" disabled={errs.length > 0} title={errs.join(" ")} onClick={() => setReview(true)}>Revisar e confirmar</button></>;
   return (
-    <SidePanel title={acc ? "Editar conta" : "Nova conta"} sub={review ? "Revise os dados antes de confirmar" : ""} onClose={onCancel} dirty={dirty} footer={footer}>
+    <SidePanel centered={review} title={acc ? "Editar conta" : "Nova conta"} sub={review ? "Revise os dados antes de confirmar" : ""} onClose={onCancel} dirty={dirty} footer={footer}>
       {review ? <Section title="Resumo"><ul className="space-y-1">
         <li>{a.bank} · {a.label} {a.holder && `· ${a.holder}`}</li><li>Agência {a.agency || "—"} · Conta {a.account || "—"}</li>
         <li>Saldo inicial: {a.openingBalance === null ? "não informado" : `${fmtBRL(a.openingBalance)} ao fim de ${fmtDate(a.openingDate)}`}</li>
@@ -128,7 +129,7 @@ function CartaoPanel({ onCancel, onSave }: { onCancel: () => void; onSave: (c: {
   const [c, setC] = useState({ name: "", last4: "", closingDay: 0, dueDay: 0 });
   const ok = c.name.trim() && /^\d{4}$/.test(c.last4) && c.closingDay >= 1 && c.closingDay <= 31 && c.dueDay >= 1 && c.dueDay <= 31;
   const dirty = !!c.name || !!c.last4;
-  return <SidePanel title="Novo cartão" onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={guardClose(dirty, onCancel)}>Cancelar</button><button className="btn btn-primary" disabled={!ok} onClick={() => onSave(c)}>Confirmar</button></>}>
+  return <SidePanel title="Novo cartão" onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={guardClose(dirty, onCancel)}>Cancelar</button><button className="btn btn-primary" disabled={!ok} onClick={async () => await askConfirm(`O cartão ${c.name} será cadastrado com fechamento no dia ${c.closingDay} e vencimento no dia ${c.dueDay}.`, { title: "Salvar cartão?", action: "Salvar cartão" }) && onSave(c)}>Salvar cartão</button></>}>
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
       <Field l="Nome" full><input className="inp h-8" value={c.name} onChange={(e) => setC({ ...c, name: e.target.value })} /></Field>
       <Field l="Últimos 4 dígitos"><input className="inp h-8" maxLength={4} value={c.last4} onChange={(e) => setC({ ...c, last4: e.target.value.replace(/\D/g, "") })} /></Field>
@@ -144,9 +145,9 @@ function TransfPanel({ d, sim, onCancel, onSave }: { d: ScenarioData; sim: boole
   const [review, setReview] = useState(false);
   const errs = [!f && "Selecione a origem.", !t && "Selecione o destino.", f && f === t && "Origem e destino devem ser diferentes.", !(amount && amount > 0) && "Valor positivo.", !date && "Informe a data."].filter(Boolean) as string[];
   const dirty = !!f || !!t || amount !== null || !!note;
-  const footer = review ? <><button className="btn" onClick={() => setReview(false)}>Voltar e editar</button><button className="btn btn-primary" onClick={() => onSave({ fromAccountId: f, toAccountId: t, amount: amount!, date: date!, note })}>Confirmar transferência</button></>
+  const footer = review ? <><button className="btn" onClick={() => setReview(false)}>Cancelar</button><button className="btn btn-primary" onClick={() => onSave({ fromAccountId: f, toAccountId: t, amount: amount!, date: date!, note })}>Confirmar transferência</button></>
     : <><button className="btn" onClick={guardClose(dirty, onCancel)}>Cancelar</button><button className="btn btn-primary" disabled={errs.length > 0} title={errs.join(" ")} onClick={() => setReview(true)}>Revisar e confirmar</button></>;
-  return <SidePanel title={`${sim ? "SIMULAÇÃO · " : ""}${review ? "Revisar transferência" : "Transferir entre contas"}`} sub={sim ? "Transferência de teste: altera só este cenário; nenhum dado real é gravado" : "Grava nas contas reais ao confirmar"} onClose={onCancel} dirty={dirty} footer={footer}>
+  return <SidePanel centered={review} title={`${sim ? "SIMULAÇÃO · " : ""}${review ? "Revisar transferência" : "Transferir entre contas"}`} sub={sim ? "Transferência de teste: altera só este cenário; nenhum dado real é gravado" : "Grava nas contas reais ao confirmar"} onClose={onCancel} dirty={dirty} footer={footer}>
     {review ? <Section title="Resumo"><p>Sai {fmtBRL(amount)} de <b>{accountName(d, f)}</b> e entra em <b>{accountName(d, t)}</b> em {fmtDate(date)}. Movimento neutro no consolidado (não é receita nem despesa).{note && ` Observação: ${note}`}</p></Section>
       : <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <Field l="Conta de origem" full><AccountSearch d={d} label="Conta de origem" value={f} onChange={setF} /></Field>
@@ -165,7 +166,7 @@ function Transfers({ d, sim, canReverse, onReverse }: { d: ScenarioData; sim: bo
   return <div className="card overflow-auto"><table className="tbl"><thead><tr><th>Data</th><th>Origem</th><th>Destino</th><th className="num">Valor</th><th>Observação</th><th>Registrada por</th><th>Situação</th><th /></tr></thead>
     <tbody>{[...d.transfers].sort((a, b) => b.date.localeCompare(a.date)).map((t) => <tr key={t.id}><td>{fmtDate(t.date)}</td><td>{accountName(d, t.fromAccountId)}</td><td>{accountName(d, t.toAccountId)}</td><td className="num">{fmtBRL(t.amount)}</td><td>{t.note}</td><td>{t.by}</td>
       <td>{sim && <span className="tag tag-err mr-1">simulação</span>}{t.reversedAt ? <span className="tag tag-err" title={t.reversalNote}>Estornada {fmtDate(t.reversedAt.slice(0, 10))}</span> : <span className="tag tag-ok">Ativa</span>}</td>
-      <td>{!t.reversedAt && canReverse && <button className="btn" onClick={() => { const n = prompt("Motivo do estorno da transferência:"); if (n) onReverse(t.id, n); }}>Estornar</button>}</td></tr>)}</tbody></table></div>;
+      <td>{!t.reversedAt && canReverse && <button className="btn" onClick={async () => { const n = await askText("Motivo do estorno da transferência:"); if (n) onReverse(t.id, n); }}>Estornar</button>}</td></tr>)}</tbody></table></div>;
 }
 
 function Extrato({ d }: { d: ScenarioData }) {
@@ -209,12 +210,12 @@ function Cartoes({ d, onReverse, onCancelInvoice }: { d: ScenarioData; onReverse
             <td>{t ? `${sup(t.supplierId)} · ${t.document || "sem documento"}` : ps[0] ? sup(ps[0].supplierId) : "—"}</td><td className="num">{fmtBRL(o.amount)}</td>
             <td>{ps.map((e) => { const inv = e.invoiceId ? d.expenses.find((x) => x.id === e.invoiceId) : null; return <div key={e.id}>{fmtBRL(e.value)} · fatura {fmtMonth(invoiceMonthFor(c, e.baseDate))} {inv ? (inv.status === "cancelado" ? "" : "· fechada") : "· projetada"}</div>; })}</td>
             <td>{o.reversedAt ? <span className="tag tag-err" title={o.reversalNote}>Estornada</span> : o.kind === "cobertura" ? <span className="tag tag-ok">Quitado com cartão</span> : <span className="tag tag-ok">Ativa</span>}</td>
-            <td>{!o.reversedAt && <button className="btn" onClick={() => { const n = prompt("Motivo do estorno da operação no cartão:"); if (n) onReverse(o.id, n); }}>Estornar</button>}</td></tr>;
+            <td>{!o.reversedAt && <button className="btn" onClick={async () => { const n = await askText("Motivo do estorno da operação no cartão:"); if (n) onReverse(o.id, n); }}>Estornar</button>}</td></tr>;
         })}</tbody></table>}
       {invs.length > 0 && <table className="tbl"><thead><tr><th>Fatura</th><th>Vencimento</th><th className="num">Valor</th><th>Situação</th><th /></tr></thead>
         <tbody>{invs.map((f) => { const paid = d.payments.filter((p) => p.titleKind === "expense" && p.titleId === f.id && !p.reversedAt).reduce((a, p) => a + p.amount, 0);
           return <tr key={f.id}><td>{fmtMonth(f.invoiceOf!.month)}</td><td>{fmtDate(f.baseDate)}</td><td className="num">{fmtBRL(f.value)}</td><td>{f.status === "cancelado" ? "Cancelada" : paid >= f.value ? "Paga" : paid ? `Parcial (${fmtBRL(paid)})` : "Em aberto — pagar em Lançamentos → Efetivado"}</td>
-            <td>{f.status !== "cancelado" && !paid && <button className="btn" onClick={() => { const n = prompt("Motivo para reabrir (cancelar) a fatura:"); if (n) onCancelInvoice(f.id, n); }}>Reabrir fatura</button>}</td></tr>; })}</tbody></table>}
+            <td>{f.status !== "cancelado" && !paid && <button className="btn" onClick={async () => { const n = await askText("Motivo para reabrir (cancelar) a fatura:"); if (n) onCancelInvoice(f.id, n); }}>Reabrir fatura</button>}</td></tr>; })}</tbody></table>}
     </div>;
   })}<p className="text-[11px] text-muted-foreground">Compras e lançamentos pagos no cartão não debitam o banco. Antes do fechamento entram no fluxo como projeção da fatura; ao fechar, a fatura as substitui (sem duplicar) e o banco só é debitado ao pagar a fatura (uma ou mais contas).</p></div>;
 }
@@ -240,9 +241,9 @@ function CoberturaPanel({ d, onCancel, onSave }: { d: ScenarioData; onCancel: ()
   const cat = sel ? d.categories.find((c) => c.id === sel.t.categoryId) : null;
   const errs = [!sel && "Selecione o lançamento em aberto.", !cardId && "Selecione o cartão.", !date && "Informe a data.", !(amt && amt > 0) && "Informe o valor.", sel && amt && amt > sel.open && "Valor excede o saldo em aberto do lançamento.", !(n >= 1 && n <= 360) && "Parcelas de 1 a 360."].filter(Boolean) as string[];
   const dirty = !!q || amount !== null;
-  const footer = review ? <><button className="btn" onClick={() => setReview(false)}>Voltar e editar</button><button className="btn btn-primary" onClick={() => onSave({ cardId, titleKind: sel!.kind, titleId: sel!.t.id, date: date!, amount: amt!, installments: n })}>Confirmar pagamento no cartão</button></>
+  const footer = review ? <><button className="btn" onClick={() => setReview(false)}>Cancelar</button><button className="btn btn-primary" onClick={() => onSave({ cardId, titleKind: sel!.kind, titleId: sel!.t.id, date: date!, amount: amt!, installments: n })}>Confirmar pagamento no cartão</button></>
     : <><button className="btn" onClick={guardClose(dirty, onCancel)}>Cancelar</button><button className="btn btn-primary" disabled={errs.length > 0} title={errs.join(" ")} onClick={() => setReview(true)}>Revisar e confirmar</button></>;
-  return <SidePanel wide title={review ? "Revisar pagamento no cartão" : "Pagar lançamento existente com cartão"} sub="Liquidação do fornecedor pelo cartão — não debita banco; a dívida fica no cartão até pagar a fatura" onClose={onCancel} dirty={dirty} footer={footer}>
+  return <SidePanel centered={review} wide title={review ? "Revisar pagamento no cartão" : "Pagar lançamento existente com cartão"} sub="Liquidação do fornecedor pelo cartão — não debita banco; a dívida fica no cartão até pagar a fatura" onClose={onCancel} dirty={dirty} footer={footer}>
     {!review && <Section n={1} title="Lançamento efetivado em aberto">
       <input aria-label="Buscar lançamento" className="inp h-8 w-full" list="cob-titles" placeholder="Digite fornecedor ou documento" value={q} onChange={(e) => { setQ(e.target.value); setAmount(null); }} />
       <datalist id="cob-titles">{opts.map((o) => <option key={o.kind + o.t.id} value={o.text} />)}</datalist>
@@ -269,7 +270,7 @@ function CompraCartaoPanel({ d, onCancel, onSave }: { d: ScenarioData; onCancel:
   const [kind, setKind] = useState<CategoryKind>("despesa");
   const ok = e.cardId && e.supplierId && e.categoryId && e.value && e.value > 0 && e.baseDate;
   const dirty = !!e.supplierId || !!e.document || e.value !== null || !!e.notes;
-  return <SidePanel wide title="Adicionar nova compra no cartão" sub="Entra no fluxo só pelas faturas do cartão — sem obrigação duplicada" onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={guardClose(dirty, onCancel)}>Cancelar</button><button className="btn btn-primary" disabled={!ok} onClick={() => onSave({ cardId: e.cardId, supplierId: e.supplierId, categoryId: e.categoryId, document: e.document, notes: e.notes, amount: e.value!, date: e.baseDate!, installments: n })}>Confirmar compra</button></>}>
+  return <SidePanel wide title="Adicionar nova compra no cartão" sub="Entra no fluxo só pelas faturas do cartão — sem obrigação duplicada" onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={guardClose(dirty, onCancel)}>Cancelar</button><button className="btn btn-primary" disabled={!ok} onClick={async () => { if (e.value && e.baseDate && await askConfirm(`Compra de ${fmtBRL(e.value)} no cartão, em ${n} parcela(s). O compromisso entrará pelas faturas, sem débito bancário imediato.`, { title: "Adicionar compra no cartão?", action: "Confirmar compra" })) onSave({ cardId: e.cardId, supplierId: e.supplierId, categoryId: e.categoryId, document: e.document, notes: e.notes, amount: e.value, date: e.baseDate, installments: n }); }}>Confirmar compra</button></>}>
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
       <Field l="Cartão" full><select className="inp h-8" value={e.cardId} onChange={(x) => setE({ ...e, cardId: x.target.value })}>{d.cards.map((c) => <option key={c.id} value={c.id}>{c.name} ••{c.last4}</option>)}</select></Field>
       <Field l="Fornecedor" full><SupplierSearch d={d} value={e.supplierId} onChange={(v) => setE({ ...e, supplierId: v })} /></Field>
@@ -296,7 +297,7 @@ function FaturaPanel({ d, onCancel, onSave }: { d: ScenarioData; onCancel: () =>
   const [supplierId, setSup] = useState(""); const [categoryId, setCat] = useState("");
   const ok = card && m && items.length && (dueDate ?? due) && supplierId && categoryId;
   const dirty = !!supplierId || !!categoryId || dueDate !== null;
-  return <SidePanel title="Fechar fatura" onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={guardClose(dirty, onCancel)}>Cancelar</button><button className="btn btn-primary" disabled={!ok} onClick={() => onSave({ cardId, month: m, dueDate: (dueDate ?? due)!, supplierId, categoryId })}>Confirmar fatura</button></>}>
+  return <SidePanel title="Fechar fatura" onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={guardClose(dirty, onCancel)}>Cancelar</button><button className="btn btn-primary" disabled={!ok} onClick={async () => { const dt = dueDate ?? due; if (dt && await askConfirm(`A fatura de ${fmtMonth(m)}, com ${items.length} compra(s), substituirá as projeções vinculadas sem duplicar saídas. Vencimento: ${fmtDate(dt)}.`, { title: "Fechar fatura?", action: "Confirmar fatura" })) onSave({ cardId, month: m, dueDate: dt, supplierId, categoryId }); }}>Confirmar fatura</button></>}>
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
       <Field l="Cartão"><select className="inp h-8" value={cardId} onChange={(x) => setCardId(x.target.value)}>{d.cards.map((c) => <option key={c.id} value={c.id}>{c.name} ••{c.last4}</option>)}</select></Field>
       <Field l="Mês da fatura"><select className="inp h-8" value={m} onChange={(x) => setMonth(x.target.value)}>{months.map((x) => <option key={x} value={x}>{fmtMonth(x)}</option>)}</select></Field>
@@ -324,7 +325,7 @@ function SaldoInicial({ d, isBase, onConfirm, onRevert }: { d: ScenarioData; isB
     {d.params.bankTransition && <p className="text-muted-foreground">Transição confirmada em {fmtDate(d.params.bankTransition.at.slice(0, 10))} por {d.params.bankTransition.by}: legado {fmtBRL(d.params.bankTransition.legacyValue)} → contas {fmtBRL(d.params.bankTransition.accountsValue)}. {d.params.bankTransition.note}</p>}
     {mode === "legado" ? <div className="flex flex-wrap items-end gap-2">
       <label className="flex-1">Observação da transição<br /><input className="inp h-8 w-full" value={note} onChange={(e) => setNote(e.target.value)} /></label>
-      <button className="btn btn-primary" disabled={!isBase || p.pending.length > 0 || !note.trim()} onClick={() => confirm(`Passar o saldo inicial do fluxo de ${fmtBRL(p.legacyValue)} para ${fmtBRL(p.accountsValue)}?`) && onConfirm(note)}>Confirmar transição</button>
+      <button className="btn btn-primary" disabled={!isBase || p.pending.length > 0 || !note.trim()} onClick={async () => await askConfirm(`Passar o saldo inicial do fluxo de ${fmtBRL(p.legacyValue)} para ${fmtBRL(p.accountsValue)}?`) && onConfirm(note)}>Confirmar transição</button>
     </div> : <button className="btn" disabled={!isBase} onClick={onRevert}>Voltar à regra legado</button>}
   </div>;
 }

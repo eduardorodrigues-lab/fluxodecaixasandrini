@@ -1,3 +1,4 @@
+import { askConfirm } from "@/lib/decisions";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/kit";
@@ -14,6 +15,7 @@ export const Route = createFileRoute("/simulacoes")({
       { name: "description", content: "Simulações visuais isoladas e comparação diária com a base." },
       { property: "og:title", content: "Simulações · Fluxo de Caixa Sandrini" },
       { property: "og:description", content: "Simulações isoladas e comparação com a base." },
+      { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" },
     ],
   }),
   component: Page,
@@ -36,8 +38,8 @@ function Page() {
           <tbody>{sims.map((s) => (
             <tr key={s.id}><td>{s.name}{s.id === active.id && <span className="tag tag-warn ml-1">ativa</span>}</td><td>{fmtDate(s.createdAt.slice(0, 10))}</td><td>v{s.baseVersion ?? "—"}</td>
               <td className="space-x-1">{s.id !== active.id ? <button className="btn" onClick={() => setActive(s.id)}>Ativar</button> : <button className="btn" onClick={() => setActive("base")}>Desativar</button>}<button className={`btn ${cmp === s.id ? "btn-primary" : ""}`} onClick={() => setCmp(s.id)}>Comparar</button>
-                <button className="btn" onClick={() => confirm("Descartar todas as hipóteses desta simulação e recopiar a base atual?") && discardSim(s.id)}>Descartar hipóteses</button>
-                <button className="btn btn-danger" onClick={() => confirm("Excluir simulação?") && deleteSim(s.id)}>Excluir</button></td></tr>
+                <button className="btn" onClick={async () => await askConfirm("Descartar todas as hipóteses desta simulação e recopiar a base atual?") && discardSim(s.id)}>Descartar hipóteses</button>
+                <button className="btn btn-danger" onClick={async () => await askConfirm(`A simulação “${s.name}” deixará de estar disponível para edição. O histórico será preservado para auditoria. O fluxo real não será alterado.`, { title: "Excluir simulação?", action: "Excluir simulação", destructive: true }) && deleteSim(s.id)}>Excluir</button></td></tr>
           ))}</tbody></table>
         {!active.isBase && <button className="btn mt-2" onClick={() => setActive("base")}>Voltar para a base</button>}
         <p className="mt-2 text-[11px] text-muted-foreground">Com a simulação ativa, use Lançamentos, Recebimentos, Metas e Referências para incluir/excluir/ajustar valores, datas, metas e prazos — tudo imediato e apenas nesta simulação. Pagamentos não podem ser registrados em simulação.</p>

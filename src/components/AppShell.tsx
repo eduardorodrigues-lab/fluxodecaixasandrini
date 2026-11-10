@@ -1,3 +1,4 @@
+import { askConfirm } from "@/lib/decisions";
 import { Link, useRouterState } from "@tanstack/react-router";
 import type { ScenarioData } from "@/lib/engine/types";
 import { useEffect, useState, type ReactNode } from "react";
@@ -67,7 +68,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="space-y-2 border-t border-sidebar-border p-3 text-[11px]">
           {orgs.length > 1 && <>
             <label className="block text-sidebar-primary" htmlFor="org-sel">Organização</label>
-            <select id="org-sel" className="w-full rounded bg-sidebar-accent px-1.5 py-1 text-xs" value={official.orgId} onChange={(e) => { if (!draft || confirm("Há alterações ainda sendo salvas. Trocar de organização agora pode perdê-las. Continuar?")) setOrgId(e.target.value); }}>
+            <select id="org-sel" className="w-full rounded bg-sidebar-accent px-1.5 py-1 text-xs" value={official.orgId} onChange={async (e) => { const next = e.target.value; if (!draft || await askConfirm("Há alterações ainda sendo salvas. Trocar de organização agora pode perdê-las.", { title: "Trocar organização?", action: "Trocar organização" })) setOrgId(next); }}>
               {!official.orgId && <option value="">— selecione —</option>}
               {orgs.map((o) => <option key={o.orgId} value={o.orgId}>{o.name} ({o.own ? "própria" : "convidada"} · {o.role})</option>)}
             </select></>}
@@ -77,7 +78,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {sims.map((s) => <option key={s.id} value={s.id}>Simulação: {s.name}</option>)}
           </select>
           {!sims.length && <Link to="/simulacoes" className="block underline opacity-80">Simular hipóteses</Link>}
-          {user && <p className="leading-snug opacity-80">{user.email}<br />{official.status === "ready" ? `Papel ${official.role}` : official.status === "error" ? official.error : "Carregando…"}<br /><button className="underline" onClick={() => { if (!draft || confirm("Há alterações ainda sendo salvas. Sair agora pode perdê-las. Continuar?")) signOut(); }}>Sair</button></p>}
+          {user && <p className="leading-snug opacity-80">{user.email}<br />{official.status === "ready" ? `Papel ${official.role}` : official.status === "error" ? official.error : "Carregando…"}<br /><button className="underline" onClick={async () => { if (!draft || await askConfirm("Há alterações ainda sendo salvas. Sair agora pode perdê-las. Continuar?")) signOut(); }}>Sair</button></p>}
         </div>
       </aside>
       )}

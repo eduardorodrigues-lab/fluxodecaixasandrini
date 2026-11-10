@@ -14,6 +14,7 @@ export const Route = createFileRoute("/despesas")({
       { name: "description", content: "Despesas planejadas e efetuadas por período, subgrupo e etapa." },
       { property: "og:title", content: "Relatório de despesas · Fluxo de Caixa Sandrini" },
       { property: "og:description", content: "Despesas por período, subgrupo e etapa, do mesmo motor do fluxo." },
+      { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" },
     ],
   }),
   component: Page,

@@ -1,3 +1,4 @@
+import { askConfirm, askText } from "@/lib/decisions";
 import { BaixasList, PagamentoPanel } from "@/components/BancoPanels";
 import { accountName, NO_ACCOUNT, registerPaymentBatch, coverTitleWithCard } from "@/lib/engine/banco";
 import { createFileRoute } from "@tanstack/react-router";
@@ -129,7 +130,7 @@ function Page() {
                     <button className="btn" onClick={() => setPanel({ t: "nota", init: noteInit(p, "compra"), siblings: n, save: (x, f) => { const t = x.planned.find((y) => y.id === p.id); if (t) Object.assign(t, { categoryId: f.categoryId, supplierId: f.supplierId, purchaseCode: f.purchaseCode, document: f.document, notes: f.notes }); } })}>Editar dados da nota</button>
                     {pc && p.status === "ativo" && <button className="btn" onClick={() => setPanel({ t: "prorrogar", label, current: it?.extensionDate ?? null, original: it ? it.date : pc.date, history: it?.extensionHistory ?? [], save: (x, to, note) => extendPlannedParcel(x, p.id, idx, to, note, now()) })}>Prorrogar parcela</button>}
                     <button className="btn" onClick={() => toggle("tl", p.id)}>Detalhes ({effs.length})</button>
-                    <button className="btn btn-danger" onClick={() => confirm("Excluir esta previsão (todas as parcelas)?") && del("planned", p.id)}>Excluir nota</button>
+                    <button className="btn btn-danger" onClick={async () => await askConfirm("Excluir esta previsão (todas as parcelas)?") && del("planned", p.id)}>Excluir nota</button>
                   </Acoes></td>
                 </tr>,
               ];
@@ -163,8 +164,8 @@ function Page() {
                       <button className="btn" onClick={() => setPanel({ t: "nota", init: noteInit(c, "compra"), siblings: sibs, save: (x, f) => editCommittedNote(x, c.id, { categoryId: f.categoryId, supplierId: f.supplierId, purchaseCode: f.purchaseCode, document: f.document, notes: f.notes }) })}>Editar dados da nota</button>
                       <button className="btn" onClick={() => setPanel({ t: "prorrogar", label, current: c.extensionDate, original: c.dueDate, history: c.extensionHistory, save: (x, to, note) => confirmExtension(x, "committed", c.id, to, note, now()) })}>Prorrogar parcela</button>
                       <button className="btn" onClick={() => toggle("det", c.id)}>Detalhes</button>
-                      {c.status === "ativo" ? <button className="btn" onClick={() => act((x) => { const t = x.committed.find((y) => y.id === c.id); if (t) t.status = "cancelado"; })}>Cancelar parcela</button> : <button className="btn" onClick={() => act((x) => { const t = x.committed.find((y) => y.id === c.id); if (t) t.status = "ativo"; })}>Reativar parcela</button>}
-                      <button className="btn btn-danger" onClick={() => confirm("Excluir esta parcela?") && del("committed", c.id)}>Excluir parcela</button>
+                      {c.status === "ativo" ? <button className="btn" onClick={async () => await askConfirm(`A parcela ${label} será cancelada. Pagamentos e histórico não serão desfeitos.`, { title: "Cancelar parcela?", action: "Cancelar parcela", destructive: true }) && act((x) => { const t = x.committed.find((y) => y.id === c.id); if (t) t.status = "cancelado"; })}>Cancelar parcela</button> : <button className="btn" onClick={async () => await askConfirm(`A parcela ${label} voltará a compor o fluxo. Pagamentos anteriores serão preservados.`, { title: "Reativar parcela?", action: "Reativar parcela" }) && act((x) => { const t = x.committed.find((y) => y.id === c.id); if (t) t.status = "ativo"; })}>Reativar parcela</button>}
+                      <button className="btn btn-danger" onClick={async () => await askConfirm("Excluir esta parcela?") && del("committed", c.id)}>Excluir parcela</button>
                     </Acoes></td>
                   </tr>,
                   isOpen("det", c.id) && <tr key={c.id + "-d"}><td colSpan={15} className="bg-muted">
@@ -194,7 +195,7 @@ function Page() {
                     <button className="btn" onClick={() => setPanel({ t: "nota", init: noteInit(e, "despesa"), siblings: 1, save: (x, f) => { const t = x.expenses.find((y) => y.id === e.id); if (t) Object.assign(t, { categoryId: f.categoryId, supplierId: f.supplierId, document: f.document, notes: f.notes }); } })}>Editar dados da nota</button>
                     <button className="btn" onClick={() => setPanel({ t: "prorrogar", label, current: e.extensionDate, original: orig, history: e.extensionHistory, save: (x, to, note) => confirmExtension(x, "expense", e.id, to, note, now()) })}>Prorrogar parcela</button>
                     <button className="btn" onClick={() => toggle("det", e.id)}>Detalhes e baixas</button>
-                    <button className="btn btn-danger" onClick={() => confirm("Excluir esta parcela?") && del("expenses", e.id)}>Excluir parcela</button>
+                    <button className="btn btn-danger" onClick={async () => await askConfirm("Excluir esta parcela?") && del("expenses", e.id)}>Excluir parcela</button>
                   </Acoes></td>
                 </tr>,
                 isOpen("det", e.id) && <tr key={e.id + "-d"}><td colSpan={15} className="bg-muted p-2"><div className="lbl mb-1">Baixas da parcela</div><BaixasList d={d} kind="expense" titleId={e.id} canReverse={active.isBase} onReverse={(id, n) => act((x) => reversePayment(x, id, n, now()))} />{e.cardId && <p className="mt-1">Compra no cartão — paga pela fatura{e.invoiceId ? "" : " (fatura ainda não fechada)"}.</p>}</td></tr>,
@@ -208,7 +209,7 @@ function Page() {
               const t = p.titleKind === "committed" ? d.committed.find((c) => c.id === p.titleId) : d.expenses.find((e) => e.id === p.titleId);
               return <tr key={p.id}><td>{fmtDate(p.date)}</td><td>{sup(t?.supplierId ?? "")?.name} · {t?.document || "sem documento"}{p.titleKind === "committed" && labels.get(p.titleId) ? ` · parcela ${labels.get(p.titleId)}` : ""}</td><td>{p.method === "cartao" ? <span className="tag tag-ok">Quitado com cartão</span> : p.accountId ? accountName(d, p.accountId) : <span className="tag tag-warn">{NO_ACCOUNT}</span>}</td><td className="num">{fmtBRL(p.amount)}</td><td>{p.note}</td>
                 <td>{p.reversedAt ? <span className="tag tag-err">estornado {fmtDate(p.reversedAt.slice(0, 10))}: {p.reversalNote}</span> : <span className="tag tag-ok">ativo</span>}</td>
-                <td>{!p.reversedAt && p.method !== "cartao" && <button className="btn" disabled={!active.isBase} onClick={() => { const n = prompt("Motivo do estorno (auditado):"); if (n) act((x) => reversePayment(x, p.id, n, now())); }}>Estornar</button>}</td></tr>;
+                <td>{!p.reversedAt && p.method !== "cartao" && <button className="btn" disabled={!active.isBase} onClick={async () => { const n = await askText("Motivo do estorno (auditado):"); if (n) act((x) => reversePayment(x, p.id, n, now())); }}>Estornar</button>}</td></tr>;
             })}</tbody></table>
         )}
       </div>}
@@ -273,10 +274,10 @@ function EfetivarPanel({ data, planned, onDone, onCancel, userEmail }: { data: S
     });
   };
   const footer = review
-    ? <><button className="btn" onClick={() => setReview(false)}>Voltar e editar</button><button className="btn btn-primary" disabled={sent} onClick={confirm}>Confirmar esta efetivação</button></>
+    ? <><button className="btn" onClick={() => setReview(false)}>Cancelar</button><button className="btn btn-primary" disabled={sent} onClick={confirm}>Confirmar esta efetivação</button></>
     : <><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" disabled={errs.length > 0} title={errs.join(" ")} onClick={() => setReview(true)}>Revisar e confirmar</button></>;
   return (
-    <SidePanel wide title={review ? "Revisar efetivação" : "Efetivar previsão"} sub={`${sup?.name ?? "—"} · ${planned.purchaseCode || planned.document || "sem código"} — efetivar não registra pagamento`} onClose={onCancel} dirty={dirty} footer={footer}>
+    <SidePanel centered={review} wide title={review ? "Revisar efetivação" : "Efetivar previsão"} sub={`${sup?.name ?? "—"} · ${planned.purchaseCode || planned.document || "sem código"} — efetivar não registra pagamento`} onClose={onCancel} dirty={dirty} footer={footer}>
       <Section n={1} title="Previsão de origem (somente consulta)">
         <div className="grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-border bg-muted p-4 md:grid-cols-3">
           {[["Fornecedor", sup?.name ?? "—"], ["Categoria / subgrupo", `${cat?.kind === "despesa" ? "Despesa" : "Compra"} · ${cat?.name ?? "—"}`], ["Código / documento", planned.purchaseCode || planned.document || "—"],
@@ -345,16 +346,16 @@ function Timeline({ d, p, act }: { d: ScenarioData; p: Planned; act: (fn: (x: Sc
       <p className="text-[11px] text-muted-foreground">Original + efetivações não somam de novo: fluxo = efetivados (títulos) + restante previsto. Conferência: efetivado {fmtBRL(s.effectivated)} + legado {fmtBRL(s.legacyAbated)} + restante {fmtBRL(s.remaining)} = {fmtBRL(s.effectivated + s.legacyAbated + s.remaining)}{s.status === "ativo" && !p.remainingOverride && s.effectivated + s.legacyAbated + s.remaining !== s.original ? " ⚠ diverge do original" : ""}.</p>
       <table className="tbl"><thead><tr><th>Evento</th><th>Data</th><th>Título</th><th>Vencimento</th><th className="num">Valor</th><th className="num">Pago</th><th className="num">Aberto</th><th>Situação</th><th>Ação</th></tr></thead>
         <tbody>
-          {s.timeline.flatMap(({ e, titles }) => titles.length ? titles.map((t, i) => <tr key={e.id + t.c.id}><td>{i === 0 ? `Efetivação ${e.linkedLegacy ? "(título legado vinculado)" : e.kind}` : ""}</td><td>{i === 0 ? fmtDate(e.at.slice(0, 10)) : ""}</td><td>{t.c.document}</td><td>{fmtDate(committedDate(t.c))}</td><td className="num">{fmtBRL(t.c.value)}</td><td className="num">{fmtBRL(t.paid)}</td><td className="num">{fmtBRL(Math.max(0, t.open))}</td><td>{e.reversedAt ? <span className="tag tag-err">revertida: {e.reversalNote}</span> : t.state}</td><td>{i === 0 && !e.reversedAt && <button className="btn" onClick={() => { const n = prompt("Motivo da reversão (auditado):"); if (n) act((x) => reverseEffectivation(x, e.id, n, at()), "a reversão"); }}>Reverter</button>}</td></tr>) : [])}
+          {s.timeline.flatMap(({ e, titles }) => titles.length ? titles.map((t, i) => <tr key={e.id + t.c.id}><td>{i === 0 ? `Efetivação ${e.linkedLegacy ? "(título legado vinculado)" : e.kind}` : ""}</td><td>{i === 0 ? fmtDate(e.at.slice(0, 10)) : ""}</td><td>{t.c.document}</td><td>{fmtDate(committedDate(t.c))}</td><td className="num">{fmtBRL(t.c.value)}</td><td className="num">{fmtBRL(t.paid)}</td><td className="num">{fmtBRL(Math.max(0, t.open))}</td><td>{e.reversedAt ? <span className="tag tag-err">revertida: {e.reversalNote}</span> : t.state}</td><td>{i === 0 && !e.reversedAt && <button className="btn" onClick={async () => { const n = await askText("Motivo da reversão (auditado):"); if (n) act((x) => reverseEffectivation(x, e.id, n, at()), "a reversão"); }}>Reverter</button>}</td></tr>) : [])}
           {s.legacy.map((t) => <tr key={t.c.id}><td>Título legado distinto (M)</td><td>—</td><td>{t.c.document}</td><td>{fmtDate(committedDate(t.c))}</td><td className="num">{fmtBRL(t.c.value)}</td><td className="num">{fmtBRL(t.paid)}</td><td className="num">{fmtBRL(Math.max(0, t.open))}</td><td>{t.c.legacyAbatement === null ? <span className="tag tag-err">M ausente</span> : `M ${fmtBRL(t.c.legacyAbatement)}`}</td><td /></tr>)}
           {s.remainingDates.map((dt, i) => <tr key={"r" + i}><td>{i === 0 ? "Restante previsto" : ""}</td><td /><td>previsão</td><td>{fmtDate(dt)}</td><td className="num" colSpan={1}>{i === 0 ? fmtBRL(s.remaining) : ""}</td><td /><td /><td>{i === 0 ? `${s.remainingDates.length} data(s)` : ""}</td><td /></tr>)}
         </tbody></table>
       {p.status === "ativo" ? <div className="flex flex-wrap items-end gap-3">
         <span>Restante: valor <MoneyInput value={remV} onChange={setRemV} /> datas <input className="inp w-56" value={remD} onChange={(e) => setRemD(e.target.value)} /></span>
         <button className="btn" disabled={remV === null || !dates.length || !dates.every(Boolean)} onClick={() => act((x) => setPlannedRemaining(x, p.id, remV ?? 0, dates as string[]), "a edição do restante")}>Definir restante</button>
-        <button className="btn btn-danger" onClick={() => { const n = prompt("Motivo do encerramento do restante previsto:"); if (n) act((x) => closePlanned(x, p.id, n), "o encerramento"); }}>Encerrar restante</button>
+        <button className="btn btn-danger" onClick={async () => { const n = await askText("Motivo do encerramento do restante previsto:"); if (n) act((x) => closePlanned(x, p.id, n), "o encerramento"); }}>Encerrar restante</button>
         {s.legacy.length > 0 && <span>Mesmo título que uma efetivação? <select className="inp" value={link} onChange={(e) => setLink(e.target.value)}><option value="">— título legado —</option>{s.legacy.map((t) => <option key={t.c.id} value={t.c.id}>{t.c.document} · {fmtBRL(t.c.value)}</option>)}</select> <button className="btn" disabled={!link} onClick={() => act((x) => linkLegacyTitle(x, { id: "lk" + uid(), plannedId: p.id, committedId: link, at: at() }), "o vínculo do título legado")}>Vincular (sem duplicar)</button></span>}
-      </div> : p.status === "encerrado" && <button className="btn" onClick={() => { const n = prompt("Motivo da reabertura:"); if (n) act((x) => reopenPlanned(x, p.id, n), "a reabertura"); }}>Reabrir previsão</button>}
+      </div> : p.status === "encerrado" && <button className="btn" onClick={async () => { const n = await askText("Motivo da reabertura:"); if (n) act((x) => reopenPlanned(x, p.id, n), "a reabertura"); }}>Reabrir previsão</button>}
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { askConfirm } from "@/lib/decisions";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { DateInput, IntInput, MoneyInput, PageHeader } from "@/components/kit";
@@ -95,7 +96,7 @@ function Page() {
             <tr key={i}>
               <td><DateInput value={a.date} onChange={(v) => v && update((x) => { x.adjustments[i]!.date = v; })} /></td>
               <td className="num"><MoneyInput value={a.value} onChange={(v) => update((x) => { x.adjustments[i]!.value = v; })} /></td>
-              <td><button className="btn btn-danger" onClick={() => update((x) => { x.adjustments.splice(i, 1); })}>×</button></td>
+              <td><button className="btn btn-danger" onClick={async () => await askConfirm(`O ajuste de saldo de ${fmtDate(a.date)} será excluído. Os saldos seguintes poderão mudar até o próximo ajuste.`, { title: "Excluir ajuste de saldo?", action: "Excluir ajuste", destructive: true }) && update((x) => { x.adjustments.splice(i, 1); })}>×</button></td>
             </tr>
           ))}</tbody></table>
           <p className="mt-1 text-[11px] text-muted-foreground">Valor (inclusive 0) substitui o saldo inicial do dia. Vazio = sem ajuste.</p>
@@ -116,8 +117,8 @@ function FornecedorPanel({ initial, onCancel, onSave }: { initial?: Supplier | u
   const bad = invalidSupplierName(name);
   const dirty = name !== (initial?.name ?? "") || note !== (initial?.note ?? "") || JSON.stringify(aliases) !== JSON.stringify(initial?.aliases ?? []);
   return (
-    <SidePanel title={review ? "Revisar fornecedor" : initial ? "Editar fornecedor" : "Novo fornecedor"} onClose={onCancel} dirty={dirty} footer={review
-      ? <><button className="btn" onClick={() => setReview(false)}>Voltar e editar</button><button className="btn btn-primary" onClick={() => setErr(onSave({ name, aliases, note }) ?? "")}>Confirmar fornecedor</button></>
+    <SidePanel centered={review} title={review ? "Revisar fornecedor" : initial ? "Editar fornecedor" : "Novo fornecedor"} onClose={onCancel} dirty={dirty} footer={review
+      ? <><button className="btn" onClick={() => setReview(false)}>Cancelar</button><button className="btn btn-primary" onClick={() => setErr(onSave({ name, aliases, note }) ?? "")}>Confirmar fornecedor</button></>
       : <><button className="btn" onClick={guardClose(dirty, onCancel)}>Cancelar</button><button className="btn btn-primary" disabled={bad} onClick={() => setReview(true)}>Revisar e confirmar</button></>}>
       {review ? <div className="space-y-2"><div><span className="lbl">Nome do fornecedor</span><div className="font-medium">{name.trim()}</div></div><div><span className="lbl">Observação</span><div>{note.trim() || "—"}</div></div><div><span className="lbl">Apelidos</span><div>{aliases.join("; ") || "—"}</div></div>{initial && <div className="border-t border-border pt-2">Antes: {initial.name} · {initial.aliases?.join("; ") || "sem apelidos"} · {initial.note || "sem observação"}</div>}</div>
         : <div className="space-y-3">

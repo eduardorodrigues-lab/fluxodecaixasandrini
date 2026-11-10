@@ -1,3 +1,4 @@
+import { askConfirm } from "@/lib/decisions";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { PageHeader, WarningList } from "@/components/kit";
@@ -17,6 +18,7 @@ export const Route = createFileRoute("/regras")({
       { name: "description", content: "Catálogo de regras, pendências, importação e exportação." },
       { property: "og:title", content: "Regras e Conciliação · Fluxo de Caixa Sandrini" },
       { property: "og:description", content: "Catálogo de regras, pendências e importação CSV." },
+      { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" },
     ],
   }),
   component: Page,
@@ -94,9 +96,10 @@ function Page() {
     return k;
   }, [d]);
   const doPreview = () => setPreview(classify(mapRows(entity, rows.slice(headerIdx + 1), mapping, headerIdx + 2).filter((r) => Object.values(r.values).some((v) => v !== null && v !== "")), d.importLog, existing));
-  const confirmImport = () => {
+  const confirmImport = async () => {
     if (!preview) return;
     const novos = preview.filter((r) => r.status === "novo");
+    if (!await askConfirm(`${novos.length} registros serão adicionados ao cenário atual. Conflitos não serão sobrescritos; o histórico será preservado.`, { title: "Importar registros?", action: "Confirmar importação" })) return;
     let out: ApplyResult | null = null;
     const err = update((x) => { out = applyImportRows(x, entity, novos, { file: fileName, sheet, at: new Date().toISOString(), uid }); });
     const o = out as ApplyResult | null;
@@ -195,7 +198,7 @@ function TargetsPanel({ rows, file, sheet }: { rows: Cell[][]; file: string; she
   const a = useMemo(() => adaptTargets(rows), [rows]);
   const [msg, setMsg] = useState("");
   const st = (t: (typeof a.rows)[number]) => t.errors.length || t.faturamento === null ? "inválido" : active.data.targets[t.month] === undefined ? "novo" : active.data.targets[t.month] === t.faturamento ? "idêntico" : "conflito";
-  const confirmT = () => { const novos = a.rows.filter((t) => st(t) === "novo"); const at = new Date().toISOString(); const e = update((x) => { for (const t of novos) { setMonthTarget(x, t.month, { gross: t.faturamento!, ...(a.reducerB2 !== null ? { legacyReducer: a.reducerB2, divisorLegado: "30" as const } : {}), ...(a.lagC2 !== null ? { lagDays: a.lagC2 } : {}) }, `importado ${sheet} col ${t.column + 1} (bruto = soma linhas 7+; B2/C2 do arquivo)`, at); x.importLog.push({ entity: "targets", key: `targets|${t.month}`, hash: String(t.faturamento), refId: t.month, at, origin: { file, sheet, row: 3 } }); } }); setMsg(e ? `Erro: ${e}` : `${novos.length} meta(s) no RASCUNHO — confirme na barra superior. Conflitos não sobrescritos: ${a.rows.filter((t) => st(t) === "conflito").length}.`); };
+  const confirmT = async () => { const novos = a.rows.filter((t) => st(t) === "novo"); if (!await askConfirm(`${novos.length} metas novas serão adicionadas. Metas existentes e conflitos serão preservados.`, { title: "Importar metas?", action: "Confirmar importação" })) return; const at = new Date().toISOString(); const e = update((x) => { for (const t of novos) { setMonthTarget(x, t.month, { gross: t.faturamento!, ...(a.reducerB2 !== null ? { legacyReducer: a.reducerB2, divisorLegado: "30" as const } : {}), ...(a.lagC2 !== null ? { lagDays: a.lagC2 } : {}) }, `importado ${sheet} col ${t.column + 1} (bruto = soma linhas 7+; B2/C2 do arquivo)`, at); x.importLog.push({ entity: "targets", key: `targets|${t.month}`, hash: String(t.faturamento), refId: t.month, at, origin: { file, sheet, row: 3 } }); } }); setMsg(e ? `Erro: ${e}` : `${novos.length} meta(s) no RASCUNHO — confirme na barra superior. Conflitos não sobrescritos: ${a.rows.filter((t) => st(t) === "conflito").length}.`); };
   if (!a.ok) return <p className="text-xs text-destructive">{a.message}</p>;
   return <div className="mb-2 text-xs"><p className="mb-1">{a.message} Meta bruta = soma de TODAS as linhas 7+ do mês (mesma base da fórmula da linha 2 = soma × (1−B2)); conferida contra o líquido cacheado. A linha 3 ("TOTAL" = soma só das linhas 7–20) é parcial e apenas informativa.</p>
     <div className="max-h-64 overflow-auto"><table className="tbl"><thead><tr><th>Mês</th><th className="num">Bruto (Σ L7+)</th><th className="num">Líquido (L2)</th><th className="num">Total L3 (info)</th><th className="num">Redução implícita</th><th>Componentes</th><th>Estado</th></tr></thead>
@@ -207,7 +210,7 @@ function CategoriesPanel({ rows }: { rows: Cell[][] }) {
   const list = useMemo(() => adaptCategories(rows), [rows]);
   const [msg, setMsg] = useState("");
   const st = (c: (typeof list)[number]) => { if (c.errors.length) return "inválido"; const r = resolveByName(active.data.categories, c.name); if ("missing" in r) return "novo"; if ("conflict" in r) return "conflito"; const ex = active.data.categories.find((x) => x.id === r.id)!; return normName(ex.group) === normName(c.group) ? "idêntico" : "conflito"; };
-  const confirmC = () => { const novos = list.filter((c) => st(c) === "novo"); const e = update((x) => { for (const c of novos) x.categories.push({ id: uid(), name: c.name, kind: "despesa", group: c.group }); }); setMsg(e ? `Erro: ${e}` : `${novos.length} categoria(s) no RASCUNHO — confirme na barra superior.`); };
+  const confirmC = async () => { const novos = list.filter((c) => st(c) === "novo"); if (!await askConfirm(`${novos.length} subgrupos novos serão adicionados. Cadastros existentes não serão sobrescritos.`, { title: "Importar subgrupos?", action: "Confirmar importação" })) return; const e = update((x) => { for (const c of novos) x.categories.push({ id: uid(), name: c.name, kind: "despesa", group: c.group }); }); setMsg(e ? `Erro: ${e}` : `${novos.length} categoria(s) no RASCUNHO — confirme na barra superior.`); };
   return <div className="mb-2 text-xs"><p className="mb-1">Lidas somente as colunas A (tipo) e B (grupo); matriz diária D+ ignorada.</p>
     <div className="max-h-64 overflow-auto"><table className="tbl"><thead><tr><th>Linha</th><th>Tipo</th><th>Grupo</th><th>Estado</th></tr></thead>
       <tbody>{list.map((c) => <tr key={c.line}><td>{c.line}</td><td>{c.name}</td><td>{c.group}</td><td>{st(c)}{c.errors.length ? ` — ${c.errors.join("; ")}` : ""}</td></tr>)}</tbody></table></div>

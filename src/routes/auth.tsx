@@ -12,6 +12,7 @@ export const Route = createFileRoute("/auth")({
     { name: "description", content: "Acesso da equipe financeira ao fluxo de caixa do Grupo Sandrini." },
     { property: "og:title", content: "Entrar · Fluxo de Caixa Sandrini" },
     { property: "og:description", content: "Acesso da equipe financeira ao fluxo de caixa do Grupo Sandrini." },
+      { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" },
   ] }),
   component: AuthPage,
 });

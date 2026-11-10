@@ -1,3 +1,5 @@
+import { askConfirm } from "@/lib/decisions";
+import { DecisionWindow } from "@/components/DecisionDialog";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { TermsEditor } from "@/components/TermsEditor";
@@ -11,14 +13,15 @@ import { todaySP } from "@/lib/engine/actions";
 import { plannedRemaining } from "@/lib/engine/actions";
 
 /** Pede confirmação antes de descartar alterações não salvas. */
-export const guardClose = (dirty: boolean, close: () => void) => () => {
-  if (!dirty || window.confirm("Há alterações não salvas. Descartar?")) close();
+export const guardClose = (dirty: boolean, close: () => void) => async () => {
+  if (!dirty || await askConfirm("Há alterações não salvas. Descartar?")) close();
 };
 
 /** Painel lateral amplo e responsivo (tela cheia no celular).
  *  Fecha SOMENTE por X, Cancelar ou conclusão — nunca por clique no fundo ou mouse fora. */
-export function SidePanel({ title, sub, onClose, footer, children, wide, dirty }: { title: string; sub?: string; onClose: () => void; footer?: ReactNode; children: ReactNode; wide?: boolean; dirty?: boolean }) {
+export function SidePanel({ title, sub, onClose, footer, children, wide, dirty, centered }: { title: string; sub?: string; onClose: () => void; footer?: ReactNode; children: ReactNode; wide?: boolean; dirty?: boolean; centered?: boolean }) {
   const requestClose = guardClose(!!dirty, onClose);
+  if (centered) return <DecisionWindow title={title} description={sub} footer={footer} wide={wide}>{children}</DecisionWindow>;
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-foreground/30">
       <div role="dialog" aria-label={title} className={`flex h-full w-full flex-col bg-background shadow-2xl ${wide ? "sm:w-[min(880px,94vw)]" : "sm:w-[min(520px,94vw)]"}`}>
@@ -133,8 +136,8 @@ export function NovaNota({ d, isBase, onCancel, onConfirm }: { d: ScenarioData; 
   const link = prevs.find((x) => x.p.id === n.plannedId);
   const rest = link ? Math.max(0, link.rem - (n.total ?? 0)) : 0;
   const pick = (st: "planned" | "committed") => { setN({ ...n, stage: st, plannedId: null, closeRest: false }); setChosen(true); setTried(false); };
-  const backToType = () => {
-    if (n.plannedId && !window.confirm("O vínculo com a previsão será descartado ao trocar o tipo. Continuar?")) return;
+  const backToType = async () => {
+    if (n.plannedId && !await askConfirm("O vínculo com a previsão será descartado ao trocar o tipo. Continuar?")) return;
     up({ plannedId: null, closeRest: false }); setChosen(false); setReview(false);
   };
   const linkTo = (id: string) => {
@@ -147,10 +150,10 @@ export function NovaNota({ d, isBase, onCancel, onConfirm }: { d: ScenarioData; 
   const title = !chosen ? "Novo lançamento" : review ? `Revisar · Novo lançamento · ${stageL}` : `Novo lançamento · ${stageL}`;
   const cancel = guardClose(chosen, onCancel);
   const footer = !chosen ? <button className="btn" onClick={onCancel}>Cancelar</button> : review
-    ? <><button className="btn" onClick={() => setReview(false)}>Voltar e editar</button><button className="btn btn-primary" onClick={() => onConfirm(n, saveAs)}>Confirmar lançamento</button></>
+    ? <><button className="btn" onClick={() => setReview(false)}>Cancelar</button><button className="btn btn-primary" onClick={() => onConfirm(n, saveAs)}>Confirmar lançamento</button></>
     : <><button className="btn" onClick={backToType}>Trocar tipo</button><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" onClick={next}>Revisar e confirmar</button></>;
   return (
-    <SidePanel wide title={title} sub={isBase ? "Grava no fluxo real ao confirmar" : "Simulação — não altera o fluxo real"} onClose={onCancel} dirty={chosen} footer={footer}>
+    <SidePanel centered={review} wide title={title} sub={isBase ? "Grava no fluxo real ao confirmar" : "Simulação — não altera o fluxo real"} onClose={onCancel} dirty={chosen} footer={footer}>
       {!chosen ? (
         <Section n={1} title="Tipo de lançamento">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -234,7 +237,7 @@ export function ProrrogarPanel({ label, current, original, history, isBase, onCa
   const dirty = to !== current || !!note.trim();
   const cancel = guardClose(dirty, onCancel);
   return (
-    <SidePanel title="Prorrogar parcela" sub={label} onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" disabled={!note.trim() || to === current} onClick={() => onSave(to, note)}>{isBase ? "Confirmar prorrogação" : "Aplicar teste na simulação"}</button></>}>
+    <SidePanel title="Prorrogar parcela" sub={label} onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" disabled={!note.trim() || to === current} onClick={async () => await askConfirm(`A programação de ${label} será alterada para ${fmtDate(to) || "o vencimento original"}. ${isBase ? "O vencimento original e o histórico serão preservados." : "Somente esta simulação será alterada."}`, { title: "Prorrogar parcela?", action: isBase ? "Confirmar prorrogação" : "Aplicar na simulação" }) && onSave(to, note)}>{isBase ? "Confirmar prorrogação" : "Aplicar teste na simulação"}</button></>}>
       <p className={isBase ? "text-muted-foreground" : "font-medium text-destructive"}>{isBase ? "Prorrogação confirmada altera a programação real somente desta parcela; o vencimento original é preservado." : "Teste de prorrogação: vale apenas nesta simulação."}</p>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <Field l="Vencimento original"><div className="h-8 py-1.5">{fmtDate(original)}</div></Field>
@@ -251,7 +254,7 @@ export function ParcelaPanel({ label, amount, date, onCancel, onSave }: { label:
   const dirty = a !== amount || dt !== date;
   const cancel = guardClose(dirty, onCancel);
   return (
-    <SidePanel title="Editar esta parcela" sub={label} onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" disabled={!a || a <= 0 || !dt} onClick={() => onSave(a!, dt!)}>Salvar parcela</button></>}>
+    <SidePanel title="Editar esta parcela" sub={label} onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" disabled={!a || a <= 0 || !dt} onClick={async () => { if (a && dt && await askConfirm(`${label}: ${fmtBRL(a)} com vencimento em ${fmtDate(dt)}. As demais parcelas não serão alteradas.`, { title: "Salvar parcela?", action: "Salvar parcela" })) onSave(a, dt); }}>Salvar parcela</button></>}>
       <p className="text-muted-foreground">Altera somente esta parcela; as demais parcelas da nota não mudam.</p>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <Field l="Valor da parcela"><MoneyInput className="h-8 w-full" value={a} onChange={setA} /></Field>
@@ -267,7 +270,7 @@ export function DadosNotaPanel({ d, init, siblings, onCancel, onSave }: { d: Sce
   const dirty = JSON.stringify(f) !== JSON.stringify(init);
   const cancel = guardClose(dirty, onCancel);
   return (
-    <SidePanel wide title="Editar dados gerais da nota" sub={siblings > 1 ? `Aplica às ${siblings} parcelas desta nota` : "Aplica a este lançamento"} onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" disabled={!f.categoryId || !f.supplierId} onClick={() => onSave(f)}>Salvar dados da nota</button></>}>
+    <SidePanel wide title="Editar dados gerais da nota" sub={siblings > 1 ? `Aplica às ${siblings} parcelas desta nota` : "Aplica a este lançamento"} onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" disabled={!f.categoryId || !f.supplierId} onClick={async () => await askConfirm(`Os dados gerais serão aplicados a ${siblings} parcela(s) desta nota. Outras notas não serão alteradas.`, { title: "Salvar dados da nota?", action: "Salvar dados da nota" }) && onSave(f)}>Salvar dados da nota</button></>}>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <CatSubFields d={d} kind={f.kind} categoryId={f.categoryId} onChange={(kind, categoryId) => up({ kind, categoryId })} />
         <Field l="Fornecedor" full><SupplierSearch d={d} existing value={f.supplierId} onChange={(supplierId) => up({ supplierId })} /></Field>
@@ -307,7 +310,7 @@ export function ConditionPicker({ d, supplierId, hint, disabled, disabledHint, o
       {!isEsp && list.find((x) => x.id === sel)?.note && <p className="rounded bg-muted p-2">Observação da condição: {list.find((x) => x.id === sel)!.note}</p>}
       {isEsp && <TermsEditor terms={espT} onChange={setEspT} />}
       {isEsp && <div className="flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-1"><input type="checkbox" checked={save} onChange={(e) => { if (e.target.checked && !window.confirm("Salvar esta condição como nova condição do fornecedor? As condições anteriores serão preservadas.")) return; setSave(e.target.checked); }} /> Salvar como nova condição do fornecedor</label>
+        <label className="flex items-center gap-1"><input type="checkbox" checked={save} onChange={async (e) => { const checked = e.target.checked; if (checked && !await askConfirm("Esta condição será salva como nova condição do fornecedor. As condições anteriores serão preservadas.", { title: "Salvar nova condição?", action: "Salvar condição" })) return; setSave(checked); }} /> Salvar como nova condição do fornecedor</label>
         {save && <input className="inp h-8 w-48" placeholder="Nome da condição" value={saveName} onChange={(e) => setSaveName(e.target.value)} />}
         {!save && <span className="text-muted-foreground">Usada só neste lançamento; o padrão do fornecedor não muda.</span>}
       </div>}

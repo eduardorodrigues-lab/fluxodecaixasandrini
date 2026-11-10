@@ -1,3 +1,4 @@
+import { showMessage } from "@/lib/decisions";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { HistoryView } from "@/components/HistoryView";
@@ -11,6 +12,7 @@ export const Route = createFileRoute("/historico")({
     { name: "description", content: "Alterações confirmadas com antes/depois, usuário e data; recuperação de exclusões." },
     { property: "og:title", content: "Histórico e Auditoria · Fluxo de Caixa Sandrini" },
     { property: "og:description", content: "Auditoria das alterações confirmadas." },
+      { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" },
   ] }),
   component: Page,
 });
@@ -22,7 +24,7 @@ const ENTITY_KEY: Record<string, keyof ScenarioData> = {
 function Page() {
   const { audit, update, active, allSims: sims, base } = useApp();
   const [tab, setTab] = useState("real");
-  const restore = (entity: string, before: unknown) => {
+  const restore = async (entity: string, before: unknown) => {
     const k = ENTITY_KEY[entity];
     if (!k) return;
     const e = update((x) => {
@@ -31,7 +33,7 @@ function Page() {
       if (arr.some((i) => (b.id ? i.id === b.id : i.date === b.date))) throw new Error("Registro já existe na base atual.");
       arr.push(JSON.parse(JSON.stringify(before)));
     });
-    alert(e ?? "Registro restaurado.");
+    await showMessage(e ?? "Registro restaurado.");
   };
   const [simId, setSimId] = useState<string | null>(null);
   const sim = tab === "sims" ? sims.find((s) => s.id === simId) : undefined;

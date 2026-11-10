@@ -1,3 +1,4 @@
+import { askText } from "@/lib/decisions";
 import { useState } from "react";
 import { DateInput, MoneyInput } from "@/components/kit";
 import { Field, guardClose, Section, SidePanel } from "@/components/NotaPanel";
@@ -55,11 +56,11 @@ export function PagamentoPanel({ d, kind, titleId, label, onCancel, onConfirm }:
   const dirty = form !== "" || !!note.trim();
   const cancel = guardClose(dirty, onCancel);
   const footer = review
-    ? <><button className="btn" onClick={() => setReview(false)}>Voltar e editar</button><button className="btn btn-primary" onClick={() => onConfirm(result())}>Confirmar pagamento</button></>
+    ? <><button className="btn" onClick={() => setReview(false)}>Cancelar</button><button className="btn btn-primary" onClick={() => onConfirm(result())}>Confirmar pagamento</button></>
     : <><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" onClick={() => { setTried(true); if (!errs.length) setReview(true); }}>Revisar e confirmar</button></>;
   const formL = form ? FORM_LABEL[form] : "—";
   return (
-    <SidePanel wide title={review ? "Revisar pagamento" : "Registrar pagamento"} sub={label} onClose={onCancel} dirty={dirty} footer={footer}>
+    <SidePanel centered={review} wide title={review ? "Revisar pagamento" : "Registrar pagamento"} sub={label} onClose={onCancel} dirty={dirty} footer={footer}>
       <div className="grid grid-cols-3 gap-2 rounded-md bg-muted p-3">
         <div><div className="lbl">Saldo pendente</div><div className="text-sm font-semibold tabular-nums">{fmtBRL(open)}</div></div>
         <div><div className="lbl">{isCard ? "Quitado com cartão" : "Soma informada"}</div><div className="text-sm font-semibold tabular-nums">{fmtBRL(sum)}</div></div>
@@ -130,7 +131,7 @@ export function BaixasList({ d, kind, titleId, canReverse, onReverse }: { d: Sce
   return <table className="tbl"><thead><tr><th>Data</th><th>Forma</th><th>Origem</th><th className="num">Valor</th><th>Situação</th><th>Observação</th><th /></tr></thead>
     <tbody>{ps.map((p) => <tr key={p.id}><td>{fmtDate(p.date)}</td><td>{p.form ? FORM_LABEL[p.form] : "—"}</td><td>{p.method === "cartao" ? <CardLink d={d} p={p} /> : p.accountId ? accountName(d, p.accountId) : <span className="tag tag-warn">{NO_ACCOUNT}</span>}</td><td className="num">{fmtBRL(p.amount)}</td>
       <td>{p.reversedAt ? <span className="tag tag-err" title={p.reversalNote}>Estornada em {fmtDate(p.reversedAt.slice(0, 10))}</span> : <span className="tag tag-ok">Ativa</span>}</td><td>{p.reversedAt ? p.reversalNote : p.note}</td>
-      <td>{!p.reversedAt && canReverse && p.method !== "cartao" && <button className="btn" onClick={() => { const n = prompt("Motivo do estorno desta baixa:"); if (n) onReverse(p.id, n); }}>Estornar</button>}</td></tr>)}</tbody></table>;
+      <td>{!p.reversedAt && canReverse && p.method !== "cartao" && <button className="btn" onClick={async () => { const n = await askText("Motivo do estorno desta baixa:"); if (n) onReverse(p.id, n); }}>Estornar</button>}</td></tr>)}</tbody></table>;
 }
 
 /** Vínculo boleto → operação no cartão → fatura(s). */

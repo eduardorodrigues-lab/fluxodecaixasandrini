@@ -1,3 +1,4 @@
+import { askConfirm } from "@/lib/decisions";
 // Relatório de Pagamentos do Dia: baixas realizadas (base real), uma linha por baixa; estornos à parte.
 import { useMemo, useState } from "react";
 import { DateInput } from "@/components/kit";
@@ -51,9 +52,9 @@ export function PagamentosDia() {
   const [err, setErr] = useState("");
   const r = useMemo(() => (date ? dayPayments(d, date) : null), [d, date]);
   const editable = canEdit && active.isBase;
-  const saveNote = () => {
+  const saveNote = async () => {
     if (!edit) return;
-    if (!window.confirm("Confirmar a alteração da observação? Ela ficará registrada no histórico.")) return;
+    if (!await askConfirm("Confirmar a alteração da observação? Ela ficará registrada no histórico.")) return;
     const e = update((x) => { const p = x.payments.find((y) => y.id === edit.id); if (p) p.note = edit.v; });
     setErr(e ?? ""); if (!e) setEdit(null);
   };

@@ -1,3 +1,4 @@
+import { askText, askConfirm } from "@/lib/decisions";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { DateInput, MoneyInput, PageHeader } from "@/components/kit";
@@ -59,11 +60,11 @@ function Page() {
   const cols = d.platforms.filter((p) => (p.start <= fe && (!p.end || p.end >= fs)) || list.some((r) => r.platforms[p.id] != null));
   const unknown = [...new Set(list.flatMap((r) => Object.keys(r.platforms).filter((k) => r.platforms[k] != null && !d.platforms.some((p) => p.id === k))))];
   const set = (id: string, fn: (r: (typeof d.receipts)[number]) => void) => act((x) => { const r = x.receipts.find((i) => i.id === id); if (r) fn(r); });
-  const setPf = (rid: string, pid: string, v: number | null, date: string) => {
+  const setPf = async (rid: string, pid: string, v: number | null, date: string) => {
     const pf = d.platforms.find((p) => p.id === pid)!;
     let note: string | null = null;
     if (v !== null && !platformActiveOn(pf, date) && pf.end && date > pf.end) {
-      note = prompt(`"${pf.name}" foi inativada em ${fmtDate(pf.end)}. Registrar como REPASSE RESIDUAL? Informe a nota (obrigatória):`);
+      note = await askText(`"${pf.name}" foi inativada em ${fmtDate(pf.end)}. Registrar como REPASSE RESIDUAL? Informe a nota (obrigatória):`);
       if (!note) return;
     }
     act((x) => setReceiptPlatform(x, rid, pid, v, note, now()));
@@ -108,13 +109,13 @@ function Page() {
                 <td>{inf.present ? <button className="btn" onClick={() => setAccFor(r.id)}>{receiptAccountsLabel(d, r)}</button> : ""}</td>
                 <td className="text-center"><input type="checkbox" aria-label="Creditado em conta" checked={!!r.realized} disabled={!inf.present} onChange={(e) => set(r.id, (x) => { x.realized = e.target.checked; })} /></td>
                 <td><input className="inp w-32" defaultValue={r.notes} onBlur={(e) => set(r.id, (x) => { x.notes = e.target.value; })} /></td>
-                <td><button className="btn btn-danger" onClick={() => act((x) => { x.receipts = x.receipts.filter((i) => i.id !== r.id); })}>Excluir</button></td>
+                <td><button className="btn btn-danger" onClick={async () => await askConfirm(`O recebimento de ${fmtDate(r.date) || "data não informada"} será excluído do cenário atual. O histórico será preservado.`, { title: "Excluir recebimento?", action: "Excluir recebimento", destructive: true }) && act((x) => { x.receipts = x.receipts.filter((i) => i.id !== r.id); })}>Excluir</button></td>
               </tr>
             );
           })}</tbody>
         </table>
       </div>
-      {showPf && <div className="fixed inset-0 z-40 flex justify-end bg-foreground/30" onClick={() => setShowPf(false)}>
+      {showPf && <div className="fixed inset-0 z-40 flex justify-end bg-foreground/30">
         <aside className="h-full w-full max-w-2xl overflow-auto bg-background p-3 shadow-xl" onClick={(e) => e.stopPropagation()}>
           <div className="mb-2 flex justify-end"><button className="btn" onClick={() => setShowPf(false)}>Fechar</button></div>
           <Platforms today={today} act={act} />
@@ -140,7 +141,7 @@ function Platforms({ today, act }: { today: string; act: (fn: (x: import("@/lib/
         <div className="grid grid-cols-1 gap-2 md:grid-cols-2"><label>Válida a partir de<br /><DateInput value={defFrom} onChange={setDefFrom} /></label><label>Conta<br /><AccountSearch d={d} label="Conta padrão" value={defAcc} onChange={setDefAcc} /></label>
           <label className="md:col-span-2">Observação<br /><input className="inp h-8 w-full" value={defNote} onChange={(e) => setDefNote(e.target.value)} /></label></div>
         <p className="text-muted-foreground">Vale até a próxima mudança. Recebimentos já lançados mantêm a conta gravada; nenhum valor é transferido.</p>
-        <div className="flex gap-2"><button className="btn" onClick={() => setDefFor(null)}>Cancelar</button><button className="btn btn-primary" disabled={!defFrom || !defAcc} onClick={() => { if (act((x) => setPlatformDefaultAccount(x, defFor, defFrom!, defAcc, defNote, now()))) { setDefFor(null); setDefAcc(""); setDefNote(""); } }}>Confirmar</button></div>
+        <div className="flex gap-2"><button className="btn" onClick={() => setDefFor(null)}>Cancelar</button><button className="btn btn-primary" disabled={!defFrom || !defAcc} onClick={async () => { if (!await askConfirm("Esta conta será o padrão a partir da data informada. Recebimentos anteriores manterão a conta gravada.", { title: "Salvar conta padrão?", action: "Salvar conta padrão" })) return; if (act((x) => setPlatformDefaultAccount(x, defFor, defFrom!, defAcc, defNote, now()))) { setDefFor(null); setDefAcc(""); setDefNote(""); } }}>Confirmar</button></div>
       </div>}
       <div className="lbl mb-2">Plataformas</div>
       <table className="tbl">
@@ -148,15 +149,15 @@ function Platforms({ today, act }: { today: string; act: (fn: (x: import("@/lib/
         <tbody>{d.platforms.map((p) => (
           <tr key={p.id}>
             <td><input className="inp w-40" defaultValue={p.name} onBlur={(e) => e.target.value !== p.name && act((x) => updatePlatform(x, p.id, { name: e.target.value }, "renomeada", now()))} /></td>
-            <td><DateInput value={p.start} onChange={(v) => v && v !== p.start && act((x) => updatePlatform(x, p.id, { start: v }, "início alterado", now()))} /></td>
+            <td><DateInput value={p.start} onChange={async (v) => v && v !== p.start && await askConfirm(`A vigência de ${p.name} começará em ${fmtDate(v)}. Os recebimentos já registrados serão mantidos.`, { title: "Alterar vigência?", action: "Salvar vigência" }) && act((x) => updatePlatform(x, p.id, { start: v }, "início alterado", now()))} /></td>
             <td>{p.end ? fmtDate(p.end) : <span className="text-muted-foreground">—</span>}</td>
             <td><span className={`tag ${pfState(p, today) === "ativa" ? "tag-ok" : "tag-warn"}`}>{pfState(p, today)}</span></td>
             <td>{(p.defaultAccounts ?? []).map((x, i) => <div key={i}>desde {fmtDate(x.from)}: {accountName(d, x.accountId)}</div>)}
               <button className="btn mt-1" disabled={!d.bankAccounts.some((a) => a.active)} onClick={() => setDefFor(p.id)}>Definir conta padrão</button></td>
             <td className="num">{refs(p.id)}</td>
             <td className="space-x-1 whitespace-nowrap">
-              {!p.end && <button className="btn" onClick={() => { const v = prompt("Data de inativação (aaaa-mm-dd). Plataforma inativada não é reativada:", today); if (v) act((x) => updatePlatform(x, p.id, { end: v }, "inativada", now())); }}>Inativar</button>}
-              <button className="btn btn-danger" disabled={refs(p.id) > 0} title={refs(p.id) ? "Referenciada: não pode ser excluída (inative)" : ""} onClick={() => confirm(`Excluir ${p.name}?`) && act((x) => deletePlatform(x, p.id))}>Excluir</button>
+              {!p.end && <button className="btn" onClick={async () => { const v = await askText(`A plataforma “${p.name}” será inativada a partir da data informada. Recebimentos anteriores e histórico serão preservados.`, today, { title: "Inativar plataforma?", action: "Inativar", destructive: true, input: { label: "Data de inativação", initial: today, type: "date" } }); if (v) act((x) => updatePlatform(x, p.id, { end: v }, "inativada", now())); }}>Inativar</button>}
+              <button className="btn btn-danger" disabled={refs(p.id) > 0} title={refs(p.id) ? "Referenciada: não pode ser excluída (inative)" : ""} onClick={async () => await askConfirm(`Excluir ${p.name}?`) && act((x) => deletePlatform(x, p.id))}>Excluir</button>
             </td>
           </tr>
         ))}</tbody>

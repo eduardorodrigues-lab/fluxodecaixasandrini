@@ -1,3 +1,4 @@
+import { askConfirm } from "@/lib/decisions";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { IntInput, MoneyInput, PageHeader } from "@/components/kit";
@@ -71,7 +72,7 @@ function Page() {
             return [
               <tr key={m} id={`pending-${m}`} tabIndex={-1} className={focus === m ? "bg-warning-soft" : ""}>
                 <td>{fmtMonth(m)}</td>
-                <td className="num"><MoneyInput value={own?.gross ?? null} onChange={(v) => { if (v === null) { if (own && confirm(`Remover a meta de ${fmtMonth(m)}? (estimativa 0 com alerta)`)) { const e = update((x) => removeMonthTarget(x, m)); setErr(e ?? ""); } } else edit(m, { gross: v }, "faturamento bruto"); }} />{!own && <div className="tag tag-err">meta ausente → estimativa 0</div>}</td>
+                <td className="num"><MoneyInput value={own?.gross ?? null} onChange={async (v) => { if (v === null) { if (own && await askConfirm(`Remover a meta de ${fmtMonth(m)}? (estimativa 0 com alerta)`)) { const e = update((x) => removeMonthTarget(x, m)); setErr(e ?? ""); } } else edit(m, { gross: v }, "faturamento bruto"); }} />{!own && <div className="tag tag-err">meta ausente → estimativa 0</div>}</td>
                 {own ? (legacy
                   ? <><td className="num"><PctInput v={own.legacyReducer} on={(n) => edit(m, { legacyReducer: n }, "redutor legado")} /></td><td>bruto</td></>
                   : <><td className="num"><PctInput v={own.webR1} on={(n) => edit(m, { webR1: n }, "r1")} /></td><td className="num"><PctInput v={own.webR2} on={(n) => edit(m, { webR2: n }, "r2")} /></td>

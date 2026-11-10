@@ -11,6 +11,7 @@ import {
 import { useEffect, type ReactNode } from "react";
 
 import { AppShell } from "../components/AppShell";
+import { DecisionDialog } from "@/components/DecisionDialog";
 import { AppProvider } from "../lib/store";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -124,6 +125,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <AppProvider>
+        <DecisionDialog />
         <AppShell>
           <Outlet />
         </AppShell>

@@ -1,5 +1,9 @@
 # Roadmap
 
+## Confirmações centralizadas (2026-11-10)
+- [x] Substituir avisos nativos e unificar decisões/revisões, mantendo formulários laterais
+- [x] 141 testes; desktop/mobile isolado: cancelar/excluir simulação, descarte protegido, revisão e pagamento confirmado uma vez com leitura na tela; sem gravação real/publicação
+
 ## Pendências do fluxo (2026-11-10)
 - [x] Agrupar avisos, linguagem clara, gravidade e detalhes por ano/período
 - [x] Atalhos contextualizados sem alterar os filtros do fluxo ou valores

@@ -42,7 +42,7 @@ export function FornecedorManager({ supplierId, onClose }: { supplierId: string;
   const start = (operation: Operation, c?: SupplierCondition) => {
     setOp(operation); setReview(false); setError(""); setCn(c?.name ?? ""); setCnote(c?.note ?? ""); setTerms(c ? [...c.terms] : [null]); setFrom(today); setReason(""); setReplacement(""); setAck(false);
   };
-  const confirm = () => {
+  const saveChanges = () => {
     const at = new Date().toISOString(); const by = user?.email ?? "";
     const e = update((x) => {
       if (!op) { editSupplier(x, supplierId, { name, aliases: aliases.split("\n").map((v) => v.trim()).filter(Boolean), note }); return; }
@@ -62,9 +62,11 @@ export function FornecedorManager({ supplierId, onClose }: { supplierId: string;
   const editing = !!op || tab === "dados";
   const dirty = !!op || name !== s.name || aliases !== (s.aliases ?? []).join("\n") || note !== (s.note ?? "");
   const close = guardClose(dirty, onClose);
-  return <SidePanel title="Gerenciar fornecedor" sub={s.name} onClose={onClose} dirty={dirty} footer={<>
-    {editing && (op || review) ? <Button variant="outline" onClick={() => { setOp(null); setReview(false); setError(""); }}>Cancelar edição</Button> : <Button variant="outline" onClick={close}>Fechar</Button>}
-    {editing && <Button disabled={!valid} onClick={() => review ? confirm() : setReview(true)}>{review ? "Confirmar" : "Revisar e confirmar"}</Button>}
+  const destructive = !!op && ["delete", "excluir", "cancel", "period", "inativar"].includes(op.kind);
+  const action = !op ? "Salvar fornecedor" : draft ? "Salvar condição" : title;
+  return <SidePanel centered={review} title={review ? `${action}?` : "Gerenciar fornecedor"} sub={s.name} onClose={onClose} dirty={dirty} footer={<>
+    {review ? <Button variant="outline" onClick={() => setReview(false)}>Cancelar</Button> : editing && op ? <Button variant="outline" onClick={guardClose(dirty, () => { setOp(null); setError(""); })}>Cancelar edição</Button> : <Button variant="outline" onClick={close}>Fechar</Button>}
+    {editing && <Button variant={review && destructive ? "destructive" : "default"} disabled={!valid} onClick={() => review ? saveChanges() : setReview(true)}>{review ? action : "Revisar e confirmar"}</Button>}
   </>}>
     <div className="min-w-0 space-y-4 break-words [overflow-wrap:anywhere]">
       {!op && <div role="tablist" className="grid grid-cols-2 gap-1 border-b border-border pb-2">{[["dados", "Dados do fornecedor"], ["condicoes", "Condições de pagamento"]].map(([id, label]) => <Button key={id} role="tab" aria-selected={tab === id} variant={tab === id ? "default" : "outline"} className="h-auto min-h-9 whitespace-normal" onClick={() => { setTab(id ?? "dados"); setReview(false); setError(""); }}>{label}</Button>)}</div>}
