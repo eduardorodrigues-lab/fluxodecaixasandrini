@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { accountName } from "@/lib/engine/banco";
 import type { Change } from "@/lib/diff";
 import { fmtDate } from "@/lib/dates";
 import { fmtNum } from "@/lib/money";
@@ -16,7 +17,7 @@ const pct = (v: unknown) => (v == null || v === "" ? "" : `${(Number(v) * 100).t
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 const mes = (ym: string) => { const [y, m] = ym.split("-"); return `${MESES[Number(m) - 1] ?? m}/${y}`; };
 const EMPTY = "Não preenchido";
-const ABA: Record<string, string> = { "Recebimento": "Recebimentos", "Plataformas": "Recebimentos", "Previsão (planejada)": "Lançamentos", "Efetivado (compra/pedido)": "Lançamentos", "Despesa": "Lançamentos", "Efetivação": "Lançamentos", "Pagamento (baixa)": "Lançamentos", "Fornecedor": "Referências", "Categoria": "Referências", "Parâmetros": "Referências", "Ajuste de saldo": "Referências", "Meta de faturamento": "Meta de Faturamento" };
+const ABA: Record<string, string> = { "Recebimento": "Recebimentos", "Plataformas": "Recebimentos", "Previsão (planejada)": "Lançamentos", "Efetivado (compra/pedido)": "Lançamentos", "Despesa": "Lançamentos", "Efetivação": "Lançamentos", "Pagamento (baixa)": "Lançamentos", "Fornecedor": "Referências", "Categoria": "Referências", "Parâmetros": "Referências", "Ajuste de saldo": "Referências", "Meta de faturamento": "Meta de Faturamento", "Conta bancária": "Bancos", "Cartão": "Bancos", "Transferência": "Bancos" };
 const ACAO: Record<string, string> = { "inclusão": "Inclusão", "alteração": "Alteração", "exclusão": "Remoção" };
 const txt = (v: unknown) => (v == null ? "" : String(v));
 const STATUS: R = { ativo: "Ativo", cancelado: "Cancelado", encerrado: "Encerrado" };
@@ -45,7 +46,13 @@ function columns(entity: string, d: ScenarioData, sample: R): Col[] {
     case "Ajuste de saldo":
       return [F("Data", "date", date), F("Valor", "value", money, true), F("Observação", "note")];
     case "Pagamento (baixa)":
-      return [{ label: "Título", get: (o) => (o["titleKind"] === "expense" ? "Despesa" : "Compra") }, F("Data", "date", date), F("Valor", "amount", money, true), F("Observação", "note"), { label: "Estorno", get: (o) => (o["reversedAt"] ? `Estornado ${date(String(o["reversedAt"]).slice(0, 10))}` : "") }];
+      return [{ label: "Título", get: (o) => (o["titleKind"] === "expense" ? "Despesa" : "Compra") }, F("Data", "date", date), F("Valor", "amount", money, true), F("Observação", "note"), { label: "Conta", get: (o) => accountName(d, o["accountId"] as string | null) }, { label: "Estorno", get: (o) => (o["reversedAt"] ? `Estornado ${date(String(o["reversedAt"]).slice(0, 10))}` : "") }];
+    case "Conta bancária":
+      return [F("Banco", "bank"), F("Identificação", "label"), F("Titular", "holder"), F("Agência", "agency"), F("Conta", "account"), { label: "Situação", get: (o) => (o["active"] ? "Ativa" : "Inativa") }, F("Saldo inicial", "openingBalance", money, true), F("Data de referência", "openingDate", date)];
+    case "Cartão":
+      return [F("Nome", "name"), F("Final", "last4"), { label: "Conta", get: (o) => accountName(d, o["accountId"] as string) }, F("Fechamento (dia)", "closingDay"), F("Vencimento (dia)", "dueDay")];
+    case "Transferência":
+      return [{ label: "Origem", get: (o) => accountName(d, o["fromAccountId"] as string) }, { label: "Destino", get: (o) => accountName(d, o["toAccountId"] as string) }, F("Valor", "amount", money, true), F("Data", "date", date), F("Observação", "note"), { label: "Estorno", get: (o) => (o["reversedAt"] ? `Estornada: ${txt(o["reversalNote"])}` : "") }];
     case "Efetivação":
       return [F("Tipo", "kind"), F("Valor", "value", money, true), { label: "Data", get: (o) => date(String(o["at"] ?? "").slice(0, 10)) }, { label: "Estorno", get: (o) => (o["reversedAt"] ? "Estornada" : "") }];
     case "Parâmetros":

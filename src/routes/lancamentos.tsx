@@ -1,3 +1,5 @@
+import { BaixasList, PagamentoPanel } from "@/components/BancoPanels";
+import { accountName, NO_ACCOUNT, registerPaymentBatch } from "@/lib/engine/banco";
 import { createFileRoute } from "@tanstack/react-router";
 import { Children, cloneElement, isValidElement, useState, type ReactElement, type ReactNode } from "react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -5,7 +7,7 @@ import { DateInput, MoneyInput, PageHeader } from "@/components/kit";
 import { DadosNotaPanel, NovaNota, ParcelaPanel, ProrrogarPanel, type NoteFields } from "@/components/NotaPanel";
 import { applyNote, editCommittedNote, editPlannedParcel, extendPlannedParcel, parcelLabels, saveSupplierCondition } from "@/lib/notas";
 import { committedDate, distributePlanned, expenseDate, paymentsFor, splitCents, titleStatus } from "@/lib/engine/engine";
-import { closePlanned, confirmExtension, effectivate, linkLegacyTitle, plannedSummary, registerPayment, reopenPlanned, reverseEffectivation, reversePayment, setPlannedRemaining, suggestEffectivation, todaySP } from "@/lib/engine/actions";
+import { closePlanned, confirmExtension, effectivate, linkLegacyTitle, plannedSummary, reopenPlanned, reverseEffectivation, reversePayment, setPlannedRemaining, suggestEffectivation, todaySP } from "@/lib/engine/actions";
 import type { CategoryKind, ExtensionEvent, Planned, ScenarioData } from "@/lib/engine/types";
 import { addDays, fmtDate, parseBRDate } from "@/lib/dates";
 import { fmtBRL } from "@/lib/money";
@@ -33,6 +35,7 @@ const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.p
 
 type Panel =
   | { t: "new" }
+  | { t: "pay"; kind: "committed" | "expense"; id: string; label: string }
   | { t: "parcela"; label: string; amount: number; date: string; save: (x: ScenarioData, amount: number, date: string) => void }
   | { t: "nota"; init: NoteFields; siblings: number; save: (x: ScenarioData, f: NoteFields) => void }
   | { t: "prorrogar"; label: string; current: string | null; original: string | null; history: ExtensionEvent[]; save: (x: ScenarioData, to: string | null, note: string) => void };
@@ -149,7 +152,7 @@ function Page() {
                     <td><span className={`tag ${ts.state === "Pago" ? "tag-ok" : ts.state === "Parcial" ? "tag-warn" : ""}`}>{ts.state === "Parcial" ? "Parcialmente pago" : ts.state}</span></td>
                     <td className="num">{fmtBRL(ts.paid)}</td><td className="num">{fmtBRL(Math.max(0, ts.open))}</td>
                     <td><Acoes>
-                      {c.status === "ativo" && ts.open > 0 && <button className="btn btn-primary" disabled={!active.isBase} title={active.isBase ? "" : "Simulação não registra pagamentos"} onClick={() => toggle("pay", c.id)}>Registrar pagamento</button>}
+                      {c.status === "ativo" && ts.open > 0 && <button className="btn btn-primary" disabled={!active.isBase} title={active.isBase ? "" : "Simulação não registra pagamentos"} onClick={() => setPanel({ t: "pay", kind: "committed", id: c.id, label })}>Registrar pagamento</button>}
                       <button className="btn" onClick={() => setPanel({ t: "parcela", label, amount: c.value, date: c.dueDate, save: (x, amount, date) => { const t = x.committed.find((y) => y.id === c.id); if (t) Object.assign(t, { value: amount, dueDate: date }); } })}>Editar esta parcela</button>
                       <button className="btn" onClick={() => setPanel({ t: "nota", init: noteInit(c, "compra"), siblings: sibs, save: (x, f) => editCommittedNote(x, c.id, { categoryId: f.categoryId, supplierId: f.supplierId, purchaseCode: f.purchaseCode, document: f.document, notes: f.notes }) })}>Editar dados da nota</button>
                       <button className="btn" onClick={() => setPanel({ t: "prorrogar", label, current: c.extensionDate, original: c.dueDate, history: c.extensionHistory, save: (x, to, note) => confirmExtension(x, "committed", c.id, to, note, now()) })}>Prorrogar parcela</button>
@@ -158,13 +161,13 @@ function Page() {
                       <button className="btn btn-danger" onClick={() => confirm("Excluir esta parcela?") && del("committed", c.id)}>Excluir parcela</button>
                     </Acoes></td>
                   </tr>,
-                  isOpen("pay", c.id) && <tr key={c.id + "-p"}><td colSpan={15}><PayForm open={ts.open} onSave={(amount, date, note) => { if (act((x) => registerPayment(x, { id: uid(), titleKind: "committed", titleId: c.id, amount, date, note }))) toggle("pay", c.id); }} /></td></tr>,
                   isOpen("det", c.id) && <tr key={c.id + "-d"}><td colSpan={15} className="bg-muted">
                     <div className="flex flex-wrap items-end gap-3 p-1 text-xs">
                       <span>Origem: <b>{c.origin === "efetivacao" ? `efetivação da previsão ${pl?.purchaseCode || pl?.document || ""}` : c.origin === "legado" ? "legado (vínculo por código + M)" : "manual"}</b></span>
                       {c.origin === "efetivacao" ? <span className="text-muted-foreground">Base abat. legado (M): não se aplica (vínculo explícito)</span> : <label>Base abat. legado (M)<br /><MoneyInput value={c.legacyAbatement} onChange={(v) => act((x) => { const t = x.committed.find((y) => y.id === c.id); if (t) { t.legacyAbatement = v; if (v !== null) t.origin = "legado"; } })} /></label>}
                       {c.extensionInfo && <span className="text-muted-foreground">Campo K (informativo): {c.extensionInfo}</span>}
                     </div>
+                    <div className="lbl mb-1 mt-2">Baixas da parcela</div><BaixasList d={d} kind="committed" titleId={c.id} canReverse={active.isBase} onReverse={(id, n) => act((x) => reversePayment(x, id, n, now()))} />
                   </td></tr>,
                 ];
               }
@@ -180,23 +183,24 @@ function Page() {
                   <td><span className={`tag ${ts.state === "Pago" ? "tag-ok" : ts.state === "Parcial" ? "tag-warn" : ""}`}>{ts.state === "Parcial" ? "Parcialmente pago" : ts.state}</span></td>
                   <td className="num">{fmtBRL(ts.paid)}</td><td className="num">{fmtBRL(Math.max(0, ts.open))}</td>
                   <td><Acoes>
-                    {e.status === "ativo" && ts.open > 0 && expenseDate(e) && <button className="btn btn-primary" disabled={!active.isBase} onClick={() => toggle("pay", e.id)}>Registrar pagamento</button>}
+                    {e.status === "ativo" && ts.open > 0 && expenseDate(e) && <button className="btn btn-primary" disabled={!active.isBase} onClick={() => setPanel({ t: "pay", kind: "expense", id: e.id, label })}>Registrar pagamento</button>}
                     <button className="btn" onClick={() => setPanel({ t: "parcela", label, amount: e.value, date: orig ?? e.baseDate, save: (x, amount, date) => { const t = x.expenses.find((y) => y.id === e.id); if (t) Object.assign(t, { value: amount, termDays: daysBetween(t.baseDate, date) }); } })}>Editar esta parcela</button>
                     <button className="btn" onClick={() => setPanel({ t: "nota", init: noteInit(e, "despesa"), siblings: 1, save: (x, f) => { const t = x.expenses.find((y) => y.id === e.id); if (t) Object.assign(t, { categoryId: f.categoryId, supplierId: f.supplierId, document: f.document, notes: f.notes }); } })}>Editar dados da nota</button>
                     <button className="btn" onClick={() => setPanel({ t: "prorrogar", label, current: e.extensionDate, original: orig, history: e.extensionHistory, save: (x, to, note) => confirmExtension(x, "expense", e.id, to, note, now()) })}>Prorrogar parcela</button>
+                    <button className="btn" onClick={() => toggle("det", e.id)}>Detalhes e baixas</button>
                     <button className="btn btn-danger" onClick={() => confirm("Excluir esta parcela?") && del("expenses", e.id)}>Excluir parcela</button>
                   </Acoes></td>
                 </tr>,
-                isOpen("pay", e.id) && <tr key={e.id + "-p"}><td colSpan={15}><PayForm open={ts.open} onSave={(amount, date, note) => { if (act((x) => registerPayment(x, { id: uid(), titleKind: "expense", titleId: e.id, amount, date, note }))) toggle("pay", e.id); }} /></td></tr>,
+                isOpen("det", e.id) && <tr key={e.id + "-d"}><td colSpan={15} className="bg-muted p-2"><div className="lbl mb-1">Baixas da parcela</div><BaixasList d={d} kind="expense" titleId={e.id} canReverse={active.isBase} onReverse={(id, n) => act((x) => reversePayment(x, id, n, now()))} />{e.cardId && <p className="mt-1">Compra no cartão — paga pela fatura{e.invoiceId ? "" : " (fatura ainda não fechada)"}.</p>}</td></tr>,
               ];
             })}
             {!efetivados.length && <tr><td colSpan={15} className="text-center text-muted-foreground">Nenhum lançamento efetivado.</td></tr>}</tbody></table>
         )}
         {tab === "payments" && (
-          <table className="tbl"><thead><tr><th>Data</th><th>Título</th><th className="num">Valor</th><th>Obs.</th><th>Situação</th><th /></tr></thead>
+          <table className="tbl"><thead><tr><th>Data</th><th>Título</th><th>Conta</th><th className="num">Valor</th><th>Obs.</th><th>Situação</th><th /></tr></thead>
             <tbody>{[...d.payments].sort((a, b) => a.date.localeCompare(b.date)).map((p) => {
               const t = p.titleKind === "committed" ? d.committed.find((c) => c.id === p.titleId) : d.expenses.find((e) => e.id === p.titleId);
-              return <tr key={p.id}><td>{fmtDate(p.date)}</td><td>{sup(t?.supplierId ?? "")?.name} · {t?.document || "sem documento"}{p.titleKind === "committed" && labels.get(p.titleId) ? ` · parcela ${labels.get(p.titleId)}` : ""}</td><td className="num">{fmtBRL(p.amount)}</td><td>{p.note}</td>
+              return <tr key={p.id}><td>{fmtDate(p.date)}</td><td>{sup(t?.supplierId ?? "")?.name} · {t?.document || "sem documento"}{p.titleKind === "committed" && labels.get(p.titleId) ? ` · parcela ${labels.get(p.titleId)}` : ""}</td><td>{p.accountId ? accountName(d, p.accountId) : <span className="tag tag-warn">{NO_ACCOUNT}</span>}</td><td className="num">{fmtBRL(p.amount)}</td><td>{p.note}</td>
                 <td>{p.reversedAt ? <span className="tag tag-err">estornado {fmtDate(p.reversedAt.slice(0, 10))}: {p.reversalNote}</span> : <span className="tag tag-ok">ativo</span>}</td>
                 <td>{!p.reversedAt && <button className="btn" disabled={!active.isBase} onClick={() => { const n = prompt("Motivo do estorno (auditado):"); if (n) act((x) => reversePayment(x, p.id, n, now())); }}>Estornar</button>}</td></tr>;
             })}</tbody></table>
@@ -204,6 +208,7 @@ function Page() {
       </div>}
       <p className="mt-2 text-[11px] text-muted-foreground">Registrar pagamento é apenas o registro de uma baixa já realizada — não executa transferência bancária.</p>
 
+      {panel?.t === "pay" && <PagamentoPanel d={d} kind={panel.kind} titleId={panel.id} label={panel.label} onCancel={() => setPanel(null)} onConfirm={(lines, note) => { const ok = act((x) => registerPaymentBatch(x, { batchId: uid(), titleKind: panel.kind, titleId: panel.id, lines, note })); if (ok) setPanel(null); return ok; }} />}
       {panel?.t === "new" && <NovaNota d={d} stage={tab === "committed" ? "committed" : "planned"} isBase={active.isBase} onCancel={() => setPanel(null)} onConfirm={(n, cond) => { const ok = act((x) => { if (cond) saveSupplierCondition(x, n.supplierId, cond, now()); applyNote(x, n, { id: uid, at: now() }); }); if (ok) setPanel(null); return ok; }} />}
       {panel?.t === "parcela" && <ParcelaPanel label={panel.label} amount={panel.amount} date={panel.date} onCancel={() => setPanel(null)} onSave={(a, dt) => doPanel((x) => panel.save(x, a, dt))} />}
       {panel?.t === "nota" && <DadosNotaPanel d={d} init={panel.init} siblings={panel.siblings} onCancel={() => setPanel(null)} onSave={(f) => doPanel((x) => panel.save(x, f))} />}
@@ -212,13 +217,6 @@ function Page() {
   );
 }
 
-function PayForm({ open, onSave }: { open: number; onSave: (amount: number, date: string, note: string) => void }) {
-  const [amount, setAmount] = useState<number | null>(open);
-  const [date, setDate] = useState<string | null>(todaySP());
-  const [note, setNote] = useState("");
-  return <div className="flex flex-wrap items-end gap-2 bg-muted p-2 text-xs"><b>Registrar pagamento</b> Valor <MoneyInput value={amount} onChange={setAmount} /> Data real <DateInput value={date} onChange={setDate} /> <input className="inp w-48" placeholder="observação" value={note} onChange={(e) => setNote(e.target.value)} />
-    <button className="btn btn-primary" disabled={!amount || !date} onClick={() => amount && date && onSave(amount, date, note)}>Registrar pagamento</button><span className="text-muted-foreground">saldo pendente {fmtBRL(open)}</span></div>;
-}
 function EffectivateForm({ data, planned, onDone }: { data: ScenarioData; planned: Planned; onDone: (fn: (x: ScenarioData) => void) => void }) {
   const [id] = useState(() => "ef" + uid()); // chave de idempotência por abertura do formulário
   const base0 = suggestEffectivation(data, planned.id, 0);

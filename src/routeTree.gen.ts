@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as BancosRouteImport } from './routes/bancos'
 import { Route as ConviteRouteImport } from './routes/convite'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as DespesasRouteImport } from './routes/despesas'
@@ -31,6 +32,11 @@ const IndexRoute = IndexRouteImport.update({
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BancosRoute = BancosRouteImport.update({
+  id: '/bancos',
+  path: '/bancos',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConviteRoute = ConviteRouteImport.update({
@@ -92,6 +98,7 @@ const SimulacoesRoute = SimulacoesRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/bancos': typeof BancosRoute
   '/convite': typeof ConviteRoute
   '/dashboard': typeof DashboardRoute
   '/despesas': typeof DespesasRoute
@@ -107,6 +114,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/bancos': typeof BancosRoute
   '/convite': typeof ConviteRoute
   '/dashboard': typeof DashboardRoute
   '/despesas': typeof DespesasRoute
@@ -123,6 +131,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/bancos': typeof BancosRoute
   '/convite': typeof ConviteRoute
   '/dashboard': typeof DashboardRoute
   '/despesas': typeof DespesasRoute
@@ -140,6 +149,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/bancos'
     | '/convite'
     | '/dashboard'
     | '/despesas'
@@ -155,6 +165,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/bancos'
     | '/convite'
     | '/dashboard'
     | '/despesas'
@@ -170,6 +181,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/auth'
+    | '/bancos'
     | '/convite'
     | '/dashboard'
     | '/despesas'
@@ -186,6 +198,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRoute
+  BancosRoute: typeof BancosRoute
   ConviteRoute: typeof ConviteRoute
   DashboardRoute: typeof DashboardRoute
   DespesasRoute: typeof DespesasRoute
@@ -213,6 +226,13 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/bancos': {
+      id: '/bancos'
+      path: '/bancos'
+      fullPath: '/bancos'
+      preLoaderRoute: typeof BancosRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/convite': {
@@ -298,6 +318,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
+  BancosRoute: BancosRoute,
   ConviteRoute: ConviteRoute,
   DashboardRoute: DashboardRoute,
   DespesasRoute: DespesasRoute,

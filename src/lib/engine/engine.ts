@@ -1,3 +1,4 @@
+import { flowOpening } from "./banco";
 import { addDays, dateRange, daysInMonth, ym } from "../dates";
 import { macroCurrency, roundCents } from "../money";
 import type {
@@ -238,6 +239,7 @@ export function computeFlow(data: ScenarioData, opt: FlowOptions): FlowResult {
   }
   for (const e of data.expenses) {
     if (e.status === "cancelado") continue;
+    if (e.cardId) { if (!e.invoiceId) warnings.push({ code: "CARTAO_SEM_FATURA", severity: "info", refId: e.id, message: `Compra no cartão ${e.document}: aguarda fechamento da fatura (não entra no fluxo; a fatura entra).` }); continue; }
     const d = expenseDate(e);
     if (!d) {
       warnings.push({ code: "DESP_SEM_PRAZO", severity: "alerta", refId: e.id, message: `Despesa ${e.document}: prazo (G) vazio — não distribuída.` });
@@ -262,7 +264,7 @@ export function computeFlow(data: ScenarioData, opt: FlowOptions): FlowResult {
   const adjMap = new Map(data.adjustments.filter((a) => a.value !== null).map((a) => [a.date, a]));
 
   const days: Day[] = [];
-  let carried = p.saldoInicial;
+  let carried = flowOpening(data); // legado: params.saldoInicial; após transição confirmada: soma das contas
   for (const d of dateRange(p.startDate, opt.end)) {
     let ini = carried;
     let ajuste: Day["ajuste"] = null;

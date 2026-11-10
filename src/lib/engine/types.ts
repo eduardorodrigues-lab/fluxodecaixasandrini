@@ -11,6 +11,10 @@ export interface Params {
   lagDays: number; // defasagem (dias corridos)
   startDate: string;
   saldoInicial: number; // centavos
+  // Saldo inicial do fluxo: "legado" = saldoInicial acima (regra Excel); "contas" = soma dos saldos realizados das contas
+  // na data inicial. Só muda por transição revisada/confirmada (bankTransition). Nunca soma os dois.
+  openingMode?: "legado" | "contas";
+  bankTransition?: { at: string; by: string; legacyValue: number; accountsValue: number; note: string } | null;
 }
 
 export interface Supplier { id: string; name: string; group: string; terms: (number | null)[]; termsHistory?: { at: string; terms: (number | null)[] }[] } // até 10; null = vazio
@@ -54,6 +58,9 @@ export interface Expense {
   extensionDate: string | null; extensionHistory: ExtensionEvent[];
   categoryId: string; notes: string; status: Status; importOrigin?: Origin | null;
   paymentUnconfirmed?: boolean;
+  cardId?: string | null; // compra no cartão: detalhe da fatura; não debita banco nem entra no fluxo (a fatura entra)
+  invoiceId?: string | null; // fatura à qual a compra no cartão foi vinculada
+  invoiceOf?: { cardId: string; month: string } | null; // esta despesa É a fatura do cartão (saída bancária na baixa)
 }
 export interface Effectivation {
   id: string; plannedId: string; at: string; kind: "parcial" | "concluida"; value: number;
@@ -66,11 +73,27 @@ export interface Effectivation {
 export interface Payment {
   id: string; titleKind: "committed" | "expense"; titleId: string; date: string; amount: number;
   note: string; reversedAt: string | null; reversalNote: string;
+  accountId?: string | null; // conta de origem; baixas antigas sem conta = "Conta não informada" (nunca inferida)
+  batchId?: string | null; // baixas multicontas confirmadas juntas
 }
+// Contas bancárias e cartões. Saldo inicial = saldo ao FIM do dia openingDate; entram só movimentos com data > openingDate.
+export interface BankAccount {
+  id: string; bank: string; label: string; holder: string; agency: string; account: string; active: boolean;
+  openingBalance: number | null; openingDate: string | null;
+  history: { at: string; field: string; from: unknown; to: unknown; note: string }[];
+}
+export interface Card { id: string; accountId: string; name: string; last4: string; closingDay: number; dueDay: number; active: boolean }
+// Transferência: UM registro com as duas pernas (saída da origem e entrada no destino) — atômica por construção; neutra no consolidado.
+export interface Transfer { id: string; fromAccountId: string; toAccountId: string; amount: number; date: string; note: string; at: string; by: string; reversedAt: string | null; reversalNote: string }
 // Plataforma: ID estável; nome editável; vigência [start, end]. Nunca excluída fisicamente se referenciada.
-export interface Platform { id: string; name: string; start: string; end: string | null; importedCode: string | null; history: { at: string; field: string; from: unknown; to: unknown; note: string }[] }
+export interface PlatformAccountPeriod { from: string; accountId: string; at: string; note: string }
+export interface Platform { id: string; name: string; start: string; end: string | null; importedCode: string | null; defaultAccounts?: PlatformAccountPeriod[]; history: { at: string; field: string; from: unknown; to: unknown; note: string }[] }
 // Recebimento: valores por ID de plataforma. residual[id] = repasse APÓS inativação, exceção explícita com nota.
-export interface Receipt { id: string; date: string; platforms: Record<string, number | null>; general: number | null; notes: string; residual?: Record<string, { note: string; at: string }> }
+export interface Receipt { id: string; date: string; platforms: Record<string, number | null>; general: number | null; notes: string; residual?: Record<string, { note: string; at: string }>;
+  accountByPlatform?: Record<string, { accountId: string; override: boolean }>; // conta gravada no registro (nunca recalculada pelo padrão)
+  generalAccountId?: string | null; // conta do valor geral (sem plataforma)
+  realized?: boolean; // explicitamente confirmado como creditado em conta; informado ≠ realizado
+}
 // Meta mensal versionada: valores próprios do mês; parâmetros gerais são só default na criação.
 export type R2Base = "apos_r1" | "bruto";
 export interface MonthTarget {
@@ -98,6 +121,9 @@ export interface ScenarioData {
   receipts: Receipt[];
   adjustments: Adjustment[];
   importLog: ImportLogEntry[];
+  bankAccounts: BankAccount[];
+  cards: Card[];
+  transfers: Transfer[];
 }
 
 export type Severity = "info" | "alerta" | "erro";

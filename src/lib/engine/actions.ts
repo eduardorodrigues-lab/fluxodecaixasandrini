@@ -1,5 +1,6 @@
 // Ações de domínio puras (sem I/O). Mutam o objeto recebido (rascunho) e lançam erro em violação.
 import { addDays } from "../dates";
+import { stampReceiptAccounts } from "./banco";
 import { defaultMonthTarget, distributePlanned, effectivatedOf, paymentsFor, platformActiveOn, titleStatus } from "./engine";
 import type { Committed, Expense, MonthTarget, Payment, Platform, ScenarioData } from "./types";
 
@@ -13,7 +14,7 @@ export function normalizeData(raw: unknown): ScenarioData {
   const { webExpenseUseExtension: _ignored, ...params } = d.params ?? {};
   void _ignored;
   d.params = { ...DEF_PARAMS, ...params };
-  for (const k of ["platforms", "suppliers", "categories", "planned", "committed", "expenses", "effectivations", "payments", "receipts", "adjustments", "importLog"]) d[k] ??= [];
+  for (const k of ["platforms", "suppliers", "categories", "planned", "committed", "expenses", "effectivations", "payments", "receipts", "adjustments", "importLog", "bankAccounts", "cards", "transfers"]) d[k] ??= [];
   // Migração: categorias antigas por ETAPA (planejada/comprometida) viram subgrupos de Compra; vínculos (IDs) preservados.
   for (const c of d.categories) { if (c.kind === "planejada" || c.kind === "comprometida") c.kind = "compra"; c.group ??= ""; }
   d.targets ??= {};
@@ -236,6 +237,7 @@ export function setReceiptPlatform(d: ScenarioData, receiptId: string, platformI
   }
   if (value === null) delete r.residual[platformId];
   r.platforms[platformId] = value;
+  stampReceiptAccounts(d, r); // grava a conta padrão vigente na data (sem reatribuir contas já gravadas)
   return d;
 }
 

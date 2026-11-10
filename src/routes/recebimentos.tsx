@@ -3,7 +3,10 @@ import { useState } from "react";
 import { DateInput, MoneyInput, PageHeader } from "@/components/kit";
 import { dailyEstimate, platformActiveOn, receiptInformed, receiptPlatformIssues } from "@/lib/engine/engine";
 import { addPlatform, deletePlatform, setReceiptPlatform, todaySP, updatePlatform } from "@/lib/engine/actions";
-import type { Platform } from "@/lib/engine/types";
+import type { Platform, Receipt, ScenarioData } from "@/lib/engine/types";
+import { accountName, defaultAccountFor, NO_ACCOUNT, setPlatformDefaultAccount, setReceiptAccount } from "@/lib/engine/banco";
+import { AccountSearch } from "@/components/BancoPanels";
+import { SidePanel } from "@/components/NotaPanel";
 import { fmtDate } from "@/lib/dates";
 import { fmtNum } from "@/lib/money";
 import { uid, useApp } from "@/lib/store";
@@ -34,6 +37,7 @@ function Page() {
   const [dir, setDir] = useState<"todos" | "acima" | "abaixo">("todos");
   const [sort, setSort] = useState<{ k: "date" | "sum" | "est" | "diff"; asc: boolean }>({ k: "date", asc: true });
   const [showPf, setShowPf] = useState(false);
+  const [accFor, setAccFor] = useState<string | null>(null);
   const fs = pStart ?? ui.start, fe = pEnd ?? ui.end;
   const calc = (r: (typeof d.receipts)[number]) => { const inf = receiptInformed(r); const est = r.date ? dailyEstimate(d.params, d.targets, r.date, d.targetConfigs).value : 0; return { inf, est, diff: inf.sum - est }; };
   const undated = d.receipts.filter((r) => !r.date);
@@ -72,8 +76,8 @@ function Page() {
       </div>
       <div className="card max-h-[75vh] overflow-auto">
         <table className="tbl">
-          <thead><tr>{sh("date", "Data", false)}{cols.map((p) => <th key={p.id} className="num" >{p.name}{p.end && <div className="text-[10px] font-normal">inativa desde {fmtDate(p.end)}</div>}</th>)}<th className="num">Geral</th>{sh("sum", "Soma (P)")}{sh("est", "Estimativa (Q)")}{sh("diff", "Diferença (R=P−Q)")}<th>Uso no fluxo</th><th>Obs.</th><th /></tr></thead>
-          <tbody>{list.length === 0 ? <tr><td colSpan={cols.length + 8} className="text-muted-foreground">Nenhum recebimento no período.</td></tr> : list.map((r) => {
+          <thead><tr>{sh("date", "Data", false)}{cols.map((p) => <th key={p.id} className="num" >{p.name}{p.end && <div className="text-[10px] font-normal">inativa desde {fmtDate(p.end)}</div>}</th>)}<th className="num">Geral</th>{sh("sum", "Soma (P)")}{sh("est", "Estimativa (Q)")}{sh("diff", "Diferença (R=P−Q)")}<th>Uso no fluxo</th><th>Contas</th><th>Realizado</th><th>Obs.</th><th /></tr></thead>
+          <tbody>{list.length === 0 ? <tr><td colSpan={cols.length + 10} className="text-muted-foreground">Nenhum recebimento no período.</td></tr> : list.map((r) => {
             const { inf } = calc(r);
             const est = { value: calc(r).est };
             const issues = receiptPlatformIssues(d.platforms, r);
@@ -92,6 +96,8 @@ function Page() {
                 <td className="num">{r.date ? fmtNum(est.value) : ""}</td>
                 <td className={`num ${inf.sum - est.value < 0 ? "neg" : ""}`}>{inf.present ? fmtNum(inf.sum - est.value) : ""}</td>
                 <td>{inf.doubleCount && <span className="tag tag-warn mr-1">possível dupla contagem</span>}{inf.present ? <span className="tag tag-ok">{inf.confirmedZero ? "zero confirmado" : "informado"}</span> : <span className="tag tag-warn">não informado → estimativa</span>}{issues.filter((i) => i.severity !== "info").map((i, k) => <div key={k} className="tag tag-err" title={i.message}>{i.code === "PLAT_FORA_VIGENCIA" ? "fora de vigência" : "plataforma desconhecida"}</div>)}</td>
+                <td>{inf.present ? <button className="btn" onClick={() => setAccFor(r.id)}>{receiptAccountsLabel(d, r)}</button> : ""}</td>
+                <td className="text-center"><input type="checkbox" aria-label="Creditado em conta" checked={!!r.realized} disabled={!inf.present} onChange={(e) => set(r.id, (x) => { x.realized = e.target.checked; })} /></td>
                 <td><input className="inp w-32" defaultValue={r.notes} onBlur={(e) => set(r.id, (x) => { x.notes = e.target.value; })} /></td>
                 <td><button className="btn btn-danger" onClick={() => act((x) => { x.receipts = x.receipts.filter((i) => i.id !== r.id); })}>Excluir</button></td>
               </tr>
@@ -105,6 +111,7 @@ function Page() {
           <Platforms today={today} act={act} />
         </aside>
       </div>}
+      {accFor && <ReceiptAccounts rid={accFor} act={act} onClose={() => setAccFor(null)} />}
       <p className="text-[11px] text-muted-foreground">Mesma data com mais de um registro: o fluxo soma o dia. Renomear uma plataforma não altera recebimentos anteriores.</p>
     </div>
   );
@@ -115,17 +122,28 @@ function Platforms({ today, act }: { today: string; act: (fn: (x: import("@/lib/
   const d = active.data;
   const [name, setName] = useState(""); const [start, setStart] = useState<string | null>(today); const [code, setCode] = useState("");
   const refs = (id: string) => d.receipts.filter((r) => r.platforms[id] != null).length;
+  const [defFor, setDefFor] = useState<string | null>(null);
+  const [defFrom, setDefFrom] = useState<string | null>(today); const [defAcc, setDefAcc] = useState(""); const [defNote, setDefNote] = useState("");
   return (
     <section className="card overflow-auto p-3">
+      {defFor && <div className="mb-3 space-y-2 rounded-md border border-primary p-3 text-xs">
+        <b>Conta padrão de {d.platforms.find((p) => p.id === defFor)?.name}</b>
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2"><label>Válida a partir de<br /><DateInput value={defFrom} onChange={setDefFrom} /></label><label>Conta<br /><AccountSearch d={d} label="Conta padrão" value={defAcc} onChange={setDefAcc} /></label>
+          <label className="md:col-span-2">Observação<br /><input className="inp h-8 w-full" value={defNote} onChange={(e) => setDefNote(e.target.value)} /></label></div>
+        <p className="text-muted-foreground">Vale até a próxima mudança. Recebimentos já lançados mantêm a conta gravada; nenhum valor é transferido.</p>
+        <div className="flex gap-2"><button className="btn" onClick={() => setDefFor(null)}>Cancelar</button><button className="btn btn-primary" disabled={!defFrom || !defAcc} onClick={() => { if (act((x) => setPlatformDefaultAccount(x, defFor, defFrom!, defAcc, defNote, now()))) { setDefFor(null); setDefAcc(""); setDefNote(""); } }}>Confirmar</button></div>
+      </div>}
       <div className="lbl mb-2">Plataformas</div>
       <table className="tbl">
-        <thead><tr><th>Nome</th><th>Início vigência</th><th>Inativação</th><th>Status</th><th className="num">Recebimentos</th><th>Ações</th></tr></thead>
+        <thead><tr><th>Nome</th><th>Início vigência</th><th>Inativação</th><th>Status</th><th>Conta padrão (vigência)</th><th className="num">Recebimentos</th><th>Ações</th></tr></thead>
         <tbody>{d.platforms.map((p) => (
           <tr key={p.id}>
             <td><input className="inp w-40" defaultValue={p.name} onBlur={(e) => e.target.value !== p.name && act((x) => updatePlatform(x, p.id, { name: e.target.value }, "renomeada", now()))} /></td>
             <td><DateInput value={p.start} onChange={(v) => v && v !== p.start && act((x) => updatePlatform(x, p.id, { start: v }, "início alterado", now()))} /></td>
             <td>{p.end ? fmtDate(p.end) : <span className="text-muted-foreground">—</span>}</td>
             <td><span className={`tag ${pfState(p, today) === "ativa" ? "tag-ok" : "tag-warn"}`}>{pfState(p, today)}</span></td>
+            <td>{(p.defaultAccounts ?? []).map((x, i) => <div key={i}>desde {fmtDate(x.from)}: {accountName(d, x.accountId)}</div>)}
+              <button className="btn mt-1" disabled={!d.bankAccounts.some((a) => a.active)} onClick={() => setDefFor(p.id)}>Definir conta padrão</button></td>
             <td className="num">{refs(p.id)}</td>
             <td className="space-x-1 whitespace-nowrap">
               {!p.end && <button className="btn" onClick={() => { const v = prompt("Data de inativação (aaaa-mm-dd). Plataforma inativada não é reativada:", today); if (v) act((x) => updatePlatform(x, p.id, { end: v }, "inativada", now())); }}>Inativar</button>}
@@ -142,4 +160,30 @@ function Platforms({ today, act }: { today: string; act: (fn: (x: import("@/lib/
       </div>
     </section>
   );
+}
+
+function receiptAccountsLabel(d: ScenarioData, r: Receipt) {
+  const ids = [...Object.entries(r.platforms).filter(([, v]) => v != null).map(([k]) => r.accountByPlatform?.[k]?.accountId ?? null), ...(r.general != null ? [r.generalAccountId ?? null] : [])];
+  const uniq = [...new Set(ids)];
+  if (uniq.length === 1) return uniq[0] ? accountName(d, uniq[0]).split(" · ")[0] : NO_ACCOUNT;
+  return `${uniq.length} contas`;
+}
+function ReceiptAccounts({ rid, act, onClose }: { rid: string; act: (fn: (x: ScenarioData) => void) => boolean; onClose: () => void }) {
+  const { active } = useApp();
+  const d = active.data;
+  const r = d.receipts.find((x) => x.id === rid);
+  if (!r) return null;
+  const rows = [...Object.entries(r.platforms).filter(([, v]) => v != null).map(([pid, v]) => {
+    const pf = d.platforms.find((p) => p.id === pid);
+    return { key: pid, name: pf?.name ?? "Plataforma", value: v!, acc: r.accountByPlatform?.[pid]?.accountId ?? "", override: !!r.accountByPlatform?.[pid]?.override, sug: pf && r.date ? defaultAccountFor(pf, r.date) : null };
+  }), ...(r.general != null ? [{ key: "general", name: "Geral (sem plataforma)", value: r.general, acc: r.generalAccountId ?? "", override: true, sug: null }] : [])];
+  return <SidePanel title="Contas do recebimento" sub={r.date ? fmtDate(r.date) : "sem data"} onClose={onClose} footer={<button className="btn btn-primary" onClick={onClose}>Fechar</button>}>
+    <table className="tbl"><thead><tr><th>Origem</th><th className="num">Valor</th><th>Conta</th></tr></thead>
+      <tbody>{rows.map((x) => <tr key={x.key}><td>{x.name}</td><td className="num">{fmtNum(x.value)}</td><td>
+        <div className="mb-1">{x.acc ? accountName(d, x.acc) : <span className="tag tag-warn">{NO_ACCOUNT}</span>}{x.acc && !x.override && <span className="ml-1 text-muted-foreground">(padrão na data)</span>}{x.override && x.key !== "general" && x.acc && <span className="ml-1 tag tag-warn">alterada só neste recebimento</span>}</div>
+        <div className="flex gap-1"><div className="flex-1"><AccountSearch d={d} label={`Alterar somente neste recebimento ${x.name}`} value="" onChange={(v) => v && act((y) => setReceiptAccount(y, rid, x.key, v))} /></div>
+          {x.sug && x.sug !== x.acc && <button className="btn" onClick={() => act((y) => { setReceiptAccount(y, rid, x.key, x.sug); const t = y.receipts.find((i) => i.id === rid); if (t?.accountByPlatform?.[x.key]) t.accountByPlatform[x.key]!.override = false; })}>Usar padrão</button>}</div>
+      </td></tr>)}</tbody></table>
+    <p className="text-muted-foreground">Escolher uma conta acima vale somente para este recebimento. A conta fica gravada no registro e não muda se o padrão da plataforma mudar.</p>
+  </SidePanel>;
 }

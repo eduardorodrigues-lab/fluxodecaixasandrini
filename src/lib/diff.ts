@@ -12,6 +12,9 @@ const COLLECTIONS: { key: keyof ScenarioData; label: string; id: (x: Record<stri
   { key: "effectivations", label: "Efetivação", id: (x) => String(x["id"]) },
   { key: "payments", label: "Pagamento (baixa)", id: (x) => String(x["id"]) },
   { key: "receipts", label: "Recebimento", id: (x) => String(x["id"]) },
+  { key: "bankAccounts", label: "Conta bancária", id: (x) => String(x["id"]) },
+  { key: "cards", label: "Cartão", id: (x) => String(x["id"]) },
+  { key: "transfers", label: "Transferência", id: (x) => String(x["id"]) },
   { key: "adjustments", label: "Ajuste de saldo", id: (x) => String(x["date"]) },
   { key: "importLog", label: "Registro de importação", id: (x) => String(x["key"]) },
 ];
