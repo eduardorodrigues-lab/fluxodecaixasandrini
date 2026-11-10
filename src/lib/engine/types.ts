@@ -17,7 +17,8 @@ export interface Params {
   bankTransition?: { at: string; by: string; legacyValue: number; accountsValue: number; note: string } | null;
 }
 
-export interface Supplier { id: string; name: string; group: string; terms: (number | null)[]; termsHistory?: { at: string; terms: (number | null)[] }[] } // até 10; null = vazio
+export interface SupplierCondition { id: string; name: string; terms: (number | null)[]; from: string | null; at: string; by: string } // prazos até 10; null = vazio
+export interface Supplier { id: string; name: string; group: string; terms: (number | null)[]; termsHistory?: { at: string; terms: (number | null)[] }[]; conditions?: SupplierCondition[] } // terms = condição vigente (usada pelo motor)
 // Categoria = etapa NÃO: é a natureza do lançamento (Compra ou Despesa). Cada Category é um SUBGRUPO
 // (ex.: "Energia elétrica"); planejada/efetuada são etapas do lançamento, não categorias.
 export type CategoryKind = "compra" | "despesa";
@@ -30,6 +31,7 @@ export interface ExtensionEvent { from: string | null; to: string | null; at: st
 export interface Planned {
   id: string; supplierId: string; purchaseCode: string; document: string; value: number;
   baseDate: string; categoryId: string; notes: string;
+  condition?: { name: string; terms: (number | null)[] } | null; // condição usada na previsão (histórico)
   status: Status | "encerrado"; // encerrado = efetivação concluída encerrou o saldo previsto
   remainingOverride: { value: number; dates: string[] } | null; // restante confirmado após efetivação parcial
   terms?: (number | null)[] | null; // prazos F:O da própria linha (importados); null = usa os do fornecedor
@@ -43,6 +45,7 @@ export type CommittedOrigin = "legado" | "efetivacao" | "manual";
 export interface Committed {
   id: string; supplierId: string; purchaseCode: string; document: string; value: number;
   dueDate: string; // vencimento original (preservado)
+  condition?: { name: string; terms: (number | null)[] } | null; // condição real confirmada na efetivação/criação
   extensionDate: string | null; // prorrogação CONFIRMADA (altera programação oficial)
   extensionHistory: ExtensionEvent[];
   extensionInfo: string; // campo K — apenas informativo

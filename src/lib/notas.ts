@@ -2,7 +2,7 @@
 // Funções puras sobre o rascunho do cenário — chamadas via update() só após "Revisar e confirmar".
 import { distributePlanned, splitCents } from "@/lib/engine/engine";
 import { effectivate, plannedRemaining } from "@/lib/engine/actions";
-import type { CategoryKind, Committed, ExtensionEvent, ScenarioData } from "@/lib/engine/types";
+import type { CategoryKind, Committed, ExtensionEvent, ScenarioData, Supplier, SupplierCondition } from "@/lib/engine/types";
 import { addDays } from "@/lib/dates";
 
 export interface DraftParcel { amount: number; date: string | null; ext: string | null }
@@ -11,7 +11,8 @@ export interface NoteDraft {
   purchaseCode: string; document: string; description: string; total: number | null; baseDate: string | null;
   parcels: DraftParcel[];
   plannedId?: string | null; // Efetivado vinculado a uma previsão existente
-  closeRest?: boolean; // vinculado: true = encerra o restante da previsão; false = restante continua planejado
+  closeRest?: boolean;
+  condition?: { name: string; terms: (number | null)[] } | null; // condição escolhida/informada (não altera o fornecedor) // vinculado: true = encerra o restante da previsão; false = restante continua planejado
 }
 
 /** Prazos numéricos (0 conta; vazio não) → parcelas com resíduo de centavos na última. */
@@ -50,7 +51,7 @@ export function applyNote(d: ScenarioData, n: NoteDraft, ids: { id: () => string
   if (errs.length) throw new Error(errs.join(" "));
   const sorted = [...n.parcels];
   if (n.stage === "planned") {
-    d.planned.push({ id: ids.id(), supplierId: n.supplierId, purchaseCode: n.purchaseCode, document: n.document, value: n.total!, baseDate: n.baseDate!, categoryId: n.categoryId, notes: n.description, status: "ativo", remainingOverride: null, installments: sorted.map((p) => ({ amount: p.amount, date: p.date!, extensionDate: p.ext, extensionHistory: extHist(p, ids.at) })) });
+    d.planned.push({ id: ids.id(), supplierId: n.supplierId, purchaseCode: n.purchaseCode, document: n.document, value: n.total!, baseDate: n.baseDate!, categoryId: n.categoryId, notes: n.description, status: "ativo", remainingOverride: null, condition: n.condition ?? null, installments: sorted.map((p) => ({ amount: p.amount, date: p.date!, extensionDate: p.ext, extensionHistory: extHist(p, ids.at) })) });
     return;
   }
   if (n.plannedId) {
@@ -60,26 +61,45 @@ export function applyNote(d: ScenarioData, n: NoteDraft, ids: { id: () => string
     const rest = Math.max(0, r.value - n.total!);
     effectivate(d, { id: effId, plannedId: n.plannedId, at: ids.at, kind: n.closeRest || rest === 0 ? "concluida" : "parcial",
       installments: sorted.map((p) => ({ value: p.amount, date: p.date!, document: n.document })),
-      remaining: n.closeRest || rest === 0 ? null : { value: rest, dates: r.dates } });
+      remaining: n.closeRest || rest === 0 ? null : { value: rest, dates: r.dates }, condition: n.condition ?? null });
     sorted.forEach((p, i) => { const c = d.committed.find((x) => x.id === `${effId}-${i + 1}`)!; Object.assign(c, { noteId: effId, parcelNo: i + 1, parcelCount: sorted.length, extensionDate: p.ext, extensionHistory: extHist(p, ids.at), ...(n.description ? { notes: n.description } : {}) }); });
     return;
   }
   const noteId = ids.id();
-  sorted.forEach((p, i) => d.committed.push({ id: ids.id(), supplierId: n.supplierId, purchaseCode: n.purchaseCode, document: n.document, value: p.amount, dueDate: p.date!, extensionDate: p.ext, extensionHistory: extHist(p, ids.at), extensionInfo: "", legacyAbatement: null, origin: "manual", plannedId: null, effectivationId: null, categoryId: n.categoryId, notes: n.description, status: "ativo", noteId, parcelNo: i + 1, parcelCount: sorted.length }));
+  sorted.forEach((p, i) => d.committed.push({ id: ids.id(), supplierId: n.supplierId, purchaseCode: n.purchaseCode, document: n.document, value: p.amount, dueDate: p.date!, extensionDate: p.ext, extensionHistory: extHist(p, ids.at), extensionInfo: "", legacyAbatement: null, origin: "manual", plannedId: null, effectivationId: null, categoryId: n.categoryId, notes: n.description, status: "ativo", condition: n.condition ?? null, noteId, parcelNo: i + 1, parcelCount: sorted.length }));
 }
 
-/** Salva nova condição do fornecedor preservando histórico; previsões antigas que usavam a condição anterior ficam congeladas. */
-export function saveSupplierCondition(d: ScenarioData, supplierId: string, terms: (number | null)[], at: string): void {
+/** Condições do fornecedor; cadastro antigo sem lista vira "Condição original" (prazos atuais). */
+export function supplierConditions(s: Supplier): SupplierCondition[] {
+  if (s.conditions?.length) return s.conditions;
+  return s.terms.some((t) => t !== null) ? [{ id: `${s.id}-orig`, name: "Condição original", terms: [...s.terms], from: null, at: s.termsHistory?.at(-1)?.at ?? "", by: "" }] : [];
+}
+/** Última condição vigente em `today` (maior início de vigência ≤ hoje; sem início = desde sempre; empate → mais recente cadastrada). */
+export function currentCondition(s: Supplier, today: string): SupplierCondition | null {
+  const v = supplierConditions(s).filter((c) => !c.from || c.from <= today);
+  return v.sort((a, b) => (a.from ?? "").localeCompare(b.from ?? "") || a.at.localeCompare(b.at)).at(-1) ?? null;
+}
+/** Adiciona condição sem apagar as anteriores. Prazos vigentes (motor) passam a ser os da condição vigente;
+ *  previsões antigas por prazos ficam congeladas nos prazos anteriores. */
+export function addSupplierCondition(d: ScenarioData, supplierId: string, c: { name: string; terms: (number | null)[]; from: string | null }, at: string, by: string, today: string): void {
   const s = d.suppliers.find((x) => x.id === supplierId);
   if (!s) throw new Error("Fornecedor não encontrado.");
+  if (!c.name.trim()) throw new Error("Informe o nome da condição.");
+  if (!c.terms.some((t) => t !== null)) throw new Error("Informe ao menos um prazo.");
+  s.conditions = supplierConditions(s).map((x) => ({ ...x }));
+  s.conditions.push({ id: `${supplierId}-c${s.conditions.length + 1}-${at}`, name: c.name.trim(), terms: [...c.terms].slice(0, 10), from: c.from, at, by });
+  const cur = currentCondition(s, today)!;
   const old = [...s.terms];
-  for (const pl of d.planned) if (pl.supplierId === supplierId && !pl.terms && !pl.installments?.length) pl.terms = old;
-  s.termsHistory ??= [];
-  if (!s.termsHistory.length) s.termsHistory.push({ at: "", terms: old });
-  s.termsHistory.push({ at, terms: [...terms] });
-  s.terms = [...terms].slice(0, 10);
+  if (JSON.stringify(old) !== JSON.stringify(cur.terms)) {
+    for (const pl of d.planned) if (pl.supplierId === supplierId && !pl.terms && !pl.installments?.length) pl.terms = old;
+    s.terms = [...cur.terms];
+  }
 }
-export const conditionDate = (s: { termsHistory?: { at: string }[] }) => s.termsHistory?.at(-1)?.at || null;
+/** Compatibilidade: salvar condição informada no lançamento como nova condição do fornecedor. */
+export function saveSupplierCondition(d: ScenarioData, supplierId: string, terms: (number | null)[], at: string, name = "Condição específica", by = "", from: string | null = null): void {
+  addSupplierCondition(d, supplierId, { name, terms, from }, at, by, at.slice(0, 10));
+}
+export const conditionDate = (s: { termsHistory?: { at: string }[]; conditions?: { at: string }[] }) => s.conditions?.at(-1)?.at || s.termsHistory?.at(-1)?.at || null;
 
 /** Converte previsão por prazos em parcelas próprias (valores atuais, antes de abatimentos), para editar uma parcela isoladamente. */
 export function materializePlanned(d: ScenarioData, plannedId: string): void {

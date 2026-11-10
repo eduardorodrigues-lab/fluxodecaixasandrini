@@ -3,7 +3,7 @@ import { DateInput, MoneyInput } from "@/components/kit";
 import type { CategoryKind, ScenarioData } from "@/lib/engine/types";
 import { fmtDate } from "@/lib/dates";
 import { fmtBRL } from "@/lib/money";
-import { adjustLast, conditionDate, generateParcels, parcelsTotal, validateNote, type DraftParcel, type NoteDraft } from "@/lib/notas";
+import { adjustLast, currentCondition, generateParcels, supplierConditions, parcelsTotal, validateNote, type DraftParcel, type NoteDraft } from "@/lib/notas";
 import { plannedRemaining } from "@/lib/engine/actions";
 
 /** Painel lateral amplo e responsivo (tela cheia no celular). */
@@ -48,19 +48,15 @@ export function CatSubFields({ d, kind, categoryId, onChange }: { d: ScenarioDat
 const termsTxt = (t: (number | null)[]) => t.filter((x) => x !== null).join(", ");
 const parseTerms = (s: string) => s.split(/[,;\s]+/).filter(Boolean).map(Number).filter((n) => Number.isFinite(n));
 
-export function NovaNota({ d, isBase, onCancel, onConfirm }: { d: ScenarioData; stage?: "planned" | "committed"; isBase: boolean; onCancel: () => void; onConfirm: (n: NoteDraft, saveCondition: (number | null)[] | null) => boolean }) {
+export function NovaNota({ d, isBase, onCancel, onConfirm }: { d: ScenarioData; stage?: "planned" | "committed"; isBase: boolean; onCancel: () => void; onConfirm: (n: NoteDraft, saveAs: SaveAs | null) => boolean }) {
   const [chosen, setChosen] = useState(false);
   const [n, setN] = useState<NoteDraft>({ stage: "planned", kind: "compra", categoryId: "", supplierId: "", purchaseCode: "", document: "", description: "", total: null, baseDate: null, parcels: [], plannedId: null, closeRest: false });
-  const [manual, setManual] = useState<string | null>(null);
-  const [saveCond, setSaveCond] = useState(false);
+  const [saveAs, setSaveAs] = useState<SaveAs | null>(null);
   const [review, setReview] = useState(false);
   const [tried, setTried] = useState(false);
   const up = (p: Partial<NoteDraft>) => setN({ ...n, ...p });
   const stage = n.stage;
   const sup = d.suppliers.find((s) => s.id === n.supplierId);
-  const cond = manual !== null ? parseTerms(manual) : (sup?.terms ?? []);
-  const canGen = !!n.total && !!n.baseDate && cond.some((t) => t !== null);
-  const gen = () => canGen && up({ parcels: generateParcels(n.total!, n.baseDate!, cond) });
   const setP = (i: number, p: Partial<DraftParcel>) => up({ parcels: n.parcels.map((x, k) => (k === i ? { ...x, ...p } : x)) });
   const tot = parcelsTotal(n.parcels);
   const diff = (n.total ?? 0) - tot;
@@ -80,13 +76,12 @@ export function NovaNota({ d, isBase, onCancel, onConfirm }: { d: ScenarioData; 
     const x = prevs.find((v) => v.p.id === id);
     if (!x) return up({ plannedId: null });
     up({ plannedId: id, supplierId: x.p.supplierId, categoryId: x.p.categoryId, kind: d.categories.find((c) => c.id === x.p.categoryId)?.kind ?? n.kind, purchaseCode: x.p.purchaseCode, baseDate: n.baseDate ?? x.p.baseDate, parcels: [] });
-    setManual(null);
   };
   const next = () => { setTried(true); if (!errs.length) setReview(true); };
   const err = (m: string) => tried && errs.includes(m) ? <span className="text-[11px] text-destructive">{m}</span> : null;
   const title = !chosen ? "Novo lançamento" : review ? `Revisar · Novo lançamento · ${stageL}` : `Novo lançamento · ${stageL}`;
   const footer = !chosen ? <button className="btn" onClick={onCancel}>Cancelar</button> : review
-    ? <><button className="btn" onClick={() => setReview(false)}>Voltar e editar</button><button className="btn btn-primary" onClick={() => onConfirm(n, manual !== null && saveCond ? cond : null)}>Confirmar lançamento</button></>
+    ? <><button className="btn" onClick={() => setReview(false)}>Voltar e editar</button><button className="btn btn-primary" onClick={() => onConfirm(n, saveAs)}>Confirmar lançamento</button></>
     : <><button className="btn" onClick={backToType}>Trocar tipo</button><button className="btn" onClick={onCancel}>Cancelar</button><button className="btn btn-primary" onClick={next}>Revisar e confirmar</button></>;
   return (
     <SidePanel wide title={title} sub={isBase ? "Grava no fluxo real ao confirmar" : "Simulação — não altera o fluxo real"} onClose={onCancel} footer={footer}>
@@ -105,7 +100,7 @@ export function NovaNota({ d, isBase, onCancel, onConfirm }: { d: ScenarioData; 
           </div>
           {link && <p className="rounded-lg border border-primary/20 bg-primary/5 p-3">Substitui {fmtBRL(Math.min(link.rem, n.total ?? 0))} da previsão {link.p.purchaseCode || link.p.document || "sem código"} (pendente {fmtBRL(link.rem)}). {n.closeRest || rest === 0 ? "O restante será encerrado." : `Restante de ${fmtBRL(rest)} continua planejado.`}</p>}
           <ParcelTable parcels={n.parcels} />
-          {manual !== null && <p className="text-muted-foreground">Condição manual {termsTxt(cond)} {saveCond ? "— será salva como nova condição do fornecedor (histórico preservado)." : "— usada só nesta nota."}</p>}
+          {n.condition && <p className="text-muted-foreground">Condição: {n.condition.name} ({termsTxt(n.condition.terms)} dias) {saveAs ? `— será salva como nova condição do fornecedor "${saveAs.name}" (anteriores preservadas).` : "— usada só neste lançamento; o padrão do fornecedor não muda."}</p>}
         </div>
       ) : <>
         {stage === "committed" && (
@@ -123,7 +118,7 @@ export function NovaNota({ d, isBase, onCancel, onConfirm }: { d: ScenarioData; 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <CatSubFields d={d} kind={n.kind} categoryId={n.categoryId} onChange={(kind, categoryId) => up({ kind, categoryId })} />
             {err("Selecione o subgrupo.")}
-            <Field l="Fornecedor" full><SupplierSearch d={d} value={n.supplierId} onChange={(supplierId) => { up({ supplierId, parcels: [] }); setManual(null); }} />{err("Selecione o fornecedor.")}</Field>
+            <Field l="Fornecedor" full><SupplierSearch d={d} value={n.supplierId} onChange={(supplierId) => { up({ supplierId, parcels: [], condition: null }); setSaveAs(null); }} />{err("Selecione o fornecedor.")}</Field>
             <Field l={stage === "planned" ? "Código do pedido (opcional)" : "Código do pedido"}><input className="inp h-8" value={n.purchaseCode} onChange={(e) => up({ purchaseCode: e.target.value })} /></Field>
             <Field l={stage === "planned" ? "Documento (opcional)" : "Documento"}><input className="inp h-8" value={n.document} onChange={(e) => up({ document: e.target.value })} />{err("Informe o documento.")}</Field>
             <Field l="Descrição" full><input className="inp h-8" value={n.description} onChange={(e) => up({ description: e.target.value })} /></Field>
@@ -132,20 +127,10 @@ export function NovaNota({ d, isBase, onCancel, onConfirm }: { d: ScenarioData; 
           </div>
         </Section>
         <Section n={3} title="Condição de pagamento">
-          <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
-            {!sup ? <p className="text-muted-foreground">Selecione o fornecedor para ver a condição vigente.</p> : manual === null ? (
-              <div className="flex flex-wrap items-center gap-3">
-                <div><div className="lbl">Condição vigente</div><div className="text-sm font-semibold">{termsTxt(sup.terms) || "sem prazos"} dias</div><div className="text-muted-foreground">{conditionDate(sup) ? `cadastrada em ${fmtDate(conditionDate(sup)!.slice(0, 10))}` : "cadastro original"}</div></div>
-                <div className="ml-auto flex gap-2"><button className="btn btn-primary" disabled={!canGen} title={canGen ? "" : "Informe valor total e data base"} onClick={gen}>Usar condição e gerar parcelas</button><button className="btn" onClick={() => setManual(termsTxt(sup.terms))}>Alterar</button></div>
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-end gap-3">
-                <Field l="Prazos em dias (separados por vírgula)"><input className="inp h-8 w-56" value={manual} onChange={(e) => setManual(e.target.value)} /></Field>
-                <label className="flex items-center gap-1"><input type="checkbox" checked={saveCond} onChange={(e) => setSaveCond(e.target.checked)} /> Salvar como nova condição do fornecedor</label>
-                <div className="ml-auto flex gap-2"><button className="btn btn-primary" disabled={!canGen} onClick={gen}>Gerar parcelas</button><button className="btn" onClick={() => { setManual(null); setSaveCond(false); }}>Usar vigente</button></div>
-              </div>
-            )}
-          </div>
+          {!sup ? <p className="text-muted-foreground">Selecione o fornecedor para ver as condições cadastradas.</p>
+            : <ConditionPicker key={sup.id} d={d} supplierId={sup.id} hint={link?.p.condition ? `Condição usada na previsão: ${link.p.condition.name} (${termsTxt(link.p.condition.terms)} dias)` : undefined}
+                disabled={!n.total || !n.baseDate} disabledHint="Informe valor total e data base"
+                onConfirm={(c, save) => { setSaveAs(save); up({ condition: c, parcels: generateParcels(n.total!, n.baseDate!, c.terms) }); }} />}
         </Section>
         <Section n={4} title={stage === "planned" ? "Parcelas previstas" : "Parcelas efetivas"}>
           <div className="overflow-auto rounded-lg border border-border">
@@ -219,5 +204,39 @@ export function DadosNotaPanel({ d, init, siblings, onCancel, onSave }: { d: Sce
         <Field l="Descrição" full><input className="inp h-8" value={f.notes} onChange={(e) => up({ notes: e.target.value })} /></Field>
       </div>
     </SidePanel>
+  );
+}
+
+export interface SaveAs { name: string; terms: (number | null)[]; from: string | null }
+/** Escolha da condição: sugere a última vigente, permite outra cadastrada ou uma específica. Parcelas só após confirmar.
+ *  "Salvar como nova condição do fornecedor" é opção separada e exige confirmação. */
+export function ConditionPicker({ d, supplierId, hint, disabled, disabledHint, onConfirm }: { d: ScenarioData; supplierId: string; hint?: string | undefined; disabled?: boolean; disabledHint?: string; onConfirm: (c: { name: string; terms: (number | null)[] }, saveAs: SaveAs | null) => void }) {
+  const s = d.suppliers.find((x) => x.id === supplierId)!;
+  const list = supplierConditions(s);
+  const cur = currentCondition(s, new Date().toISOString().slice(0, 10));
+  const [sel, setSel] = useState<string>(cur?.id ?? (list.length ? list[0]!.id : "__esp"));
+  const [esp, setEsp] = useState("");
+  const [save, setSave] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const isEsp = sel === "__esp";
+  const chosen = isEsp ? { name: "Condição específica", terms: parseTerms(esp) } : (() => { const c = list.find((x) => x.id === sel)!; return { name: c.name, terms: c.terms }; })();
+  const ok = chosen.terms.some((t) => t !== null) && !disabled && (!save || !!saveName.trim());
+  return (
+    <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-4">
+      {hint && <p className="font-medium">{hint}</p>}
+      <div className="flex flex-wrap items-end gap-3">
+        <Field l="Condição"><select aria-label="Condição" className="inp h-8 min-w-56" value={sel} onChange={(e) => { setSel(e.target.value); setSave(false); }}>
+          {list.map((c) => <option key={c.id} value={c.id}>{c.name} · {termsTxt(c.terms)} dias{c.id === cur?.id ? " (vigente)" : ""}</option>)}
+          <option value="__esp">Informar condição específica…</option></select></Field>
+        {isEsp && <Field l="Prazos em dias (separados por vírgula)"><input className="inp h-8 w-56" value={esp} onChange={(e) => setEsp(e.target.value)} placeholder="30, 60, 90" /></Field>}
+        {!isEsp && <span className="text-muted-foreground">{termsTxt(chosen.terms)} dias</span>}
+      </div>
+      {isEsp && <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-1"><input type="checkbox" checked={save} onChange={(e) => { if (e.target.checked && !window.confirm("Salvar esta condição como nova condição do fornecedor? As condições anteriores serão preservadas.")) return; setSave(e.target.checked); }} /> Salvar como nova condição do fornecedor</label>
+        {save && <input className="inp h-8 w-48" placeholder="Nome da condição" value={saveName} onChange={(e) => setSaveName(e.target.value)} />}
+        {!save && <span className="text-muted-foreground">Usada só neste lançamento; o padrão do fornecedor não muda.</span>}
+      </div>}
+      <button className="btn btn-primary" disabled={!ok} title={disabled ? disabledHint : ""} onClick={() => onConfirm(chosen, isEsp && save ? { name: saveName.trim(), terms: chosen.terms, from: null } : null)}>Confirmar condição e gerar parcelas</button>
+    </div>
   );
 }

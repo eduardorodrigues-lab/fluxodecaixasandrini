@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyNote, editCommittedNote, editPlannedParcel, extendPlannedParcel, generateParcels, adjustLast, parcelsTotal, saveSupplierCondition, validateNote, type NoteDraft } from "@/lib/notas";
+import { addSupplierCondition, currentCondition, supplierConditions, applyNote, editCommittedNote, editPlannedParcel, extendPlannedParcel, generateParcels, adjustLast, parcelsTotal, saveSupplierCondition, validateNote, type NoteDraft } from "@/lib/notas";
 import { distributePlanned, computeFlow } from "@/lib/engine/engine";
 import { effectivate, normalizeData, registerPayment } from "@/lib/engine/actions";
 import { buildConsulta, groupByDocument } from "@/components/Consultas";
@@ -74,7 +74,7 @@ describe("Nova nota por parcela", () => {
     const d = base(); const s = d.suppliers[0]!; const old = [...s.terms];
     const legacy = d.planned.filter((p) => p.supplierId === s.id && !p.terms);
     saveSupplierCondition(d, s.id, [15, 45], ids.at);
-    expect(s.terms).toEqual([15, 45]); expect(s.termsHistory!.length).toBe(2);
+    expect(s.terms).toEqual([15, 45]); expect(s.conditions!.length).toBe(2); expect(s.conditions![0]!.terms).toEqual(old);
     for (const p of legacy) expect(p.terms).toEqual(old);
   });
 });
@@ -96,5 +96,26 @@ describe("Novo lançamento: tipo escolhido e vínculo com previsão", () => {
       const dist = distributePlanned(pl, d.suppliers.find((s) => s.id === pl.supplierId), d.committed, d.params.profile, d.effectivations);
       expect(pl.status === "encerrado" ? 0 : pl.remainingOverride?.value ?? dist.remaining).toBe(closeRest ? 0 : 400000);
     }
+  });
+});
+
+describe("Condições de pagamento do fornecedor", () => {
+  it("várias condições sem duplicar fornecedor; vigência escolhe a última vigente", () => {
+    const d = base(); const s = d.suppliers[0]!; const n0 = d.suppliers.length;
+    addSupplierCondition(d, s.id, { name: "À vista", terms: [0], from: "2026-01-01" }, "2026-11-01T10:00:00Z", "ana", "2026-11-10");
+    addSupplierCondition(d, s.id, { name: "Prazo estendido", terms: [60, 90, 120], from: "2027-01-01" }, "2026-11-02T10:00:00Z", "ana", "2026-11-10");
+    expect(d.suppliers.length).toBe(n0); expect(supplierConditions(s).length).toBe(3);
+    expect(currentCondition(s, "2026-11-10")!.name).toBe("À vista"); expect(s.terms).toEqual([0]);
+    expect(currentCondition(s, "2027-01-05")!.name).toBe("Prazo estendido");
+  });
+  it("condição específica no lançamento não altera o fornecedor; efetivação grava a condição real só nela", () => {
+    const d = base(); const s = d.suppliers[0]!; const before = JSON.stringify(s);
+    applyNote(d, { ...draft(d, "planned", 900000, [30, 60, 90]), document: "", condition: { name: "Parcelado", terms: [30, 60, 90] } }, ids);
+    const pl = d.planned.at(-1)!;
+    applyNote(d, { ...draft(d, "committed", 300000, [15]), plannedId: pl.id, condition: { name: "Específica", terms: [15] } }, ids);
+    expect(JSON.stringify(s)).toBe(before);
+    expect(pl.condition!.name).toBe("Parcelado");
+    expect(d.committed.filter((c) => c.plannedId === pl.id).every((c) => c.condition!.name === "Específica")).toBe(true);
+    expect(d.committed.filter((c) => c.plannedId !== pl.id).some((c) => c.condition?.name === "Específica")).toBe(false);
   });
 });

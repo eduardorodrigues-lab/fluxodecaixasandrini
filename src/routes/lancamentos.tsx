@@ -4,7 +4,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Children, cloneElement, isValidElement, useState, type ReactElement, type ReactNode } from "react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { DateInput, MoneyInput, PageHeader } from "@/components/kit";
-import { DadosNotaPanel, NovaNota, ParcelaPanel, ProrrogarPanel, type NoteFields } from "@/components/NotaPanel";
+import { ConditionPicker, DadosNotaPanel, NovaNota, type SaveAs, ParcelaPanel, ProrrogarPanel, type NoteFields } from "@/components/NotaPanel";
 import { applyNote, editCommittedNote, editPlannedParcel, extendPlannedParcel, parcelLabels, saveSupplierCondition } from "@/lib/notas";
 import { committedDate, distributePlanned, expenseDate, paymentsFor, splitCents, titleStatus } from "@/lib/engine/engine";
 import { closePlanned, confirmExtension, effectivate, linkLegacyTitle, plannedSummary, reopenPlanned, reverseEffectivation, reversePayment, setPlannedRemaining, suggestEffectivation, todaySP } from "@/lib/engine/actions";
@@ -128,7 +128,7 @@ function Page() {
               ];
               if (i === n - 1) {
                 if (isOpen("tl", p.id)) out.push(<tr key={p.id + "-e"}><td colSpan={12} className="bg-muted"><Timeline d={d} p={p} act={actAlone} /></td></tr>);
-                if (isOpen("eff", p.id)) out.push(<tr key={p.id + "-f"}><td colSpan={12}><EffectivateForm data={d} planned={p} onDone={(fn) => { if (actAlone(fn, "a efetivação")) setOpen(null); }} /></td></tr>);
+                if (isOpen("eff", p.id)) out.push(<tr key={p.id + "-f"}><td colSpan={12}><EffectivateForm data={d} planned={p} userEmail={user?.email ?? ""} onDone={(fn) => { if (actAlone(fn, "a efetivação")) setOpen(null); }} /></td></tr>);
               }
               return out;
             })}
@@ -209,7 +209,7 @@ function Page() {
       <p className="mt-2 text-[11px] text-muted-foreground">Registrar pagamento é o registro de uma baixa já realizada (Pix, TED, DOC ou Boleto) — não executa transferência bancária. Boleto pago com cartão não debita conta: passa para a fatura.</p>
 
       {panel?.t === "pay" && <PagamentoPanel d={d} kind={panel.kind} titleId={panel.id} label={panel.label} onCancel={() => setPanel(null)} onConfirm={(r) => { const ok = act((x) => r.origin === "conta" ? registerPaymentBatch(x, { batchId: uid(), titleKind: panel.kind, titleId: panel.id, lines: r.lines, note: r.note, form: r.form }) : coverTitleWithCard(x, { id: uid(), at: now(), by: user?.email ?? "", titleKind: panel.kind, titleId: panel.id, cardId: r.cardId, date: r.date, amount: r.amount, fee: r.fee, installments: r.installments, form: "boleto" })); if (ok) setPanel(null); return ok; }} />}
-      {panel?.t === "new" && <NovaNota d={d} isBase={active.isBase} onCancel={() => setPanel(null)} onConfirm={(n, cond) => { const ok = act((x) => { if (cond) saveSupplierCondition(x, n.supplierId, cond, now()); applyNote(x, n, { id: uid, at: now() }); }); if (ok) setPanel(null); return ok; }} />}
+      {panel?.t === "new" && <NovaNota d={d} isBase={active.isBase} onCancel={() => setPanel(null)} onConfirm={(n, sv) => { const ok = act((x) => { if (sv) saveSupplierCondition(x, n.supplierId, sv.terms, now(), sv.name, user?.email ?? ""); applyNote(x, n, { id: uid, at: now() }); }); if (ok) setPanel(null); return ok; }} />}
       {panel?.t === "parcela" && <ParcelaPanel label={panel.label} amount={panel.amount} date={panel.date} onCancel={() => setPanel(null)} onSave={(a, dt) => doPanel((x) => panel.save(x, a, dt))} />}
       {panel?.t === "nota" && <DadosNotaPanel d={d} init={panel.init} siblings={panel.siblings} onCancel={() => setPanel(null)} onSave={(f) => doPanel((x) => panel.save(x, f))} />}
       {panel?.t === "prorrogar" && <ProrrogarPanel label={panel.label} current={panel.current} original={panel.original} history={panel.history} isBase={active.isBase} onCancel={() => setPanel(null)} onSave={(to, note) => doPanel((x) => panel.save(x, to, note))} />}
@@ -217,19 +217,21 @@ function Page() {
   );
 }
 
-function EffectivateForm({ data, planned, onDone }: { data: ScenarioData; planned: Planned; onDone: (fn: (x: ScenarioData) => void) => void }) {
+function EffectivateForm({ data, planned, onDone, userEmail }: { data: ScenarioData; planned: Planned; onDone: (fn: (x: ScenarioData) => void) => void; userEmail: string }) {
   const [id] = useState(() => "ef" + uid()); // chave de idempotência por abertura do formulário
   const base0 = suggestEffectivation(data, planned.id, 0);
   const [total, setTotal] = useState<number | null>(base0.remainingValue);
   const [base, setBase] = useState<string | null>(planned.baseDate);
-  const [terms, setTerms] = useState(base0.suggestedTerms.join(", "));
+  const [cond, setCond] = useState<{ name: string; terms: (number | null)[] } | null>(null);
+  const [saveAs, setSaveAs] = useState<SaveAs | null>(null);
   const [inst, setInst] = useState<{ value: number; date: string; document: string }[]>([]);
   const [kind, setKind] = useState<"auto" | "parcial" | "concluida">("auto");
   const [rem, setRem] = useState<number | null>(null);
   const [remDates, setRemDates] = useState("");
   const [sent, setSent] = useState(false);
-  const gen = () => {
-    const days = terms.split(/[,;\s]+/).filter(Boolean).map(Number).filter((n) => Number.isFinite(n));
+  const gen = (c: { name: string; terms: (number | null)[] }, sv: SaveAs | null) => {
+    setCond(c); setSaveAs(sv);
+    const days = c.terms.filter((t): t is number => t !== null);
     if (!total || !base || !days.length) return;
     const { parts } = splitCents(total, days.length);
     setInst(days.map((t, i) => ({ value: parts[i]!, date: addDays(base, t), document: "" })));
@@ -242,7 +244,9 @@ function EffectivateForm({ data, planned, onDone }: { data: ScenarioData; planne
   return (
     <div className="space-y-2 bg-muted p-2 text-xs">
       <b>Efetivar a previsão {planned.purchaseCode}</b> — restante previsto atual {fmtBRL(base0.remainingValue)}. Valores e vencimentos podem diferir totalmente da previsão; o subgrupo da previsão é mantido.
-      <div className="flex flex-wrap items-end gap-2">Valor efetivado <MoneyInput value={total} onChange={setTotal} /> Data base <DateInput value={base} onChange={setBase} /> Prazos (dias, sugeridos do fornecedor) <input className="inp w-32" value={terms} onChange={(e) => setTerms(e.target.value)} /><button className="btn" onClick={gen}>Gerar parcelas</button></div>
+      <div className="flex flex-wrap items-end gap-2">Valor efetivado <MoneyInput value={total} onChange={setTotal} /> Data base <DateInput value={base} onChange={setBase} /></div>
+      <ConditionPicker d={data} supplierId={planned.supplierId} hint={`Fornecedor mantido. Condição usada na previsão: ${planned.condition ? `${planned.condition.name} (${planned.condition.terms.filter((t) => t !== null).join("/")} dias)` : `prazos ${base0.suggestedTerms.join("/") || "—"} dias`}. Confirme as condições reais desta efetivação.`} disabled={!total || !base} disabledHint="Informe valor e data base" onConfirm={gen} />
+      {cond && <div>Condição real desta efetivação: <b>{cond.name}</b>{saveAs ? ` — será salva como nova condição do fornecedor "${saveAs.name}".` : " — vale só para esta efetivação; não altera outros lançamentos nem o restante planejado."}</div>}
       {inst.length > 0 && <>
         <table className="tbl w-auto"><thead><tr><th>#</th><th className="num">Valor</th><th>Vencimento</th><th>Documento</th></tr></thead><tbody>{inst.map((i, n) => <tr key={n}><td>{n + 1}</td><td className="num"><MoneyInput value={i.value} onChange={(v) => setInst(inst.map((x, k) => (k === n ? { ...x, value: v ?? 0 } : x)))} /></td><td><DateInput value={i.date} onChange={(v) => v && setInst(inst.map((x, k) => (k === n ? { ...x, date: v } : x)))} /></td><td><input className="inp w-28" value={i.document} onChange={(e) => setInst(inst.map((x, k) => (k === n ? { ...x, document: e.target.value } : x)))} /></td></tr>)}</tbody></table>
         <div>Total efetivado {fmtBRL(effTotal)} {inst.length > 1 && splitCents(effTotal, inst.length).residual !== 0 && "(resíduo na última parcela)"}</div>
@@ -252,7 +256,7 @@ function EffectivateForm({ data, planned, onDone }: { data: ScenarioData; planne
           <label><input type="radio" checked={kind === "concluida"} onChange={() => setKind("concluida")} /> Concluída — encerra o saldo previsto restante</label>
           {kind === "parcial" && <>Valor <MoneyInput value={rem} onChange={setRem} /> Datas próprias <input className={`inp w-64 ${datesOk ? "" : "ring-1 ring-destructive"}`} placeholder="dd/mm/aaaa, dd/mm/aaaa" value={remDates} onChange={(e) => setRemDates(e.target.value)} /></>}
         </div>
-        <button className="btn btn-primary" disabled={sent || !effTotal || (kind === "parcial" && (!datesOk || rem === null))} onClick={() => { setSent(true); onDone((x) => effectivate(x, { id, plannedId: planned.id, kind: kind === "concluida" ? "concluida" : "parcial", at: new Date().toISOString(), installments: inst, remaining: kind === "parcial" ? { value: rem ?? 0, dates: dates as string[] } : null })); }}>Confirmar esta efetivação</button>
+        <button className="btn btn-primary" disabled={sent || !effTotal || (kind === "parcial" && (!datesOk || rem === null))} onClick={() => { setSent(true); onDone((x) => { if (saveAs) saveSupplierCondition(x, planned.supplierId, saveAs.terms, new Date().toISOString(), saveAs.name, userEmail); effectivate(x, { id, plannedId: planned.id, kind: kind === "concluida" ? "concluida" : "parcial", at: new Date().toISOString(), installments: inst, condition: cond, remaining: kind === "parcial" ? { value: rem ?? 0, dates: dates as string[] } : null }); }); }}>Confirmar esta efetivação</button>
       </>}
     </div>
   );

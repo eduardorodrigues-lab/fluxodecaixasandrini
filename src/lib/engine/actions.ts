@@ -52,6 +52,7 @@ export interface EffectivateInput {
   id: string; // idempotência: mesmo id não efetiva duas vezes
   plannedId: string; kind: "parcial" | "concluida"; at: string;
   installments: { value: number; date: string; document: string }[];
+  condition?: { name: string; terms: (number | null)[] } | null; // condição real desta efetivação (não altera fornecedor nem restante)
   remaining?: { value: number; dates: string[] } | null; // parcial: restante confirmado/ajustado pelo usuário
 }
 export function plannedRemaining(d: ScenarioData, plannedId: string) {
@@ -92,7 +93,7 @@ export function effectivate(d: ScenarioData, inp: EffectivateInput): ScenarioDat
     const c: Committed = {
       id, supplierId: pl.supplierId, purchaseCode: pl.purchaseCode, document: i.document || `${pl.purchaseCode}/${n + 1}`, value: i.value,
       dueDate: i.date, extensionDate: null, extensionHistory: [], extensionInfo: "", legacyAbatement: null,
-      origin: "efetivacao", plannedId: pl.id, effectivationId: inp.id, categoryId: cat, notes: `Efetivação ${inp.kind} da previsão ${pl.purchaseCode}`, status: "ativo",
+      origin: "efetivacao", plannedId: pl.id, effectivationId: inp.id, categoryId: cat, notes: `Efetivação ${inp.kind} da previsão ${pl.purchaseCode}`, status: "ativo", condition: inp.condition ?? null,
     };
     d.committed.push(c);
   });
