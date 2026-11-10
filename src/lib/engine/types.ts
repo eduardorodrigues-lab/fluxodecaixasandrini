@@ -146,7 +146,7 @@ export interface ScenarioData {
 }
 
 export type Severity = "info" | "alerta" | "erro";
-export interface Warning { code: string; severity: Severity; message: string; refId?: string; date?: string }
+export interface Warning { code: string; severity: Severity; message: string; refId?: string; date?: string; months?: string[]; affectedDates?: string[] }
 
 export type ItemSource = "planejada" | "comprometida" | "despesa" | "recebimento" | "estimativa" | "ajuste";
 export interface Item { source: ItemSource; refId?: string; label: string; amount: number; categoryId?: string; note?: string; paid?: boolean }

@@ -308,7 +308,7 @@ export function computeFlow(data: ScenarioData, opt: FlowOptions): FlowResult {
     carried = saldoFinal;
   }
   const missingMonths = new Set(days.filter((x) => !x.usouInformado).map((x) => ym(addDays(x.date, -lagFor(p, data.targetConfigs, x.date)))).filter((m) => !monthTarget(p, data.targets, data.targetConfigs, m)));
-  if (missingMonths.size) warnings.push({ code: "META_AUSENTE", severity: "erro", message: `Meta ausente para ${[...missingMonths].join(", ")}: estimativa = 0 nesses dias (não é valor saudável).` });
+  if (missingMonths.size) warnings.push({ code: "META_AUSENTE", severity: "erro", months: [...missingMonths].sort(), affectedDates: days.filter((x) => !x.usouInformado && missingMonths.has(ym(addDays(x.date, -lagFor(p, data.targetConfigs, x.date))))).map((x) => x.date), message: `Meta ausente para ${[...missingMonths].join(", ")}: estimativa = 0 nesses dias.` });
   const outside = [...byDate.keys()].filter((d) => d < p.startDate).length;
   if (outside) warnings.push({ code: "ANTES_INICIO", severity: "alerta", message: `${outside} data(s) com saídas em aberto antes da data inicial do fluxo — não entram no saldo (verificar vencidos).` });
   const slice = days.filter((d) => d.date >= opt.start && d.date <= opt.end);

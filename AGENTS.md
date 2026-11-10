@@ -10,6 +10,7 @@
 <!-- LOVABLE:END -->
 
 ## Project rules
+- Flow warning presentation is grouped by code and affected period in `src/lib/pendencias.ts`; contextual links use validated search and focus without changing shared flow filters — keeps diagnostics separate from financial calculations.
 - Single calculation engine in `src/lib/engine/engine.ts`; both flow views must render from the same `buildRows` output — keeps vertical/horizontal totals identical.
 - Money is stored as integer cents; rounding via `roundCents`/`splitCents` (residual on last installment, always reported) — no hidden cent loss.
 - Domain mutations (effectivate, pay, reverse, extend) are pure functions in `src/lib/engine/actions.ts` applied to a draft — keeps them testable and reviewable.

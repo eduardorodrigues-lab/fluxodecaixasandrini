@@ -10,8 +10,11 @@ import { SidePanel } from "@/components/NotaPanel";
 import { fmtDate } from "@/lib/dates";
 import { fmtNum } from "@/lib/money";
 import { uid, useApp } from "@/lib/store";
+import { pendingSearch } from "@/lib/pendencias";
+import { usePendingFocus } from "@/components/PendingFocus";
 
 export const Route = createFileRoute("/recebimentos")({
+  validateSearch: pendingSearch,
   head: () => ({
     meta: [
       { title: "Recebimentos · Fluxo de Caixa Sandrini" },
@@ -28,6 +31,8 @@ const now = () => new Date().toISOString();
 const pfState = (p: Platform, today: string) => (p.end && p.end < today ? "inativa" : p.start > today ? "futura" : "ativa");
 
 function Page() {
+  const { focus } = Route.useSearch();
+  usePendingFocus(focus);
   const { active, update, ui } = useApp();
   const d = active.data;
   const [err, setErr] = useState("");
@@ -45,6 +50,9 @@ function Page() {
     .filter(({ c }) => dir === "todos" || (c.inf.present && (dir === "acima" ? c.diff > 0 : c.diff < 0)))
     .sort((a, b) => { const v = sort.k === "date" ? a.r.date.localeCompare(b.r.date) : sort.k === "sum" ? a.c.inf.sum - b.c.inf.sum : sort.k === "est" ? a.c.est - b.c.est : a.c.diff - b.c.diff; return sort.asc ? v : -v; });
   const list = [...undated, ...dated.map((x) => x.r)];
+  const targeted = d.receipts.find((r) => r.id === focus);
+  const targetOutside = targeted && !list.some((r) => r.id === targeted.id);
+  if (targetOutside) list.unshift(targeted);
   const sh = (k: typeof sort.k, label: string, num = true) => <th className={`${num ? "num" : ""} cursor-pointer select-none`} onClick={() => setSort((s) => ({ k, asc: s.k === k ? !s.asc : k === "date" }))}>{label}{sort.k === k ? (sort.asc ? " ▲" : " ▼") : ""}</th>;
   const today = todaySP();
   // Colunas dinâmicas: plataformas vigentes em algum dia do período OU com valores nos recebimentos listados (inclui inativas históricas).
@@ -66,6 +74,7 @@ function Page() {
         <button className="btn" onClick={() => setShowPf(true)}>Plataformas</button><button className="btn btn-primary" onClick={() => act((x) => { x.receipts.push({ id: uid(), date: "", platforms: {}, general: null, notes: "", residual: {} }); })}>+ Recebimento</button>
       </PageHeader>
       {err && <div className="rounded border border-destructive p-2 text-xs text-destructive">{err}</div>}
+      {targetOutside && <p className="text-xs text-warning-foreground">O recebimento selecionado foi destacado fora dos filtros atuais. Os filtros foram mantidos.</p>}
       <div className="rounded border border-warning bg-warning-soft p-2 text-xs text-warning-foreground">A regra original SOMA(D:O) inclui geral e plataformas. Se ambos estiverem preenchidos, o valor é somado e marcado como possível dupla contagem — nada é corrigido automaticamente.</div>
       {unknown.length > 0 && <div className="rounded border border-destructive p-2 text-xs text-destructive">Recebimentos com plataforma não cadastrada (ID {unknown.join(", ")}): valores mantidos; cadastre a plataforma com esse código para conciliar.</div>}
       <div className="flex flex-wrap items-end gap-3 text-xs">
@@ -82,7 +91,7 @@ function Page() {
             const est = { value: calc(r).est };
             const issues = receiptPlatformIssues(d.platforms, r);
             return (
-              <tr key={r.id} className={!r.date ? "bg-warning-soft" : ""}>
+              <tr key={r.id} id={`pending-${r.id}`} tabIndex={-1} className={!r.date || focus === r.id ? "bg-warning-soft" : ""}>
                 <td><DateInput allowEmpty value={r.date || null} onChange={(v) => set(r.id, (x) => { x.date = v ?? ""; })} />{!r.date && inf.present && <div className="tag tag-err">informe a data</div>}</td>
                 {cols.map((p) => {
                   const on = platformActiveOn(p, r.date);

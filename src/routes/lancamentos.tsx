@@ -13,14 +13,18 @@ import { addDays, fmtDate, parseBRDate } from "@/lib/dates";
 import { fmtBRL } from "@/lib/money";
 import { uid, useApp } from "@/lib/store";
 import { Consultas } from "@/components/Consultas";
+import { pendingSearch } from "@/lib/pendencias";
+import { usePendingFocus } from "@/components/PendingFocus";
 
 export const Route = createFileRoute("/lancamentos")({
+  validateSearch: pendingSearch,
   head: () => ({
     meta: [
       { title: "Lançamentos · Fluxo de Caixa Sandrini" },
       { name: "description", content: "Lançamentos planejados e efetivados de compras e despesas, com pagamentos." },
       { property: "og:title", content: "Lançamentos · Fluxo de Caixa Sandrini" },
       { property: "og:description", content: "Planejado e efetivado de compras e despesas, com baixas de pagamento." },
+      { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" },
     ],
   }),
   component: Page,
@@ -55,9 +59,11 @@ function Acoes({ children }: { children: ReactNode }) {
 }
 
 function Page() {
+  const target = Route.useSearch();
   const { active, update, changes, user } = useApp();
   const d = active.data;
-  const [tab, setTab] = useState<Tab>("planned");
+  const [tab, setTab] = useState<Tab>(TABS.find((t) => t.k === target.tab)?.k ?? "planned");
+  usePendingFocus(target.focus, tab);
   const [err, setErr] = useState("");
   const [fKind, setFKind] = useState<"" | CategoryKind>("");
   const [open, setOpen] = useState<{ kind: string; id: string } | null>(null);
@@ -112,7 +118,7 @@ function Page() {
               const effs = d.effectivations.filter((e) => e.plannedId === p.id);
               const sit = p.status === "encerrado" ? "Encerrada" : p.status === "cancelado" ? "Cancelada" : r.effectivated > 0 ? "Efetivada parcialmente" : "Prevista";
               const out = [
-                <tr key={p.id + i}>
+                <tr key={p.id + i} id={i === 0 ? `pending-${p.id}` : undefined} tabIndex={-1} className={target.focus === p.id ? "bg-warning-soft" : ""}>
                   <td>{kindL(p.categoryId)}</td><td>{catOf(p.categoryId)?.name ?? "—"}</td><td>{sup(p.supplierId)?.name ?? "—"}</td><td>{p.purchaseCode || "—"}</td><td>{p.document || "—"}</td><td className="max-w-48 truncate" title={p.notes}>{p.notes || "—"}</td>
                   <td>{pc ? `${i + 1}/${n}` : "—"}</td><td className="num">{pc ? fmtBRL(pc.amount) : "—"}</td>
                   <td>{pc ? fmtDate(it ? it.date : pc.date) : "—"}</td><td>{it?.extensionDate ? <span className="tag tag-warn">{fmtDate(it.extensionDate)}</span> : "—"}</td>
@@ -145,7 +151,7 @@ function Page() {
                 const sibs = c.noteId ? d.committed.filter((x) => x.noteId === c.noteId).length : 1;
                 const pl = c.plannedId ? d.planned.find((p) => p.id === c.plannedId) : null;
                 return [
-                  <tr key={c.id}>
+                  <tr key={c.id} id={`pending-${c.id}`} tabIndex={-1} className={target.focus === c.id ? "bg-warning-soft" : ""}>
                     <td>{kindL(c.categoryId)}</td><td>{catOf(c.categoryId)?.name ?? "—"}</td><td>{sup(c.supplierId)?.name ?? "—"}</td><td>{c.purchaseCode || "—"}</td><td>{c.document || "—"}</td><td className="max-w-48 truncate" title={c.notes}>{c.notes || "—"}</td>
                     <td>{lb}</td><td className="num">{fmtBRL(c.value)}</td><td>{fmtDate(c.dueDate)}</td><td>{c.extensionDate ? <span className="tag tag-warn">{fmtDate(c.extensionDate)}</span> : "—"}</td>
                     <td>{c.status === "cancelado" ? "Cancelado" : c.origin === "efetivacao" ? "Efetivado (previsão)" : c.origin === "legado" ? "Efetivado (legado)" : "Efetivado"}</td>
@@ -176,7 +182,7 @@ function Page() {
               const ts = titleStatus(e.value, e.status, paymentsFor(d, "expense", e.id));
               const label = `${sup(e.supplierId)?.name ?? "—"} · ${e.document || "sem documento"}`;
               return [
-                <tr key={e.id}>
+                <tr key={e.id} id={`pending-${e.id}`} tabIndex={-1} className={target.focus === e.id ? "bg-warning-soft" : ""}>
                   <td>{kindL(e.categoryId, "despesa")}</td><td>{catOf(e.categoryId)?.name ?? "—"}</td><td>{sup(e.supplierId)?.name ?? "—"}</td><td>—</td><td>{e.document || "—"}</td><td className="max-w-48 truncate" title={e.notes}>{e.notes || "—"}</td>
                   <td>1/1</td><td className="num">{fmtBRL(e.value)}</td><td>{orig ? fmtDate(orig) : <span className="tag tag-warn">não distribuída</span>}</td><td>{e.extensionDate ? <span className="tag tag-warn">{fmtDate(e.extensionDate)}</span> : "—"}</td>
                   <td>{e.status === "cancelado" ? "Cancelado" : "Efetivado"}</td>

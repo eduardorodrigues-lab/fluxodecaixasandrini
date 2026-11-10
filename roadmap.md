@@ -1,5 +1,10 @@
 # Roadmap
 
+## Pendências do fluxo (2026-11-10)
+- [x] Agrupar avisos, linguagem clara, gravidade e detalhes por ano/período
+- [x] Atalhos contextualizados sem alterar os filtros do fluxo ou valores
+- [x] 139 testes; navegador desktop/mobile com organização fictícia, zero gravações reais
+
 ## Reorganização de fornecedores e condições (2026-11-10)
 - [x] Lista compacta e Gerenciar com duas abas; formulários sem cortes
 - [x] Editar/versionar, cancelar condição/ativação e exclusão protegida

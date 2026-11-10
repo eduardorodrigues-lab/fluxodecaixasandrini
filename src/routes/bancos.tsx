@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import { pendingSearch } from "@/lib/pendencias";
 import { DateInput, MoneyInput, PageHeader } from "@/components/kit";
 import { CatSubFields, Field, guardClose, Section, SidePanel, SupplierSearch } from "@/components/NotaPanel";
 import { AccountSearch } from "@/components/BancoPanels";
@@ -14,6 +15,7 @@ import { fmtBRL } from "@/lib/money";
 import { uid, useApp } from "@/lib/store";
 
 export const Route = createFileRoute("/bancos")({
+  validateSearch: pendingSearch,
   head: () => ({ meta: [
     { title: "Bancos · Fluxo de Caixa Sandrini" },
     { name: "description", content: "Contas bancárias, cartões, transferências, extratos e saldos realizados por conta." },
@@ -31,7 +33,7 @@ const now = () => new Date().toISOString();
 function Page() {
   const { active, update, user } = useApp();
   const d = active.data;
-  const [tab, setTab] = useState<Tab>("contas");
+  const [tab, setTab] = useState<Tab>(Route.useSearch().tab === "cartoes" ? "cartoes" : "contas");
   const [err, setErr] = useState("");
   const [panel, setPanel] = useState<null | { t: "conta"; acc?: BankAccount } | { t: "cartao"; accountId: string } | { t: "transf" } | { t: "compra" } | { t: "cobrir" } | { t: "fatura" }>(null);
   const act = (fn: (x: ScenarioData) => void) => { const e = update(fn); setErr(e ?? ""); return !e; };

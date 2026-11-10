@@ -7,8 +7,11 @@ import { removeMonthTarget, setMonthTarget } from "@/lib/engine/actions";
 import type { Divisor, MonthTarget, R2Base } from "@/lib/engine/types";
 import { fmtBRL } from "@/lib/money";
 import { useApp } from "@/lib/store";
+import { pendingSearch } from "@/lib/pendencias";
+import { usePendingFocus } from "@/components/PendingFocus";
 
 export const Route = createFileRoute("/metas")({
+  validateSearch: pendingSearch,
   head: () => ({ meta: [
     { title: "Meta de Faturamento · Fluxo de Caixa Sandrini" },
     { name: "description", content: "Metas mensais com redutores, bases, divisor e defasagem próprios por mês, com memória de cálculo." },
@@ -26,6 +29,8 @@ const PctInput = ({ v, on }: { v: number; on: (n: number) => void }) => {
 };
 
 function Page() {
+  const { focus } = Route.useSearch();
+  usePendingFocus(focus);
   const { active, update, ui } = useApp();
   const d = active.data;
   const p = d.params;
@@ -36,6 +41,7 @@ function Page() {
   const at = () => new Date().toISOString();
   const edit = (m: string, patch: Partial<Omit<MonthTarget, "version" | "history">>, note: string) => { const e = update((x) => setMonthTarget(x, m, patch, note, at())); setErr(e ?? ""); };
   const months = new Set(Object.keys(d.targetConfigs));
+  if (focus && /^\d{4}-(0[1-9]|1[0-2])$/.test(focus)) months.add(focus);
   for (let s = addDays(ui.start, -lagFor(p, d.targetConfigs, ui.start)); s.slice(0, 7) <= addDays(ui.end, -lagFor(p, d.targetConfigs, ui.end)).slice(0, 7); s = addDays(`${s.slice(0, 7)}-01`, 32)) months.add(s.slice(0, 7));
   return (
     <div className="space-y-3">
@@ -63,7 +69,7 @@ function Page() {
             const impacted = [addDays(`${m}-01`, lag), addDays(`${m}-${String(dim).padStart(2, "0")}`, lag)];
             const div = legacy ? c?.divisorLegado : c?.divisorWeb;
             return [
-              <tr key={m}>
+              <tr key={m} id={`pending-${m}`} tabIndex={-1} className={focus === m ? "bg-warning-soft" : ""}>
                 <td>{fmtMonth(m)}</td>
                 <td className="num"><MoneyInput value={own?.gross ?? null} onChange={(v) => { if (v === null) { if (own && confirm(`Remover a meta de ${fmtMonth(m)}? (estimativa 0 com alerta)`)) { const e = update((x) => removeMonthTarget(x, m)); setErr(e ?? ""); } } else edit(m, { gross: v }, "faturamento bruto"); }} />{!own && <div className="tag tag-err">meta ausente → estimativa 0</div>}</td>
                 {own ? (legacy

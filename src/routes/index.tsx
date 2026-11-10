@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { DateInput, MoneyInput, PageHeader, WarningList } from "@/components/kit";
+import { DateInput, MoneyInput, PageHeader } from "@/components/kit";
+import { PendenciasFluxo } from "@/components/PendenciasFluxo";
 import { buildRows, computeFlow, toVertical, type Row } from "@/lib/engine/engine";
 import { fmtDate, weekday } from "@/lib/dates";
 import { fmtBRL, fmtNum } from "@/lib/money";
@@ -13,6 +14,7 @@ export const Route = createFileRoute("/")({
       { name: "description", content: "Fluxo de caixa diário em visão vertical (equipe) e horizontal (CEO)." },
       { property: "og:title", content: "Fluxo diário · Fluxo de Caixa Sandrini" },
       { property: "og:description", content: "Fluxo de caixa diário em visão vertical e horizontal." },
+      { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" },
     ],
   }),
   component: FluxoPage,
@@ -96,7 +98,7 @@ function FluxoPage() {
           </div>
         )}
       </div>
-      <div className="card mt-3 p-3"><div className="lbl mb-2">Alertas do motor</div><WarningList items={res.warnings} max={12} /></div>
+      <PendenciasFluxo warnings={res.warnings} data={data} start={ui.start} end={ui.end} />
     </div>
   );
 }
