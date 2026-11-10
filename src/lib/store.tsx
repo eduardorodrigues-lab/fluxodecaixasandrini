@@ -13,7 +13,7 @@ import { baseMovedSince, editSession, migrateSims, purgeUser, scopeKey, visibleD
 // Sem dados demonstrativos e sem fallback: sem login/erro não há dados financeiros.
 // Modo Simulação: cópias locais por usuário+organização, isoladas, sem promoção para a base.
 export interface SimEdit { at: string; user: string; changes: Change[] }
-export interface Sim { id: string; name: string; createdAt: string; data: ScenarioData; baseVersion: number | null; history?: SimEdit[]; createdBy?: string }
+export interface Sim { id: string; name: string; createdAt: string; data: ScenarioData; baseVersion: number | null; history?: SimEdit[]; createdBy?: string; deletedAt?: string; deletedBy?: string }
 export interface AuditEntry { id: string; at: string; user_email: string | null; version_from: number; version_to: number; summary: string; changes: Change[] }
 interface LocalState { v: 4; activeId: string; sims: SimStore }
 export interface UiState { view: "vertical" | "horizontal"; start: string; end: string; supplierId: string; group: string }
@@ -38,7 +38,7 @@ interface Ctx {
   user: { id: string; email: string } | null; signOut: () => Promise<void>;
   official: { status: "signed_out" | "loading" | "error" | "ready"; orgId: string; orgName: string; role: string; version: number; error: string };
   orgs: { orgId: string; role: string; name: string; own: boolean }[]; setOrgId: (id: string) => void;
-  base: Scenario; active: Scenario; sims: Sim[]; ui: UiState;
+  base: Scenario; active: Scenario; sims: Sim[]; allSims: Sim[]; ui: UiState;
   setUi: (p: Partial<UiState>) => void; setActive: (id: string) => void;
   canEdit: boolean;
   update: (fn: (d: ScenarioData) => void) => string | null;
@@ -110,7 +110,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const baseData: ScenarioData | null = user ? offData : null; // nunca dados financeiros sem login
   const baseVersion = official.version;
   const scope = scopeKey(user?.id, offQ.data?.orgId ?? null);
-  const sims = (scope ? local.sims[scope] ?? [] : []) as Sim[];
+  const allSims = (scope ? local.sims[scope] ?? [] : []) as Sim[];
+  const sims = allSims.filter((s) => !s.deletedAt);
   const cur = visibleDraft(session, scope);
   const draft = cur?.data ?? null;
   const sim = sims.find((s) => s.id === local.activeId) ?? null;
@@ -174,14 +175,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     authReady,
     user, signOut: async () => { await qc.cancelQueries(); qc.removeQueries({ queryKey: ["official"] }); setSession(null); if (user) mutLocal((s) => { s.sims = purgeUser(s.sims, user.id); s.activeId = "base"; }); await supabase.auth.signOut(); },
     official, orgs, setOrgId: (id) => { setSession(null); setSaveState("idle"); setSaveMsg(""); setOrgIdS(id); try { localStorage.setItem("fluxo.orgId", id); } catch { /* sem storage */ } mutLocal((s) => { s.activeId = "base"; }); },
-    base, active, sims, ui, canEdit,
+    base, active, sims, allSims, ui, canEdit,
     setUi: (p) => setUiS((u) => ({ ...u, ...p })),
     setActive: (id) => mutLocal((s) => { s.activeId = id; }),
     update, draft, draftBaseVersion: cur?.baseVersion ?? null, baseMoved: baseMovedSince(cur, official.version), changes, discardDraft, commitDraft, saveState, saveMsg,
     reloadOfficial: () => { setSession(null); setSaveState("idle"); setSaveMsg(""); qc.invalidateQueries({ queryKey: ["official"] }); },
     createSim: (name) => { if (!baseData) return; const id = uid(); if (!scope) return; mutLocal((s) => { (s.sims[scope] ??= []).push({ id, name, createdAt: new Date().toISOString(), createdBy: user?.email ?? "", data: clone(baseData), baseVersion }); s.activeId = id; }); },
     discardSim: (id) => { if (!baseData) return; mutLocal((s) => { const x = scope ? s.sims[scope]?.find((i) => i.id === id) : null; if (x) { x.data = clone(baseData); x.baseVersion = baseVersion; } }); },
-    deleteSim: (id) => mutLocal((s) => { if (scope) s.sims[scope] = (s.sims[scope] ?? []).filter((x) => x.id !== id); if (s.activeId === id) s.activeId = "base"; }),
+    deleteSim: (id) => mutLocal((s) => { const x = scope ? s.sims[scope]?.find((i) => i.id === id) : null; if (x) { x.deletedAt = new Date().toISOString(); x.deletedBy = user?.email ?? ""; } if (s.activeId === id) s.activeId = "base"; }),
     audit: (auditQ.data ?? []).map((r) => ({ ...r, changes: JSON.parse(r.changesJson) as Change[] })),
   };
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;

@@ -20,7 +20,7 @@ const ENTITY_KEY: Record<string, keyof ScenarioData> = {
 };
 
 function Page() {
-  const { audit, update, active, sims, base } = useApp();
+  const { audit, update, active, allSims: sims, base } = useApp();
   const [tab, setTab] = useState("real");
   const restore = (entity: string, before: unknown) => {
     const k = ENTITY_KEY[entity];
@@ -45,11 +45,11 @@ function Page() {
         <button className={`btn ${tab === "sims" ? "btn-danger" : ""}`} onClick={() => { setTab("sims"); setSimId(null); }}>Simulações</button>
       </div>
       {tab === "sims" && !sim ? (
-        sims.length ? <table className="tbl"><thead><tr><th>Simulação</th><th>Criada por</th><th>Data e horário</th><th className="num">Alterações</th></tr></thead>
-          <tbody>{sims.map((s) => <tr key={s.id} className="cursor-pointer hover:bg-secondary" onClick={() => setSimId(s.id)}><td className="font-semibold">{s.name}</td><td>{s.createdBy || "—"}</td><td>{when(s.createdAt)}</td><td className="num">{s.history?.length ?? 0}</td></tr>)}</tbody></table>
+        sims.length ? <table className="tbl"><thead><tr><th>Simulação</th><th>Criada por</th><th>Data e horário</th><th>Situação</th><th className="num">Alterações</th></tr></thead>
+          <tbody>{sims.map((s) => <tr key={s.id} className="cursor-pointer hover:bg-secondary" onClick={() => setSimId(s.id)}><td className="font-semibold">{s.name}</td><td>{s.createdBy || "—"}</td><td>{when(s.createdAt)}</td><td>{s.deletedAt ? <span className="tag tag-warn">Apagada em {when(s.deletedAt)}{s.deletedBy ? ` por ${s.deletedBy}` : ""}</span> : "Ativa"}</td><td className="num">{s.history?.length ?? 0}</td></tr>)}</tbody></table>
           : <p className="text-xs text-muted-foreground">Nenhuma simulação criada.</p>
       ) : <>
-      {sim && <div className="flex items-center gap-2 text-sm"><button className="btn" onClick={() => setSimId(null)}>← Voltar às simulações</button><b>Simulação: {sim.name}</b></div>}
+      {sim && <div className="flex items-center gap-2 text-sm"><button className="btn" onClick={() => setSimId(null)}>← Voltar às simulações</button><b>Simulação: {sim.name}</b>{sim.deletedAt && <span className="tag tag-warn">Apagada</span>}</div>}
       <HistoryView entries={entries} data={tab === "real" ? base.data : sim?.data ?? base.data} scope={sim ? `Simulação: ${sim.name}` : "Fluxo real"}
         onRestore={tab === "real" && active.isBase ? (c) => ENTITY_KEY[c.entity] && restore(c.entity, c.before) : undefined} />
       </>}

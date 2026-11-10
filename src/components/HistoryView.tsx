@@ -141,12 +141,12 @@ const dt = (at: string) => fmtDate(new Date(at).toLocaleDateString("sv-SE", { ti
 const hr = (at: string) => new Date(at).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo" });
 
 // Impressão numa janela própria: o layout do app (altura fixa/rolagem) cortava o conteúdo.
-function printDetail() {
-  const el = document.querySelector(".print-area");
+function printDetail(sel = ".print-area") {
+  const el = document.querySelector(sel);
   const w = window.open("", "_blank", "width=1100,height=800");
   if (!el || !w) return;
   const css = [...document.querySelectorAll('style, link[rel="stylesheet"]')].map((n) => n.outerHTML).join("");
-  w.document.write(`<!doctype html><html lang="pt-BR"><head><title>Detalhamento da alteração</title>${css}<style>.no-print{display:none!important}body{background:#fff;padding:12px}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}.print-area{width:100%!important;height:auto!important;overflow:visible!important;box-shadow:none!important}@page{size:A4 portrait;margin:8mm}html,body{width:auto!important;height:auto!important;overflow:visible!important}.overflow-x-auto,.overflow-y-auto{overflow:visible!important}table{width:100%!important;table-layout:fixed;font-size:8px!important}th,td{white-space:normal!important;word-break:break-word;overflow-wrap:anywhere;padding:2px 3px!important}section{break-inside:avoid}</style></head><body>${el.outerHTML}</body></html>`);
+  w.document.write(`<!doctype html><html lang="pt-BR"><head><title>Histórico de alterações</title>${css}<style>.no-print{display:none!important}body{background:#fff;padding:12px}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}.print-area{width:100%!important;height:auto!important;overflow:visible!important;box-shadow:none!important}@page{size:A4 portrait;margin:8mm}html,body{width:auto!important;height:auto!important;overflow:visible!important}.overflow-x-auto,.overflow-y-auto{overflow:visible!important}table{width:100%!important;table-layout:fixed;font-size:8px!important}th,td{white-space:normal!important;word-break:break-word;overflow-wrap:anywhere;padding:2px 3px!important}section{break-inside:avoid}</style></head><body>${el.outerHTML}</body></html>`);
   w.document.close();
   // Imprime uma única vez, só depois de todas as folhas de estilo carregarem (antes saía sem formatação).
   let done = false;
@@ -174,15 +174,38 @@ export function HistoryView({ entries, data, scope = "Fluxo real", onRestore }: 
   // Cada confirmação é preservada (sem fundir); ordem: mais recente primeiro, desempate pela sequência de gravação.
   const lines: Line[] = entries.flatMap((e, ei) => e.changes.filter((c) => JSON.stringify(c.before) !== JSON.stringify(c.after)).map((c, ci) => ({ at: e.at, user: e.user, seq: ei * 1000 + ci, entry: e, c, aba: ABA[c.entity] ?? c.entity, reg: recordLabel(c, data), ...describe(c, data) })))
     .sort((x, y) => y.at.localeCompare(x.at) || x.seq - y.seq);
+  const [from, setFrom] = useState(""), [to, setTo] = useState(""), [who, setWho] = useState("");
+  const users = [...new Set(lines.map((l) => l.user).filter(Boolean))].sort();
+  const iso = (at: string) => new Date(at).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+  const vis = lines.filter((l) => (!from || iso(l.at) >= from) && (!to || iso(l.at) <= to) && (!who || l.user === who));
+  const exportCsv = () => {
+    const q = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    const rows = [["Data", "Horário", "Usuário", "Ambiente", "Aba", "Registro", "Ação", "Campo", "Antes", "Depois"], ...vis.map((l) => [dt(l.at), hr(l.at), l.user, scope, l.aba, l.reg, ACAO[l.c.kind] ?? "", l.campo, l.b, l.a])];
+    const blob = new Blob(["\ufeff" + rows.map((r) => r.map(q).join(";")).join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `historico-${scope.replace(/\W+/g, "-").toLowerCase()}.csv`; document.body.appendChild(a); a.click(); a.remove();
+  };
+  const filters = (
+    <div className="no-print mb-2 flex flex-wrap items-end gap-2 text-xs">
+      <label><div className="lbl">De</div><input type="date" className="inp" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
+      <label><div className="lbl">Até</div><input type="date" className="inp" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+      <label><div className="lbl">Usuário</div><select className="inp" value={who} onChange={(e) => setWho(e.target.value)}><option value="">Todos</option>{users.map((u) => <option key={u}>{u}</option>)}</select></label>
+      {(from || to || who) && <button className="btn" onClick={() => { setFrom(""); setTo(""); setWho(""); }}>Limpar</button>}
+      <span className="ml-auto" /><button className="btn" onClick={exportCsv} disabled={!vis.length}>Exportar (Excel/CSV)</button>
+      <button className="btn btn-primary" onClick={() => printDetail(".hist-list")} disabled={!vis.length}>Imprimir</button>
+    </div>
+  );
   if (!lines.length) return <p className="text-xs text-muted-foreground">Nenhuma alteração registrada.</p>;
   const days = new Map<string, Line[]>();
-  for (const l of lines) { const k = dt(l.at); days.set(k, [...(days.get(k) ?? []), l]); }
+  for (const l of vis) { const k = dt(l.at); days.set(k, [...(days.get(k) ?? []), l]); }
   const sel = open?.line;
   const shown = sel ? (open!.full ? sel.entry.changes.filter((c) => JSON.stringify(c.before) !== JSON.stringify(c.after)) : [sel.c]) : [];
   const title = sel ? [sel.aba, sel.reg.replace(/^.*? — /, ""), `${ACAO[sel.c.kind]}${sel.c.kind === "alteração" && sel.campo && !sel.campo.includes(",") ? ` do ${sel.campo}` : ""}`].join(" · ") : "";
   return (
     <>
-      <div className="max-h-[75vh] space-y-4 overflow-auto">
+      {filters}
+      {!vis.length && <p className="text-xs text-muted-foreground">Nenhuma alteração no filtro escolhido.</p>}
+      <div className="hist-list max-h-[75vh] space-y-4 overflow-auto">
+        <div className="hidden text-sm font-semibold print:block">Histórico — {scope}{from || to ? ` · ${from ? fmtDate(from) : "início"} a ${to ? fmtDate(to) : "hoje"}` : ""}{who ? ` · ${who}` : ""}</div>
         {[...days].map(([day, ls]) => (
           <section key={day}>
             <div className="mb-1 text-sm font-semibold">{day} — {ls.length} {ls.length === 1 ? "alteração" : "alterações"}</div>
@@ -204,7 +227,7 @@ export function HistoryView({ entries, data, scope = "Fluxo real", onRestore }: 
                 <div className="text-xs text-muted-foreground">Detalhamento da alteração{open!.full ? ` · ${shown.length} registro(s)` : ""}</div></div>
               <div className="no-print flex gap-1">
                 {sel.entry.changes.length > 1 && <button className="btn" onClick={() => setOpen({ line: sel, full: !open!.full })}>{open!.full ? "Ver só este registro" : "Ver confirmação completa"}</button>}
-                <button className="btn btn-primary" onClick={printDetail}>Imprimir</button><button className="btn" onClick={() => setOpen(null)}>Fechar</button></div>
+                <button className="btn btn-primary" onClick={() => printDetail()}>Imprimir</button><button className="btn" onClick={() => setOpen(null)}>Fechar</button></div>
             </div>
             <div className="mb-4 grid grid-cols-2 gap-2 rounded border border-border bg-secondary p-2 text-xs md:grid-cols-4">
               <div><div className="lbl">Usuário</div>{sel.user || "—"}</div>
