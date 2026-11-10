@@ -14,7 +14,9 @@ export interface Params {
 }
 
 export interface Supplier { id: string; name: string; group: string; terms: (number | null)[] } // até 10; null = vazio
-export type CategoryKind = "planejada" | "comprometida" | "despesa";
+// Categoria = etapa NÃO: é a natureza do lançamento (Compra ou Despesa). Cada Category é um SUBGRUPO
+// (ex.: "Energia elétrica"); planejada/efetuada são etapas do lançamento, não categorias.
+export type CategoryKind = "compra" | "despesa";
 export interface Category { id: string; name: string; kind: CategoryKind; group: string }
 export type Status = "ativo" | "cancelado";
 export interface Origin { file: string; sheet: string; row: number }

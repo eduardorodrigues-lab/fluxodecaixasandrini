@@ -17,8 +17,8 @@ export function demoData(): ScenarioData {
       { id: "s4", name: "DEMO Serviços Delta", group: "Serviços", terms: [15, null, null, null, null, null, null, null, null, null] },
     ],
     categories: [
-      { id: "c1", name: "Mercadoria nacional", kind: "planejada", group: "Compras" },
-      { id: "c2", name: "Mercadoria nacional", kind: "comprometida", group: "Compras" },
+      { id: "c1", name: "Mercadorias para revenda", kind: "compra", group: "Compras" },
+      { id: "c2", name: "Mercadorias para revenda", kind: "compra", group: "Compras" }, // mesmo nome: subgrupos mesclam por nome
       { id: "c3", name: "Aluguel", kind: "despesa", group: "Ocupação" },
       { id: "c4", name: "Fretes", kind: "despesa", group: "Logística" },
       { id: "c5", name: "Serviços terceiros", kind: "despesa", group: "Serviços" },

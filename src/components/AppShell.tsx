@@ -8,6 +8,7 @@ const NAV = [
   { to: "/", label: "Fluxo" },
   { to: "/dashboard", label: "Dashboard" },
   { to: "/lancamentos", label: "Lançamentos" },
+  { to: "/despesas", label: "Relatório de despesas" },
   { to: "/recebimentos", label: "Recebimentos" },
   { to: "/metas", label: "Meta de Faturamento" },
   { to: "/referencias", label: "Referências" },

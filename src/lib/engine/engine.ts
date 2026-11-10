@@ -320,27 +320,66 @@ export function rowTotal(values: number[], mode: TotalMode, days: Day[]): number
   if (mode === "entradas") return (days[0]?.saldoInicial ?? 0) + days.reduce((a, d) => a + d.recUsado, 0);
   return values.reduce((a, v) => a + v, 0);
 }
-export function buildRows(res: FlowResult, cats: Category[]): Row[] {
+// Helpers de classificação de itens de saída (usados pelo fluxo e pelo relatório de despesas).
+export const itemKind = (cats: Category[], it: Item): CategoryKind =>
+  cats.find((c) => c.id === it.categoryId)?.kind ?? (it.source === "despesa" ? "despesa" : "compra");
+export const itemSub = (cats: Category[], it: Item) => (cats.find((c) => c.id === it.categoryId)?.name ?? "(sem subgrupo)").trim();
+export const isOutItem = (it: Item) => it.source === "planejada" || it.source === "comprometida" || it.source === "despesa";
+export const itemStage = (it: Item): "planejada" | "efetuada" => (it.source === "planejada" ? "planejada" : "efetuada");
+
+// Apresentação das saídas: "consolidada" = Categoria → Subgrupo (planejado restante + efetuado juntos);
+// "etapa" = Categoria → Planejada/Efetuada → Subgrupo. Os TOTAIS são idênticos nos dois modos.
+export type FlowMode = "consolidada" | "etapa";
+export function buildRows(res: FlowResult, cats: Category[], mode: FlowMode = "consolidada"): Row[] {
   const D = res.days;
   const rows: Row[] = [];
   const add = (r: Omit<Row, "total">) => rows.push({ ...r, total: rowTotal(r.values, r.totalMode, D) });
+  const catOf = (id?: string) => cats.find((c) => c.id === id);
+  // Categoria do item: pela ficha do subgrupo; sem subgrupo, despesa importada → Despesa, demais → Compra.
+  const kindOf = (it: Item): CategoryKind => catOf(it.categoryId)?.kind ?? (it.source === "despesa" ? "despesa" : "compra");
+  const subName = (it: Item) => (catOf(it.categoryId)?.name ?? "(sem subgrupo)").trim();
+  const isPlan = (it: Item) => it.source === "planejada";
+  const isEfet = (it: Item) => it.source === "comprometida" || it.source === "despesa";
+  const isOut = (it: Item) => isPlan(it) || isEfet(it);
+  const inCompras = (it: Item) => isOut(it) && it.source !== "despesa" && kindOf(it) === "compra";
+  const inDespesas = (it: Item) => isOut(it) && (it.source === "despesa" || kindOf(it) === "despesa");
+  const sumDay = (d: Day, m: (it: Item) => boolean) => d.items.reduce((a, it) => (m(it) ? a + it.amount : 0), 0);
+  const vals = (m: (it: Item) => boolean) => D.map((d) => sumDay(d, m));
+  // Subgrupos com movimento no período, por categoria (mesclados por nome: IDs duplicados somam juntos).
+  const subNames = (k: CategoryKind, m: (it: Item) => boolean) => {
+    const seen = new Set<string>();
+    for (const d of D) for (const it of d.items) if (m(it)) seen.add(subName(it));
+    return [...seen].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  };
+
   add({ key: "entradas", label: "Entradas Total", nature: "Entradas", group: "", level: 0, values: D.map((d) => d.entradasTotal), totalMode: "entradas", emphasis: true });
   add({ key: "saldo_ini", label: "Saldo Inicial", nature: "Entradas", group: "Saldo", level: 1, parent: "entradas", values: D.map((d) => d.saldoInicial), totalMode: "first", match: (i) => i.source === "ajuste" });
   add({ key: "rec_real", label: "Recebimento Previsto/Real", nature: "Entradas", group: "Recebimentos", level: 1, parent: "entradas", values: D.map((d) => (d.usouInformado ? d.recInformado : 0)), totalMode: "sum", match: (i) => i.source === "recebimento" });
   add({ key: "rec_est", label: "Recebimento Estimado", nature: "Entradas", group: "Recebimentos", level: 1, parent: "entradas", values: D.map((d) => (d.usouInformado ? 0 : d.recEstimado)), totalMode: "sum", match: (i) => i.source === "estimativa" });
-  add({ key: "saidas", label: "Saídas Total", nature: "Saídas", group: "", level: 0, values: D.map((d) => d.saidas), totalMode: "sum", emphasis: true, match: (i) => ["planejada", "comprometida", "despesa"].includes(i.source) });
-  add({ key: "custo", label: "Custo de Produto", nature: "Saídas", group: "Compras", level: 1, parent: "saidas", values: D.map((d) => d.planejada + d.comprometida), totalMode: "sum", match: (i) => i.source === "planejada" || i.source === "comprometida" });
-  const catRows = (kind: "planejada" | "comprometida" | "despesa", parent: string, group: string) => {
-    for (const c of cats.filter((c) => c.kind === kind)) {
-      add({ key: `cat_${c.id}`, label: c.name, nature: "Saídas", group, level: parent === "despesas" ? 2 : 3, parent, values: D.map((d) => d.byCat[c.id] ?? 0), totalMode: "sum", match: (i) => i.categoryId === c.id && i.source === kind });
+  add({ key: "saidas", label: "Saídas Total", nature: "Saídas", group: "", level: 0, values: D.map((d) => d.saidas), totalMode: "sum", emphasis: true, match: isOut });
+
+  const subRows = (k: CategoryKind, parent: string, level: number, base: (it: Item) => boolean, keyPfx: string, group: string) => {
+    for (const [i, name] of subNames(k, base).entries()) {
+      const m = (it: Item) => base(it) && subName(it) === name;
+      add({ key: `${keyPfx}_${i}`, label: name, nature: "Saídas", group, level, parent, values: vals(m), totalMode: "sum", match: m });
     }
   };
-  add({ key: "planejada", label: "Compras Planejadas (previsão)", nature: "Saídas", group: "Compras", level: 2, parent: "custo", values: D.map((d) => d.planejada), totalMode: "sum", match: (i) => i.source === "planejada" });
-  catRows("planejada", "planejada", "Compras");
-  add({ key: "comprometida", label: "Compras Efetivadas (pedido/compra)", nature: "Saídas", group: "Compras", level: 2, parent: "custo", values: D.map((d) => d.comprometida), totalMode: "sum", match: (i) => i.source === "comprometida" });
-  catRows("comprometida", "comprometida", "Compras");
-  add({ key: "despesas", label: "Despesas Diversas", nature: "Saídas", group: "Despesas", level: 1, parent: "saidas", values: D.map((d) => d.despesa), totalMode: "sum", match: (i) => i.source === "despesa" });
-  catRows("despesa", "despesas", "Despesas");
+  const grupo = (key: string, label: string, group: string, inCat: (it: Item) => boolean, k: CategoryKind) => {
+    add({ key, label, nature: "Saídas", group, level: 1, parent: "saidas", values: vals(inCat), totalMode: "sum", match: inCat });
+    if (mode === "consolidada") {
+      subRows(k, key, 2, inCat, `sub_${key}`, group);
+    } else {
+      const planM = (it: Item) => inCat(it) && isPlan(it);
+      const efetM = (it: Item) => inCat(it) && isEfet(it);
+      const plKey = `${key}_plan`, efKey = `${key}_efet`;
+      add({ key: plKey, label: k === "compra" ? "Compra planejada" : "Despesa planejada", nature: "Saídas", group, level: 2, parent: key, values: vals(planM), totalMode: "sum", match: planM });
+      subRows(k, plKey, 3, planM, `sub_${plKey}`, group);
+      add({ key: efKey, label: k === "compra" ? "Compra efetuada" : "Despesa efetuada", nature: "Saídas", group, level: 2, parent: key, values: vals(efetM), totalMode: "sum", match: efetM });
+      subRows(k, efKey, 3, efetM, `sub_${efKey}`, group);
+    }
+  };
+  grupo("compras", "Compras", "Compras", inCompras, "compra");
+  grupo("despesas", "Despesas", "Despesas", inDespesas, "despesa");
   add({ key: "saldo_fim", label: "Saldo Final", nature: "Saldo", group: "", level: 0, values: D.map((d) => d.saldoFinal), totalMode: "last", emphasis: true });
   return rows;
 }

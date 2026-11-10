@@ -57,14 +57,14 @@ function Page() {
 
       <div className="grid gap-3 lg:grid-cols-3">
         <section className="card p-3">
-          <div className="mb-2 flex justify-between"><span className="lbl">Categorias / grupos</span><button className="btn" onClick={() => update((x) => { x.categories.push({ id: uid(), name: "Nova categoria", kind: "despesa", group: "" }); })}>+</button></div>
-          <table className="tbl"><tbody>{d.categories.map((c) => (
+          <div className="mb-2 flex justify-between"><span className="lbl">Categorias e subgrupos</span><button className="btn" onClick={() => update((x) => { x.categories.push({ id: uid(), name: "Novo subgrupo", kind: "despesa", group: "" }); })}>+ Subgrupo</button></div>
+          <table className="tbl"><thead><tr><th>Categoria</th><th>Nome do subgrupo</th></tr></thead><tbody>{d.categories.map((c) => (
             <tr key={c.id}>
-              <td><input className="inp w-32" defaultValue={c.name} onBlur={(e) => update((x) => { x.categories.find((i) => i.id === c.id)!.name = e.target.value; })} /></td>
-              <td><select className="inp" value={c.kind} onChange={(e) => update((x) => { x.categories.find((i) => i.id === c.id)!.kind = e.target.value as typeof c.kind; })}><option value="planejada">planejada</option><option value="comprometida">comprometida</option><option value="despesa">despesa</option></select></td>
-              <td><input className="inp w-20" defaultValue={c.group} onBlur={(e) => update((x) => { x.categories.find((i) => i.id === c.id)!.group = e.target.value; })} /></td>
+              <td><select className="inp" value={c.kind} onChange={(e) => update((x) => { x.categories.find((i) => i.id === c.id)!.kind = e.target.value as typeof c.kind; })}><option value="compra">Compra</option><option value="despesa">Despesa</option></select></td>
+              <td><input className="inp w-44" defaultValue={c.name} onBlur={(e) => update((x) => { x.categories.find((i) => i.id === c.id)!.name = e.target.value; })} /></td>
             </tr>
           ))}</tbody></table>
+          <p className="mt-1 text-[11px] text-muted-foreground">Categoria é só Compra ou Despesa; planejada/efetuada são etapas do lançamento. Subgrupos com o mesmo nome somam juntos no fluxo.</p>
         </section>
         <section className="card p-3">
           <div className="lbl mb-2">Metas mensais</div>

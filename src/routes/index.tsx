@@ -22,8 +22,8 @@ function FluxoPage() {
   const { active, ui, setUi, update } = useApp();
   const data = active.data;
   const res = useMemo(() => computeFlow(data, { start: ui.start, end: ui.end, filter: { supplierId: ui.supplierId, group: ui.group } }), [data, ui.start, ui.end, ui.supplierId, ui.group]);
-  const rows = useMemo(() => buildRows(res, data.categories), [res, data.categories]);
-  const [open, setOpen] = useState<Set<string>>(new Set(["entradas", "saidas", "custo"]));
+  const rows = useMemo(() => buildRows(res, data.categories, ui.flowMode), [res, data.categories, ui.flowMode]);
+  const [open, setOpen] = useState<Set<string>>(new Set(["entradas", "saidas", "compras", "despesas"]));
   const [sel, setSel] = useState<{ row: Row; i: number } | null>(null);
   const visible = rows.filter((r) => { let p = r.parent; while (p) { if (!open.has(p)) return false; p = rows.find((x) => x.key === p)?.parent; } return true; });
   const hasKids = (k: string) => rows.some((r) => r.parent === k);
@@ -44,6 +44,7 @@ function FluxoPage() {
         <div><div className="lbl">Até</div><DateInput value={ui.end} onChange={(v) => v && setUi({ end: v })} /></div>
         <div><div className="lbl">Fornecedor</div><select className="inp" value={ui.supplierId} onChange={(e) => setUi({ supplierId: e.target.value })}><option value="">Todos</option>{data.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
         <div><div className="lbl">Grupo</div><select className="inp" value={ui.group} onChange={(e) => setUi({ group: e.target.value })}><option value="">Todos</option>{groups.map((g) => <option key={g}>{g}</option>)}</select></div>
+        <div><div className="lbl">Apresentação das saídas</div><select className="inp" value={ui.flowMode} onChange={(e) => setUi({ flowMode: e.target.value as "consolidada" | "etapa" })}><option value="consolidada">Consolidada por subgrupo</option><option value="etapa">Separada por etapa (planejada/efetuada)</option></select></div>
         {res.filtered && <span className="tag tag-warn">Filtro ativo: saldos consideram só as saídas filtradas</span>}
         {ui.start < data.params.startDate && <span className="tag tag-warn">Fluxo começa em {fmtDate(data.params.startDate)}</span>}
       </div>
@@ -106,7 +107,7 @@ function Kpi({ label, v }: { label: string; v: number }) {
 }
 
 type VProps = { rows: Row[]; res: ReturnType<typeof computeFlow>; onPick: (r: Row, i: number) => void; update: ReturnType<typeof useApp>["update"]; receipts: ReturnType<typeof useApp>["active"]["data"]["receipts"]; adjustments: ReturnType<typeof useApp>["active"]["data"]["adjustments"] };
-const VCOLS = ["saldo_ini", "rec_real", "rec_est", "planejada", "comprometida", "despesas", "saidas", "saldo_fim"];
+const VCOLS = ["saldo_ini", "rec_real", "rec_est", "compras", "despesas", "saidas", "saldo_fim"];
 function Vertical({ rows, res, onPick, update, receipts, adjustments }: VProps) {
   const vert = toVertical(rows, res.days);
   const cols = VCOLS.map((k) => rows.find((r) => r.key === k)!);

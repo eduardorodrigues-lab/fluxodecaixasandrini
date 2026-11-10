@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as ConviteRouteImport } from './routes/convite'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as DespesasRouteImport } from './routes/despesas'
 import { Route as EquipeRouteImport } from './routes/equipe'
 import { Route as HistoricoRouteImport } from './routes/historico'
 import { Route as LancamentosRouteImport } from './routes/lancamentos'
@@ -40,6 +41,11 @@ const ConviteRoute = ConviteRouteImport.update({
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DespesasRoute = DespesasRouteImport.update({
+  id: '/despesas',
+  path: '/despesas',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EquipeRoute = EquipeRouteImport.update({
@@ -88,6 +94,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/convite': typeof ConviteRoute
   '/dashboard': typeof DashboardRoute
+  '/despesas': typeof DespesasRoute
   '/equipe': typeof EquipeRoute
   '/historico': typeof HistoricoRoute
   '/lancamentos': typeof LancamentosRoute
@@ -102,6 +109,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/convite': typeof ConviteRoute
   '/dashboard': typeof DashboardRoute
+  '/despesas': typeof DespesasRoute
   '/equipe': typeof EquipeRoute
   '/historico': typeof HistoricoRoute
   '/lancamentos': typeof LancamentosRoute
@@ -117,6 +125,7 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/convite': typeof ConviteRoute
   '/dashboard': typeof DashboardRoute
+  '/despesas': typeof DespesasRoute
   '/equipe': typeof EquipeRoute
   '/historico': typeof HistoricoRoute
   '/lancamentos': typeof LancamentosRoute
@@ -133,6 +142,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/convite'
     | '/dashboard'
+    | '/despesas'
     | '/equipe'
     | '/historico'
     | '/lancamentos'
@@ -147,6 +157,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/convite'
     | '/dashboard'
+    | '/despesas'
     | '/equipe'
     | '/historico'
     | '/lancamentos'
@@ -161,6 +172,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/convite'
     | '/dashboard'
+    | '/despesas'
     | '/equipe'
     | '/historico'
     | '/lancamentos'
@@ -176,6 +188,7 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   ConviteRoute: typeof ConviteRoute
   DashboardRoute: typeof DashboardRoute
+  DespesasRoute: typeof DespesasRoute
   EquipeRoute: typeof EquipeRoute
   HistoricoRoute: typeof HistoricoRoute
   LancamentosRoute: typeof LancamentosRoute
@@ -214,6 +227,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/despesas': {
+      id: '/despesas'
+      path: '/despesas'
+      fullPath: '/despesas'
+      preLoaderRoute: typeof DespesasRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/equipe': {
@@ -280,6 +300,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRoute,
   ConviteRoute: ConviteRoute,
   DashboardRoute: DashboardRoute,
+  DespesasRoute: DespesasRoute,
   EquipeRoute: EquipeRoute,
   HistoricoRoute: HistoricoRoute,
   LancamentosRoute: LancamentosRoute,

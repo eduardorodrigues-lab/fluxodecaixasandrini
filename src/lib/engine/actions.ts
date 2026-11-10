@@ -14,6 +14,8 @@ export function normalizeData(raw: unknown): ScenarioData {
   void _ignored;
   d.params = { ...DEF_PARAMS, ...params };
   for (const k of ["platforms", "suppliers", "categories", "planned", "committed", "expenses", "effectivations", "payments", "receipts", "adjustments", "importLog"]) d[k] ??= [];
+  // Migração: categorias antigas por ETAPA (planejada/comprometida) viram subgrupos de Compra; vínculos (IDs) preservados.
+  for (const c of d.categories) { if (c.kind === "planejada" || c.kind === "comprometida") c.kind = "compra"; c.group ??= ""; }
   d.targets ??= {};
   d.targetConfigs ??= {};
   // Migração: mês com meta e sem configuração própria recebe SNAPSHOT dos parâmetros atuais (mesmo resultado de antes).
@@ -81,7 +83,7 @@ export function effectivate(d: ScenarioData, inp: EffectivateInput): ScenarioDat
     if (!inp.remaining.dates.length && inp.remaining.value !== 0) throw new Error("Restante precisa de datas.");
   }
   const value = inp.installments.reduce((a, i) => a + i.value, 0);
-  const cat = d.categories.find((c) => c.kind === "comprometida")?.id ?? "";
+  const cat = pl.categoryId; // a efetivação herda o subgrupo da previsão (Compra ou Despesa)
   const ids: string[] = [];
   inp.installments.forEach((i, n) => {
     const id = `${inp.id}-${n + 1}`;

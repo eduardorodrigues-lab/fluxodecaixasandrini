@@ -16,7 +16,7 @@ export interface SimEdit { at: string; user: string; changes: Change[] }
 export interface Sim { id: string; name: string; createdAt: string; data: ScenarioData; baseVersion: number | null; history?: SimEdit[]; createdBy?: string; deletedAt?: string; deletedBy?: string }
 export interface AuditEntry { id: string; at: string; user_email: string | null; version_from: number; version_to: number; summary: string; changes: Change[] }
 interface LocalState { v: 4; activeId: string; sims: SimStore }
-export interface UiState { view: "vertical" | "horizontal"; start: string; end: string; supplierId: string; group: string }
+export interface UiState { view: "vertical" | "horizontal"; start: string; end: string; supplierId: string; group: string; flowMode: "consolidada" | "etapa" }
 export type SaveState = "idle" | "saving" | "saved" | "conflict" | "error";
 export interface Scenario { id: string; name: string; isBase: boolean; data: ScenarioData }
 
@@ -57,7 +57,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<DraftSession | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveMsg, setSaveMsg] = useState("");
-  const [ui, setUiS] = useState<UiState>({ view: "horizontal", start: "2026-10-01", end: "2026-11-30", supplierId: "", group: "" });
+  const [ui, setUiS] = useState<UiState>({ view: "horizontal", start: "2026-10-01", end: "2026-11-30", supplierId: "", group: "", flowMode: "consolidada" });
   const qc = useQueryClient();
   const fetchOfficial = useServerFn(getOfficial);
   const fetchAudit = useServerFn(listAudit);
