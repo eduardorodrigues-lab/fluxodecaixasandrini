@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, type ReactNode } from "react";
+import { Children, cloneElement, isValidElement, useState, type ReactElement, type ReactNode } from "react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { DateInput, MoneyInput, PageHeader } from "@/components/kit";
 import { DadosNotaPanel, NovaNota, ParcelaPanel, ProrrogarPanel, type NoteFields } from "@/components/NotaPanel";
 import { applyNote, editCommittedNote, editPlannedParcel, extendPlannedParcel, parcelLabels, saveSupplierCondition } from "@/lib/notas";
@@ -36,8 +37,17 @@ type Panel =
   | { t: "nota"; init: NoteFields; siblings: number; save: (x: ScenarioData, f: NoteFields) => void }
   | { t: "prorrogar"; label: string; current: string | null; original: string | null; history: ExtensionEvent[]; save: (x: ScenarioData, to: string | null, note: string) => void };
 
+// Menu em portal (Radix): fora do overflow da tabela, ancorado ao botão, com colisão e rolagem só se necessário.
 function Acoes({ children }: { children: ReactNode }) {
-  return <details className="relative"><summary className="btn cursor-pointer list-none">Ações ▾</summary><div className="absolute right-0 z-20 mt-1 flex w-44 flex-col gap-1 rounded border border-border bg-card p-1 shadow-lg [&>button]:justify-start [&>button]:text-left">{children}</div></details>;
+  const items = Children.toArray(children).filter(isValidElement) as ReactElement<{ disabled?: boolean; className?: string }>[];
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild><button className="btn" aria-label="Ações da linha">Ações ▾</button></DropdownMenuTrigger>
+      <DropdownMenuContent align="end" collisionPadding={8} className="z-[60] flex w-52 flex-col gap-1 overflow-y-auto p-1" style={{ maxHeight: "var(--radix-dropdown-menu-content-available-height)" }}>
+        {items.map((el, i) => <DropdownMenuItem key={i} asChild disabled={!!el.props.disabled} className="cursor-pointer justify-start text-left text-xs">{cloneElement(el, { className: `${el.props.className ?? ""} w-full justify-start text-left` })}</DropdownMenuItem>)}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 function Page() {
