@@ -13,7 +13,7 @@ export interface Params {
   saldoInicial: number; // centavos
 }
 
-export interface Supplier { id: string; name: string; group: string; terms: (number | null)[] } // até 10; null = vazio
+export interface Supplier { id: string; name: string; group: string; terms: (number | null)[]; termsHistory?: { at: string; terms: (number | null)[] }[] } // até 10; null = vazio
 // Categoria = etapa NÃO: é a natureza do lançamento (Compra ou Despesa). Cada Category é um SUBGRUPO
 // (ex.: "Energia elétrica"); planejada/efetuada são etapas do lançamento, não categorias.
 export type CategoryKind = "compra" | "despesa";
@@ -30,7 +30,10 @@ export interface Planned {
   remainingOverride: { value: number; dates: string[] } | null; // restante confirmado após efetivação parcial
   terms?: (number | null)[] | null; // prazos F:O da própria linha (importados); null = usa os do fornecedor
   origin?: Origin | null;
+  installments?: PlannedInstallment[] | null; // parcelas próprias (painel Nova nota); null = prazos
 }
+export interface PlannedInstallment { amount: number; date: string; extensionDate: string | null; extensionHistory: ExtensionEvent[] }
+export interface NoteRef { noteId?: string; parcelNo?: number; parcelCount?: number }
 // EFETIVADO/REALIZADO = compra real ou pedido. NÃO é pagamento (ver payments).
 export type CommittedOrigin = "legado" | "efetivacao" | "manual";
 export interface Committed {
@@ -43,6 +46,7 @@ export interface Committed {
   origin: CommittedOrigin; plannedId: string | null; effectivationId: string | null;
   categoryId: string; notes: string; status: Status; importOrigin?: Origin | null;
   paymentUnconfirmed?: boolean; // importado sem informação de pagamento: "situação a confirmar" (não é aberto validado nem pago)
+  noteId?: string; parcelNo?: number; parcelCount?: number;
 }
 export interface Expense {
   id: string; supplierId: string; document: string; value: number; baseDate: string;

@@ -129,3 +129,11 @@ Script de reprodução local: `bun scripts/validate-ceo-xlsm.ts <arquivo> /tmp/r
 - Item sem subgrupo: despesa importada classifica como Despesa; previsão/efetivado sem subgrupo como Compra; rótulo "(sem subgrupo)".
 - **Relatório de despesas** (/despesas): mesmos lançamentos do fluxo (sem cadastro separado), filtros por período, subgrupo e etapa.
 - Testes: `src/lib/engine/subgrupos.test.ts` (migração de kinds, igualdade de totais entre modos, mescla por nome, despesa planejada + efetivação sem duplicar, fallback sem subgrupo).
+
+## Nova nota por parcela (painel lateral)
+- Botão Novo (Planejada/Efetivado) abre painel: Dados da nota → Condição de pagamento → Parcelas → Revisar e confirmar. Cancelar não grava; confirmação só com total das parcelas = valor da nota e campos obrigatórios.
+- Parcelas geradas pela condição vigente do fornecedor (prazos numéricos; 0 conta), resíduo de centavos na última; editáveis, adicionar/remover, "Prorrogar para" vazio por padrão.
+- Condição manual pode ser salva como nova condição do fornecedor: histórico em `termsHistory`; previsões antigas que usavam a condição anterior recebem os prazos antigos congelados.
+- Planejada grava 1 previsão com `installments` próprias; efetivações abatem das primeiras parcelas (FIFO) sem duplicar. Efetivado grava 1 título por parcela com `noteId/parcelNo/parcelCount`.
+- Tabelas: uma linha por parcela. "Editar esta parcela" muda só a parcela; "Editar dados da nota" aplica às irmãs (mesmo noteId). Prorrogação individual exige justificativa e preserva histórico; em simulação é só teste.
+- Consultas agrupa por parcela ou por documento.

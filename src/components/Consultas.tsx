@@ -57,11 +57,24 @@ export function filterConsulta(rows: ConsultaRow[], f: ConsultaFilter): Consulta
 const HEAD = ["Fornecedor", "Documento", "Parcela", "Categoria", "Subgrupo", "Valor", "Vencimento", "Prorrogado para", "Pago", "Em aberto", "Situação", "Última baixa"];
 const cells = (r: ConsultaRow) => [r.supplier, r.document || "—", r.parcel, r.category, r.sub, fmtBRL(r.value), r.due ? fmtDate(r.due) : "—", r.extended ? fmtDate(r.extended) : "—", fmtBRL(r.paid), fmtBRL(r.open), r.state, r.lastPay ? fmtDate(r.lastPay) : "—"];
 
+/** Agrupa por documento (fornecedor+documento): soma valores, pago e aberto das parcelas. */
+export function groupByDocument(rows: ConsultaRow[]): ConsultaRow[] {
+  const m = new Map<string, ConsultaRow[]>();
+  for (const r of rows) { const k = `${r.supplier}|${r.document}`; m.set(k, [...(m.get(k) ?? []), r]); }
+  return [...m.entries()].map(([k, g]) => {
+    const paid = g.reduce((a, r) => a + r.paid, 0), open = g.reduce((a, r) => a + r.open, 0), value = g.reduce((a, r) => a + r.value, 0);
+    const first = [...g].sort((a, b) => (a.effective ?? "").localeCompare(b.effective ?? ""))[0]!;
+    const pays = g.flatMap((r) => r.payments).sort((a, b) => a.date.localeCompare(b.date));
+    return { ...first, key: "doc:" + k, parcel: `${g.length} parcela(s)`, value, paid, open, state: paid <= 0 ? "Em aberto" : open > 0 ? "Parcialmente pago" : "Pago", lastPay: pays.at(-1)?.date ?? null, payments: pays, history: g.flatMap((r) => r.history), extended: g.some((r) => r.extended) ? first.extended ?? g.find((r) => r.extended)!.extended : null };
+  });
+}
+
 export function Consultas({ d }: { d: ScenarioData }) {
   const all = useMemo(() => buildConsulta(d), [d]);
   const [f, setF] = useState<ConsultaFilter>(EMPTY_FILTER);
   const [sel, setSel] = useState<ConsultaRow | null>(null);
-  const rows = useMemo(() => filterConsulta(all, f).sort((a, b) => (a.effective ?? "").localeCompare(b.effective ?? "")), [all, f]);
+  const [byDoc, setByDoc] = useState(false);
+  const rows = useMemo(() => { const r = filterConsulta(all, f); return (byDoc ? groupByDocument(r) : r).sort((a, b) => (a.effective ?? "").localeCompare(b.effective ?? "")); }, [all, f, byDoc]);
   const suppliers = useMemo(() => [...new Set(all.map((r) => r.supplier))].sort(), [all]);
   const tot = rows.reduce((a, r) => ({ v: a.v + r.value, p: a.p + r.paid, o: a.o + r.open }), { v: 0, p: 0, o: 0 });
   const up = (p: Partial<ConsultaFilter>) => setF({ ...f, ...p });
@@ -94,6 +107,7 @@ export function Consultas({ d }: { d: ScenarioData }) {
         <label><span className="lbl block">Fornecedor</span><input className="inp w-48" list="consulta-sup" placeholder="Todos" value={f.supplier} onChange={(e) => up({ supplier: e.target.value })} /><datalist id="consulta-sup">{suppliers.map((s) => <option key={s} value={s} />)}</datalist></label>
         <label><span className="lbl block">Pagamento</span><select className="inp" value={f.pay} onChange={(e) => up({ pay: e.target.value as ConsultaFilter["pay"] })}><option value="">Todos</option><option>Em aberto</option><option>Parcialmente pago</option><option>Pago</option></select></label>
         <label><span className="lbl block">Prorrogação</span><select className="inp" value={f.ext} onChange={(e) => up({ ext: e.target.value as ConsultaFilter["ext"] })}><option value="">Todos</option><option value="sim">Prorrogados</option><option value="nao">Não prorrogados</option></select></label>
+        <label><span className="lbl block">Agrupar por</span><select className="inp" value={byDoc ? "doc" : "parc"} onChange={(e) => setByDoc(e.target.value === "doc")}><option value="parc">Parcela</option><option value="doc">Documento</option></select></label>
         <button className="btn" onClick={() => setF(EMPTY_FILTER)}>Limpar filtros</button>
         <button className="btn" onClick={print}>Imprimir</button>
         <button className="btn" onClick={exportXls}>Exportar para Excel</button>
@@ -102,7 +116,7 @@ export function Consultas({ d }: { d: ScenarioData }) {
         <span>Valor dos títulos <b className="tabular-nums">{fmtBRL(tot.v)}</b></span>
         <span>Valor pago <b className="tabular-nums">{fmtBRL(tot.p)}</b></span>
         <span>Saldo em aberto <b className="tabular-nums">{fmtBRL(tot.o)}</b></span>
-        <span className="text-muted-foreground">{rows.length} parcelas</span>
+        <span className="text-muted-foreground">{rows.length} {byDoc ? "documentos" : "parcelas"}</span>
       </div>
       <div className="card overflow-auto">
         <table className="tbl"><thead><tr>{HEAD.map((h, i) => <th key={h} className={[5, 8, 9].includes(i) ? "num" : ""}>{h}</th>)}</tr></thead>

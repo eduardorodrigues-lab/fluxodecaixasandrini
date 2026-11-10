@@ -96,7 +96,7 @@ export function paymentsFor(data: Pick<ScenarioData, "payments">, kind: Payment[
 
 // ---------- Regra D: planejadas ----------
 export interface PlannedDist {
-  parcels: { date: string; amount: number; exact: number; term: number | null }[];
+  parcels: { date: string; amount: number; exact: number; term: number | null; idx?: number }[];
   count: number; P: number; Q: number; R: number;
   health: "ok" | "abatimento_ausente" | "erro";
   roundingDiff: number; macroValue: number; linked: number; legacyAbated?: number;
@@ -124,6 +124,15 @@ export function distributePlanned(pl: Planned, sup: Supplier | undefined, commit
     if (residual) warnings.push({ code: "ARRED", severity: "info", refId: pl.id, message: `Planejada ${pl.purchaseCode}: ajuste de ${residual} centavo(s) na última parcela do restante.` });
     if (value < 0) warnings.push({ code: "PLAN_NEGATIVO", severity: "alerta", refId: pl.id, message: `Planejada ${pl.purchaseCode}: restante confirmado negativo (mantido).` });
     return { ...base, parcels: dates.map((d, i) => ({ date: d, amount: parts[i]!, exact: value / dates.length, term: null })), count: dates.length, P: value / dates.length, Q: 0, R: value / dates.length, health: "ok", roundingDiff: residual, remaining: value, mode: "restante_confirmado", warnings };
+  }
+  if (pl.installments?.length) {
+    // Parcelas próprias: efetivações abatem das primeiras parcelas (FIFO), sem duplicar.
+    let left = effectivated;
+    const parcels = pl.installments.map((it, idx) => { const take = Math.min(Math.max(left, 0), it.amount); left -= take; return { date: it.extensionDate || it.date, amount: it.amount - take, exact: it.amount - take, term: null, idx }; });
+    if (left > 0 && parcels.length) parcels[parcels.length - 1]!.amount -= left;
+    const remaining = parcels.reduce((a, x) => a + x.amount, 0);
+    const live = parcels.filter((x) => x.amount !== 0);
+    return { ...base, parcels: live, count: live.length, P: 0, Q: 0, R: 0, health: "ok", remaining, mode: "padrao", warnings };
   }
   if (!sup && !pl.terms) return empty(`Planejada ${pl.purchaseCode || pl.id}: fornecedor não encontrado.`);
   const terms = (pl.terms ?? sup!.terms).slice(0, 10);
@@ -207,7 +216,7 @@ export function computeFlow(data: ScenarioData, opt: FlowOptions): FlowResult {
     warnings.push(...dist.warnings);
     if (!pass(pl.supplierId)) continue;
     for (const pc of dist.parcels)
-      push(pc.date, { source: "planejada", refId: pl.id, categoryId: pl.categoryId, amount: pc.amount, label: `Previsão · ${supName(pl.supplierId)} · ${pl.purchaseCode}`, note: `${pc.term !== null ? `prazo ${pc.term}d` : "restante confirmado"}${dist.health !== "ok" ? " · " + dist.health : ""}` });
+      push(pc.date, { source: "planejada", refId: pl.id, categoryId: pl.categoryId, amount: pc.amount, label: `Previsão · ${supName(pl.supplierId)} · ${pl.purchaseCode}`, note: `${pc.term !== null ? `prazo ${pc.term}d` : pl.installments?.length && !pl.remainingOverride ? "parcela" : "restante confirmado"}${dist.health !== "ok" ? " · " + dist.health : ""}` });
   }
   // Títulos efetivados e despesas: pagamentos na data real + somente o restante no vencimento.
   const title = (kind: Payment["titleKind"], id: string, value: number, status: string, due: string, source: "comprometida" | "despesa", base: Omit<Item, "amount" | "source">, supplierId: string) => {
