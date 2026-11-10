@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { emptyData, registerPayment, reversePayment, setReceiptPlatform, addPlatform } from "./actions";
 import {
   accountBalance, addAccount, addCard, addTransfer, confirmBankTransition, consolidatedBalance, createInvoice, defaultAccountFor,
-  invoiceMonthFor, movements, previewBankTransition, registerPaymentBatch, reverseTransfer, setPlatformDefaultAccount, setReceiptAccount,
+  invoiceMonthFor, movements, previewBankTransition, coverTitleWithCard, reverseCardOp, addCardPurchase, cancelInvoice, registerPaymentBatch, reverseTransfer, setPlatformDefaultAccount, setReceiptAccount,
 } from "./banco";
 import { computeFlow } from "./engine";
 import { diffData } from "../diff";
@@ -141,5 +141,46 @@ describe("auditoria e isolamento", () => {
     const real = base(); const sim = JSON.parse(JSON.stringify(real)) as ScenarioData;
     registerPaymentBatch(sim, { batchId: "b", titleKind: "committed", titleId: "c1", note: "", lines: [{ accountId: "A", amount: 1_000, date: "2026-11-05" }] });
     expect(real.payments).toHaveLength(0);
+  });
+});
+
+describe("operações no cartão", () => {
+  const withCard = () => { const d = base(); addCard(d, { id: "k", accountId: "A", name: "Visa", last4: "1234", closingDay: 10, dueDay: 20, active: true }); d.committed[0]!.value = 1_000_000; d.committed[0]!.categoryId = "sub"; return d; };
+  const flow = (d: ScenarioData) => computeFlow(d, { start: "2026-11-01", end: "2027-02-28" }).days;
+  it("título 10.000: 6.000 no cartão, 4.000 segue no vencimento original; fatura futura 6.000 sem duplicar; banco só na baixa da fatura", () => {
+    const d = withCard();
+    coverTitleWithCard(d, { id: "op", cardId: "k", titleKind: "committed", titleId: "c1", date: "2026-11-12", amount: 600_000, installments: 1, at: AT, by: "x" });
+    coverTitleWithCard(d, { id: "op", cardId: "k", titleKind: "committed", titleId: "c1", date: "2026-11-12", amount: 600_000, installments: 1, at: AT, by: "x" }); // idempotente
+    expect(d.cardOps).toHaveLength(1);
+    const days = flow(d);
+    expect(days.find((x) => x.date === "2026-11-05")!.comprometida).toBe(400_000); // parte não coberta
+    expect(days.find((x) => x.date === "2026-12-20")!.despesa).toBe(600_000); // projeção da fatura (dez)
+    expect(days.reduce((a, x) => a + x.saidas, 0)).toBe(1_000_000); // total sem duplicidade
+    expect(d.expenses.find((e) => e.cardOpId === "op")!.categoryId).toBe("sub"); // mantém subgrupo
+    expect(accountBalance(d, "A", "2027-02-28").realized).toBe(100_000); // banco intacto
+    expect(() => coverTitleWithCard(d, { id: "op2", cardId: "k", titleKind: "committed", titleId: "c1", date: "2026-11-12", amount: 400_001, installments: 1, at: AT, by: "x" })).toThrow(/excede/);
+    createInvoice(d, { id: "inv", cardId: "k", month: "2026-12", dueDate: "2026-12-20", supplierId: "s1", categoryId: "" });
+    expect(flow(d).reduce((a, x) => a + x.saidas, 0)).toBe(1_000_000); // fatura substitui a projeção
+    expect(() => reverseCardOp(d, "op", "erro", AT)).toThrow(/fatura já fechada/);
+    registerPaymentBatch(d, { batchId: "pf", titleKind: "expense", titleId: "inv", note: "", lines: [{ accountId: "A", amount: 350_000, date: "2026-12-20" }, { accountId: "B", amount: 250_000, date: "2026-12-20" }] });
+    expect(accountBalance(d, "A", "2027-02-28").realized).toBe(100_000 - 350_000);
+    expect(() => cancelInvoice(d, "inv", "x")).toThrow(/pagamento ativo/);
+  });
+  it("estorno antes do fechamento desfaz cobertura e projeção, preservando histórico", () => {
+    const d = withCard();
+    coverTitleWithCard(d, { id: "op", cardId: "k", titleKind: "committed", titleId: "c1", date: "2026-11-12", amount: 1_000_000, installments: 2, at: AT, by: "x" });
+    reverseCardOp(d, "op", "lançado errado", AT);
+    expect(d.payments[0]!.reversedAt).toBe(AT);
+    expect(d.expenses.filter((e) => e.cardOpId === "op").every((e) => e.status === "cancelado")).toBe(true);
+    expect(flow(d).find((x) => x.date === "2026-11-05")!.comprometida).toBe(1_000_000);
+  });
+  it("nova compra parcelada: 3 faturas, resíduo na última, sem obrigação duplicada", () => {
+    const d = withCard(); d.committed = [];
+    addCardPurchase(d, { id: "nc", cardId: "k", date: "2026-11-05", amount: 100_000, installments: 3, supplierId: "s1", categoryId: "sub", document: "NF9", notes: "", at: AT, by: "x" });
+    const parc = d.expenses.filter((e) => e.cardOpId === "nc");
+    expect(parc.map((e) => e.value)).toEqual([33_333, 33_333, 33_334]);
+    const days = flow(d);
+    expect(["2026-11-20", "2026-12-20", "2027-01-20"].map((dt) => days.find((x) => x.date === dt)!.despesa)).toEqual([33_333, 33_333, 33_334]);
+    expect(days.reduce((a, x) => a + x.saidas, 0)).toBe(100_000);
   });
 });

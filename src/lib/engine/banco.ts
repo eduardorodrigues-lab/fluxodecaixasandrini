@@ -1,6 +1,6 @@
 // Controle bancário: contas, cartões, conta padrão por plataforma (vigência), baixas multicontas, transferências e saldos.
 // Funções puras sobre o rascunho (mesmo padrão de actions.ts). NÃO importa engine.ts (engine usa consolidatedOpening).
-import type { BankAccount, Card, Expense, Payment, Platform, Receipt, ScenarioData, Transfer } from "./types";
+import type { BankAccount, Card, CardOperation, Committed, Expense, Payment, Platform, Receipt, ScenarioData, Transfer } from "./types";
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 export const NO_ACCOUNT = "Conta não informada";
@@ -177,7 +177,7 @@ export function movements(d: ScenarioData): Movement[] {
     for (const [pid, v] of Object.entries(r.platforms)) if (v) out.push({ date: r.date, accountId: r.accountByPlatform?.[pid]?.accountId ?? null, kind: "recebimento", desc: `Recebimento ${pname(pid)}`, amount: v, realized, refId: r.id });
     if (r.general) out.push({ date: r.date, accountId: r.generalAccountId ?? null, kind: "recebimento", desc: "Recebimento geral", amount: r.general, realized, refId: r.id });
   }
-  for (const p of d.payments) if (!p.reversedAt) {
+  for (const p of d.payments) if (!p.reversedAt && p.method !== "cartao") {
     const t = p.titleKind === "committed" ? d.committed.find((c) => c.id === p.titleId) : d.expenses.find((e) => e.id === p.titleId);
     const sup = d.suppliers.find((s) => s.id === t?.supplierId)?.name ?? "";
     out.push({ date: p.date, accountId: p.accountId ?? null, kind: "pagamento", desc: `Pagamento ${sup} ${t?.document ?? ""}`.trim(), amount: -p.amount, realized: true, refId: p.id });
@@ -230,3 +230,81 @@ export function confirmBankTransition(d: ScenarioData, by: string, note: string,
   return d;
 }
 export function revertBankTransition(d: ScenarioData): ScenarioData { d.params.openingMode = "legado"; return d; }
+
+// ---------- Operações no cartão (cobertura de título existente / nova compra) ----------
+export function addMonthsISO(date: string, n: number): string {
+  const [y, m, day] = date.split("-").map(Number) as [number, number, number];
+  const t = y * 12 + (m - 1) + n, ny = Math.floor(t / 12), nm = (t % 12) + 1;
+  const last = new Date(Date.UTC(ny, nm, 0)).getUTCDate();
+  return `${ny}-${String(nm).padStart(2, "0")}-${String(Math.min(day, last)).padStart(2, "0")}`;
+}
+/** Parcelas do cartão: valor dividido em centavos com resíduo na última; cada uma num mês (fatura) seguinte. */
+export function cardInstallments(card: Card, date: string, amount: number, n: number) {
+  const base = Math.floor(amount / n);
+  return Array.from({ length: n }, (_, i) => {
+    const d = addMonthsISO(date, i), month = invoiceMonthFor(card, d);
+    return { n: i + 1, amount: i === n - 1 ? amount - base * (n - 1) : base, date: d, month, due: invoiceDueDate(card, month) };
+  });
+}
+export interface CardOpInput { id: string; cardId: string; date: string; amount: number; installments: number; at: string; by: string }
+function checkOp(d: ScenarioData, inp: CardOpInput) {
+  const card = d.cards.find((c) => c.id === inp.cardId) ?? err("Cartão não encontrado.");
+  if (!card!.active) err("Cartão inativo.");
+  if (!ISO.test(inp.date)) err("Data inválida.");
+  if (!(Number.isInteger(inp.amount) && inp.amount > 0)) err("Valor deve ser positivo.");
+  if (!(Number.isInteger(inp.installments) && inp.installments >= 1 && inp.installments <= 24)) err("Parcelas no cartão: de 1 a 24.");
+  return card!;
+}
+function pushParcels(d: ScenarioData, card: Card, inp: CardOpInput, src: { supplierId: string; categoryId: string; document: string; notes: string }) {
+  return cardInstallments(card, inp.date, inp.amount, inp.installments).map((p) => {
+    const id = `${inp.id}-p${p.n}`;
+    d.expenses.push({ id, supplierId: src.supplierId, document: `${src.document} · cartão ${p.n}/${inp.installments}`, value: p.amount, baseDate: p.date, termDays: null, extensionDate: null, extensionHistory: [], categoryId: src.categoryId, notes: src.notes, status: "ativo", cardId: card.id, invoiceId: null, cardOpId: inp.id });
+    return id;
+  });
+}
+/** Paga um título efetivado (compra ou despesa) com o cartão: reduz a pendência (liquidação por cartão, sem débito bancário)
+ *  e cria as parcelas do cartão, que entram nas faturas. A parte não coberta segue no vencimento original. */
+export function coverTitleWithCard(d: ScenarioData, inp: CardOpInput & { titleKind: "committed" | "expense"; titleId: string }): ScenarioData {
+  if (d.cardOps.some((o) => o.id === inp.id)) return d; // idempotente
+  const card = checkOp(d, inp);
+  const { title, open } = titleOpen(d, inp.titleKind, inp.titleId);
+  if (title.status === "cancelado") err("Título cancelado.");
+  if ((title as Expense).cardId) err("Este lançamento já é parcela de cartão.");
+  if (inp.amount > open) err(`Valor no cartão excede a pendência do título (${(open / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}).`);
+  const pid = `${inp.id}-liq`;
+  d.payments.push({ id: pid, titleKind: inp.titleKind, titleId: inp.titleId, date: inp.date, amount: inp.amount, note: `Quitado com cartão ${card.name} ••${card.last4}`, reversedAt: null, reversalNote: "", accountId: null, method: "cartao", cardOpId: inp.id });
+  const expenseIds = pushParcels(d, card, inp, { supplierId: title.supplierId, categoryId: title.categoryId, document: title.document || (title as Committed).purchaseCode || "título", notes: `Origem: ${inp.titleKind === "committed" ? "efetivado" : "despesa"} ${title.document}` });
+  d.cardOps.push({ id: inp.id, cardId: card.id, kind: "cobertura", date: inp.date, amount: inp.amount, installments: inp.installments, titleKind: inp.titleKind, titleId: inp.titleId, paymentId: pid, expenseIds, at: inp.at, by: inp.by, reversedAt: null, reversalNote: "" });
+  return d;
+}
+/** Nova compra no cartão (sem título prévio): só as parcelas do cartão entram no fluxo, via fatura. */
+export function addCardPurchase(d: ScenarioData, inp: CardOpInput & { supplierId: string; categoryId: string; document: string; notes: string }): ScenarioData {
+  if (d.cardOps.some((o) => o.id === inp.id)) return d;
+  const card = checkOp(d, inp);
+  if (!inp.supplierId || !inp.categoryId) err("Informe fornecedor e subgrupo.");
+  const expenseIds = pushParcels(d, card, inp, inp);
+  d.cardOps.push({ id: inp.id, cardId: card.id, kind: "compra", date: inp.date, amount: inp.amount, installments: inp.installments, titleKind: null, titleId: null, paymentId: null, expenseIds, at: inp.at, by: inp.by, reversedAt: null, reversalNote: "" });
+  return d;
+}
+/** Estorno: desfaz cobertura e parcelas, preservando histórico. Bloqueado se alguma parcela já está em fatura fechada. */
+export function reverseCardOp(d: ScenarioData, id: string, note: string, at: string): ScenarioData {
+  const op: CardOperation = d.cardOps.find((o) => o.id === id) ?? err("Operação não encontrada.");
+  if (op.reversedAt) return d;
+  if (!note.trim()) err("Informe o motivo do estorno.");
+  const parcels = d.expenses.filter((e) => op.expenseIds.includes(e.id));
+  if (parcels.some((e) => e.invoiceId && d.expenses.some((f) => f.id === e.invoiceId && f.status !== "cancelado"))) err("Há parcela em fatura já fechada: trate a fatura (estorno/ajuste) antes de estornar esta operação.");
+  for (const e of parcels) { e.status = "cancelado"; e.notes = `${e.notes} · estornada: ${note}`; }
+  const pay = d.payments.find((p) => p.id === op.paymentId);
+  if (pay && !pay.reversedAt) { pay.reversedAt = at; pay.reversalNote = `Estorno da operação no cartão: ${note}`; }
+  op.reversedAt = at; op.reversalNote = note;
+  return d;
+}
+/** Fatura com baixa ativa não pode ser cancelada silenciosamente. */
+export function cancelInvoice(d: ScenarioData, invoiceId: string, note: string): ScenarioData {
+  const inv = d.expenses.find((e) => e.id === invoiceId && e.invoiceOf) ?? err("Fatura não encontrada.");
+  if (d.payments.some((p) => p.titleKind === "expense" && p.titleId === inv!.id && !p.reversedAt)) err("Fatura com pagamento ativo: estorne o pagamento antes.");
+  if (!note.trim()) err("Informe o motivo.");
+  inv!.status = "cancelado"; inv!.notes = `${inv!.notes} · cancelada: ${note}`;
+  for (const e of d.expenses) if (e.invoiceId === inv!.id) e.invoiceId = null;
+  return d;
+}

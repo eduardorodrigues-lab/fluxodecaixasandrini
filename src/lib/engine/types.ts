@@ -58,6 +58,7 @@ export interface Expense {
   extensionDate: string | null; extensionHistory: ExtensionEvent[];
   categoryId: string; notes: string; status: Status; importOrigin?: Origin | null;
   paymentUnconfirmed?: boolean;
+  cardOpId?: string | null; // operação no cartão que gerou esta parcela
   cardId?: string | null; // compra no cartão: detalhe da fatura; não debita banco nem entra no fluxo (a fatura entra)
   invoiceId?: string | null; // fatura à qual a compra no cartão foi vinculada
   invoiceOf?: { cardId: string; month: string } | null; // esta despesa É a fatura do cartão (saída bancária na baixa)
@@ -75,6 +76,14 @@ export interface Payment {
   note: string; reversedAt: string | null; reversalNote: string;
   accountId?: string | null; // conta de origem; baixas antigas sem conta = "Conta não informada" (nunca inferida)
   batchId?: string | null; // baixas multicontas confirmadas juntas
+  method?: "banco" | "cartao"; // "cartao" = liquidação do fornecedor pelo cartão (NÃO é débito bancário)
+  cardOpId?: string | null;
+}
+// Operação no cartão: cobertura de título existente OU nova compra. Gera parcelas (Expense.cardId) que entram nas faturas.
+export interface CardOperation {
+  id: string; cardId: string; kind: "cobertura" | "compra"; date: string; amount: number; installments: number;
+  titleKind: "committed" | "expense" | null; titleId: string | null; paymentId: string | null; expenseIds: string[];
+  at: string; by: string; reversedAt: string | null; reversalNote: string;
 }
 // Contas bancárias e cartões. Saldo inicial = saldo ao FIM do dia openingDate; entram só movimentos com data > openingDate.
 export interface BankAccount {
@@ -124,6 +133,7 @@ export interface ScenarioData {
   bankAccounts: BankAccount[];
   cards: Card[];
   transfers: Transfer[];
+  cardOps: CardOperation[];
 }
 
 export type Severity = "info" | "alerta" | "erro";

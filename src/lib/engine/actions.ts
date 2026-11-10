@@ -14,7 +14,7 @@ export function normalizeData(raw: unknown): ScenarioData {
   const { webExpenseUseExtension: _ignored, ...params } = d.params ?? {};
   void _ignored;
   d.params = { ...DEF_PARAMS, ...params };
-  for (const k of ["platforms", "suppliers", "categories", "planned", "committed", "expenses", "effectivations", "payments", "receipts", "adjustments", "importLog", "bankAccounts", "cards", "transfers"]) d[k] ??= [];
+  for (const k of ["platforms", "suppliers", "categories", "planned", "committed", "expenses", "effectivations", "payments", "receipts", "adjustments", "importLog", "bankAccounts", "cards", "transfers", "cardOps"]) d[k] ??= [];
   // Migração: categorias antigas por ETAPA (planejada/comprometida) viram subgrupos de Compra; vínculos (IDs) preservados.
   for (const c of d.categories) { if (c.kind === "planejada" || c.kind === "comprometida") c.kind = "compra"; c.group ??= ""; }
   d.targets ??= {};

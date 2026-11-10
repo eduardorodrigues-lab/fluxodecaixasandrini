@@ -10,7 +10,8 @@ doc={"params":{"profile":"legado","startDate":"2026-11-01","saldoInicial":0},
  "committed":[{"id":"c1","supplierId":"s1","purchaseCode":"P1","document":"NF-TESTE","value":1000000,"dueDate":"2026-11-15","extensionDate":None,"extensionHistory":[],"extensionInfo":"","legacyAbatement":None,"origin":"manual","plannedId":None,"effectivationId":None,"categoryId":"k1","notes":"","status":"ativo"}],
  "platforms":[{"id":"ml","name":"ML Ficticio","start":"2026-01-01","end":None,"importedCode":None,"history":[],"defaultAccounts":[{"from":"2026-01-01","accountId":"A","at":"","note":""}]}],
  "bankAccounts":[{"id":"A","bank":"Banco A","label":"Ficticia A","holder":"","agency":"","account":"","active":True,"openingBalance":5000000,"openingDate":"2026-10-31","history":[]},
-                 {"id":"B","bank":"Banco B","label":"Ficticia B","holder":"","agency":"","account":"","active":True,"openingBalance":2000000,"openingDate":"2026-10-31","history":[]}]}
+                 {"id":"B","bank":"Banco B","label":"Ficticia B","holder":"","agency":"","account":"","active":True,"openingBalance":2000000,"openingDate":"2026-10-31","history":[]}],
+ "cards":[{"id":"K","accountId":"A","name":"Visa Ficticio","last4":"1234","closingDay":10,"dueDay":20,"active":True}]}
 state={"v":1,"data":json.dumps(doc),"commits":0}
 def sv(s): return {"t":1,"s":s.replace("\\","\\\\").replace('"','\\"')}
 def wrap(v): return json.dumps({"t":10,"i":0,"p":{"k":["result","error","context"],"v":[v,{"t":2,"s":1},{"t":11,"i":99,"p":{"k":[],"v":[]},"o":0}]},"o":0})
@@ -78,6 +79,17 @@ async def main():
     await page.get_by_role("row", name=re.compile("Ficticia B")).get_by_role("button", name="Estornar").click(); await page.wait_for_timeout(2500)
     print("2 estornos:", [(x["accountId"], bool(x["reversedAt"]), x["reversalNote"]) for x in D()["payments"]])
     await page.screenshot(path=f"{SHOTS}/3_estorno.png")
+    # 2b) pagar a pendência (4.000) com cartão em 2x
+    await page.goto("http://localhost:8080/bancos"); await page.wait_for_timeout(3000)
+    await page.get_by_role("button", name="Cartões e faturas").click()
+    await page.get_by_role("button", name="Pagar lançamento existente").click()
+    dlg=page.get_by_role("dialog"); opt=await page.locator("#cob-titles option").first.get_attribute("value")
+    await dlg.get_by_label("Buscar lançamento").fill(opt)
+    await dlg.locator("input[type=number]").fill("2")
+    await page.screenshot(path=f"{SHOTS}/3b_cartao.png")
+    await dlg.get_by_role("button", name="Revisar e confirmar").click(); await page.get_by_role("button", name="Confirmar pagamento no cartão").click(); await page.wait_for_timeout(2500)
+    dd=D(); print("2b cartão:", [(p["method"] if "method" in p else "banco", p["amount"], bool(p["reversedAt"])) for p in dd["payments"]], "| parcelas cartão:", [(e["value"], e["baseDate"]) for e in dd["expenses"] if e.get("cardOpId")])
+    await page.screenshot(path=f"{SHOTS}/3c_cartao_lista.png")
     # 3) recebimento com conta padrão e override
     await page.goto("http://localhost:8080/recebimentos"); await page.wait_for_timeout(3000)
     await page.get_by_role("button", name="+ Recebimento").click(); await page.wait_for_timeout(300)
@@ -111,7 +123,8 @@ async def main():
     await page.get_by_role("link", name="Lançamentos").click(); await page.wait_for_timeout(1500)
     await page.get_by_role("button", name=re.compile(r"^Efetivado")).click(); await page.get_by_role("button", name="Ações da linha").first.click()
     await page.screenshot(path=f"{SHOTS}/7_sim_pag.png")
-    print("5 pagamento em simulação desabilitado:", await page.get_by_role("menuitem", name="Registrar pagamento").evaluate("e => e.disabled || e.hasAttribute(\"data-disabled\") || e.getAttribute(\"aria-disabled\")===\"true\""))
+    mi=page.get_by_role("menuitem", name="Registrar pagamento")
+    print("5 pagamento em simulação indisponível:", (await mi.count())==0 or await mi.first.evaluate("e => e.disabled || e.hasAttribute('data-disabled')"))
     print("erros de página:", errs)
     await b.close()
 asyncio.run(main())

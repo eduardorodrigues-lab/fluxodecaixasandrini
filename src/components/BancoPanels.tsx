@@ -74,7 +74,7 @@ export function BaixasList({ d, kind, titleId, canReverse, onReverse }: { d: Sce
   const ps = d.payments.filter((p) => p.titleKind === kind && p.titleId === titleId);
   if (!ps.length) return <span className="text-muted-foreground">Sem baixas.</span>;
   return <table className="tbl"><thead><tr><th>Data</th><th>Conta</th><th className="num">Valor</th><th>Situação</th><th>Observação</th><th /></tr></thead>
-    <tbody>{ps.map((p) => <tr key={p.id}><td>{fmtDate(p.date)}</td><td>{p.accountId ? accountName(d, p.accountId) : <span className="tag tag-warn">{NO_ACCOUNT}</span>}</td><td className="num">{fmtBRL(p.amount)}</td>
+    <tbody>{ps.map((p) => <tr key={p.id}><td>{fmtDate(p.date)}</td><td>{p.method === "cartao" ? <span className="tag tag-ok">Quitado com cartão</span> : p.accountId ? accountName(d, p.accountId) : <span className="tag tag-warn">{NO_ACCOUNT}</span>}</td><td className="num">{fmtBRL(p.amount)}</td>
       <td>{p.reversedAt ? <span className="tag tag-err" title={p.reversalNote}>Estornada em {fmtDate(p.reversedAt.slice(0, 10))}</span> : <span className="tag tag-ok">Ativa</span>}</td><td>{p.reversedAt ? p.reversalNote : p.note}</td>
-      <td>{!p.reversedAt && canReverse && <button className="btn" onClick={() => { const n = prompt("Motivo do estorno desta baixa:"); if (n) onReverse(p.id, n); }}>Estornar</button>}</td></tr>)}</tbody></table>;
+      <td>{!p.reversedAt && canReverse && p.method !== "cartao" && <button className="btn" onClick={() => { const n = prompt("Motivo do estorno desta baixa:"); if (n) onReverse(p.id, n); }}>Estornar</button>}</td></tr>)}</tbody></table>;
 }

@@ -5,7 +5,7 @@ import { CatSubFields, Field, Section, SidePanel, SupplierSearch } from "@/compo
 import { AccountSearch } from "@/components/BancoPanels";
 import {
   accountBalance, accountName, addAccount, addCard, addTransfer, cardPurchases, confirmBankTransition, consolidatedBalance, createInvoice,
-  invoiceDueDate, invoiceMonthFor, movements, NO_ACCOUNT, previewBankTransition, reverseTransfer, revertBankTransition, updateAccount, type AccountInput,
+  addCardPurchase, cancelInvoice, cardInstallments, coverTitleWithCard, invoiceDueDate, invoiceMonthFor, reverseCardOp, titleOpen, movements, NO_ACCOUNT, previewBankTransition, reverseTransfer, revertBankTransition, updateAccount, type AccountInput,
 } from "@/lib/engine/banco";
 import { todaySP } from "@/lib/engine/actions";
 import type { BankAccount, CategoryKind, ScenarioData } from "@/lib/engine/types";
@@ -33,7 +33,7 @@ function Page() {
   const d = active.data;
   const [tab, setTab] = useState<Tab>("contas");
   const [err, setErr] = useState("");
-  const [panel, setPanel] = useState<null | { t: "conta"; acc?: BankAccount } | { t: "cartao"; accountId: string } | { t: "transf" } | { t: "compra" } | { t: "fatura" }>(null);
+  const [panel, setPanel] = useState<null | { t: "conta"; acc?: BankAccount } | { t: "cartao"; accountId: string } | { t: "transf" } | { t: "compra" } | { t: "cobrir" } | { t: "fatura" }>(null);
   const act = (fn: (x: ScenarioData) => void) => { const e = update(fn); setErr(e ?? ""); return !e; };
   const done = (fn: (x: ScenarioData) => void) => { if (act(fn)) setPanel(null); };
   return (
@@ -41,20 +41,21 @@ function Page() {
       <PageHeader title="Bancos">
         {tab === "contas" && <button className="btn btn-primary" onClick={() => setPanel({ t: "conta" })}>+ Conta</button>}
         {tab === "transf" && <button className={`btn ${active.isBase ? "btn-primary" : "btn-danger"}`} onClick={() => setPanel({ t: "transf" })}>{active.isBase ? "+ Transferência" : "+ Transferência simulada"}</button>}
-        {tab === "cartoes" && <><button className="btn" onClick={() => setPanel({ t: "compra" })}>+ Compra no cartão</button><button className="btn btn-primary" onClick={() => setPanel({ t: "fatura" })}>Fechar fatura</button></>}
+        {tab === "cartoes" && <><button className="btn btn-primary" onClick={() => setPanel({ t: "cobrir" })}>Pagar lançamento existente</button><button className="btn" onClick={() => setPanel({ t: "compra" })}>Adicionar nova compra</button><button className="btn btn-primary" onClick={() => setPanel({ t: "fatura" })}>Fechar fatura</button></>}
       </PageHeader>
       <div className="flex flex-wrap gap-1 border-b border-border">{TABS.map((t) => <button key={t.k} className={`px-3 py-1.5 text-xs ${tab === t.k ? "border-b-2 border-primary font-semibold text-primary" : "text-muted-foreground"}`} onClick={() => setTab(t.k)}>{t.l}</button>)}</div>
       {err && <div className="rounded border border-destructive p-2 text-xs text-destructive">{err}</div>}
       {tab === "contas" && <Contas d={d} onEdit={(acc) => setPanel({ t: "conta", acc })} onCard={(accountId) => setPanel({ t: "cartao", accountId })} onToggle={(a) => act((x) => updateAccount(x, a.id, { active: !a.active }, a.active ? "inativada" : "reativada", now()))} />}
       {tab === "extrato" && <Extrato d={d} />}
       {tab === "transf" && <Transfers d={d} sim={!active.isBase} canReverse onReverse={(id, n) => act((x) => reverseTransfer(x, id, n, now()))} />}
-      {tab === "cartoes" && <Cartoes d={d} />}
+      {tab === "cartoes" && <Cartoes d={d} onReverse={(id, n) => act((x) => reverseCardOp(x, id, n, now()))} onCancelInvoice={(id, n) => act((x) => cancelInvoice(x, id, n))} />}
       {tab === "saldo" && <SaldoInicial d={d} isBase={active.isBase} onConfirm={(note) => act((x) => confirmBankTransition(x, user?.email ?? "", note, now()))} onRevert={() => confirm("Voltar a usar o saldo inicial legado no fluxo?") && act((x) => revertBankTransition(x))} />}
 
       {panel?.t === "conta" && <ContaPanel d={d} acc={panel.acc} onCancel={() => setPanel(null)} onSave={(a, note) => done((x) => (panel.acc ? updateAccount(x, panel.acc.id, a, note, now()) : addAccount(x, uid(), a, now())))} />}
       {panel?.t === "cartao" && <CartaoPanel onCancel={() => setPanel(null)} onSave={(c) => done((x) => addCard(x, { id: uid(), accountId: panel.accountId, active: true, ...c }))} />}
       {panel?.t === "transf" && <TransfPanel d={d} sim={!active.isBase} onCancel={() => setPanel(null)} onSave={(t) => done((x) => addTransfer(x, { id: uid(), ...t, at: now(), by: user?.email ?? "" }))} />}
-      {panel?.t === "compra" && <CompraCartaoPanel d={d} onCancel={() => setPanel(null)} onSave={(e) => done((x) => { x.expenses.push({ id: uid(), ...e, termDays: null, extensionDate: null, extensionHistory: [], status: "ativo", invoiceId: null }); })} />}
+      {panel?.t === "compra" && <CompraCartaoPanel d={d} onCancel={() => setPanel(null)} onSave={(e) => done((x) => addCardPurchase(x, { id: uid(), at: now(), by: user?.email ?? "", ...e }))} />}
+      {panel?.t === "cobrir" && <CoberturaPanel d={d} onCancel={() => setPanel(null)} onSave={(e) => done((x) => coverTitleWithCard(x, { id: uid(), at: now(), by: user?.email ?? "", ...e }))} />}
       {panel?.t === "fatura" && <FaturaPanel d={d} onCancel={() => setPanel(null)} onSave={(f) => done((x) => createInvoice(x, { id: uid(), ...f }))} />}
     </div>
   );
@@ -187,23 +188,80 @@ function Extrato({ d }: { d: ScenarioData }) {
 }
 const prevDay = (s: string) => new Date(Date.parse(s + "T00:00:00Z") - 86400000).toISOString().slice(0, 10);
 
-function Cartoes({ d }: { d: ScenarioData }) {
+function Cartoes({ d, onReverse, onCancelInvoice }: { d: ScenarioData; onReverse: (id: string, note: string) => void; onCancelInvoice: (id: string, note: string) => void }) {
   if (!d.cards.length) return <p className="text-xs text-muted-foreground">Nenhum cartão. Cadastre em Contas → “+ Cartão”.</p>;
+  const sup = (id: string) => d.suppliers.find((s) => s.id === id)?.name ?? "—";
   return <div className="space-y-3">{d.cards.map((c) => {
-    const ps = cardPurchases(d, c.id);
-    const months = [...new Set(ps.map((e) => invoiceMonthFor(c, e.baseDate)))].sort();
-    return <div key={c.id} className="card p-3"><div className="mb-2 font-semibold">{c.name} ••{c.last4} · {accountName(d, c.accountId)}</div>
-      {!months.length ? <p className="text-xs text-muted-foreground">Sem compras.</p> : <table className="tbl"><thead><tr><th>Fatura</th><th>Data</th><th>Fornecedor</th><th>Documento</th><th className="num">Valor</th><th>Situação</th></tr></thead>
-        <tbody>{months.flatMap((m) => cardPurchases(d, c.id, m).map((e) => { const inv = e.invoiceId ? d.expenses.find((x) => x.id === e.invoiceId) : null; return <tr key={e.id}><td>{fmtMonth(m)}</td><td>{fmtDate(e.baseDate)}</td><td>{d.suppliers.find((s) => s.id === e.supplierId)?.name ?? "—"}</td><td>{e.document}</td><td className="num">{fmtBRL(e.value)}</td><td>{inv ? <span className="tag tag-ok">Na fatura (venc. {fmtDate(inv.baseDate)})</span> : <span className="tag tag-warn">Aguardando fechamento</span>}</td></tr>; }))}</tbody></table>}
+    const ops = d.cardOps.filter((o) => o.cardId === c.id);
+    const invs = d.expenses.filter((e) => e.invoiceOf?.cardId === c.id);
+    return <div key={c.id} className="card space-y-2 p-3"><div className="font-semibold">{c.name} ••{c.last4} · {accountName(d, c.accountId)}</div>
+      {!ops.length ? <p className="text-xs text-muted-foreground">Sem operações.</p> : <table className="tbl"><thead><tr><th>Data</th><th>Operação</th><th>Origem</th><th className="num">Valor</th><th>Parcelas / faturas</th><th>Situação</th><th /></tr></thead>
+        <tbody>{ops.map((o) => {
+          const t = o.titleId ? (o.titleKind === "committed" ? d.committed.find((x) => x.id === o.titleId) : d.expenses.find((x) => x.id === o.titleId)) : null;
+          const ps = d.expenses.filter((e) => o.expenseIds.includes(e.id));
+          return <tr key={o.id}><td>{fmtDate(o.date)}</td><td>{o.kind === "cobertura" ? "Pagamento de lançamento existente" : "Nova compra"}</td>
+            <td>{t ? `${sup(t.supplierId)} · ${t.document || "sem documento"}` : ps[0] ? sup(ps[0].supplierId) : "—"}</td><td className="num">{fmtBRL(o.amount)}</td>
+            <td>{ps.map((e) => { const inv = e.invoiceId ? d.expenses.find((x) => x.id === e.invoiceId) : null; return <div key={e.id}>{fmtBRL(e.value)} · fatura {fmtMonth(invoiceMonthFor(c, e.baseDate))} {inv ? (inv.status === "cancelado" ? "" : "· fechada") : "· projetada"}</div>; })}</td>
+            <td>{o.reversedAt ? <span className="tag tag-err" title={o.reversalNote}>Estornada</span> : o.kind === "cobertura" ? <span className="tag tag-ok">Quitado com cartão</span> : <span className="tag tag-ok">Ativa</span>}</td>
+            <td>{!o.reversedAt && <button className="btn" onClick={() => { const n = prompt("Motivo do estorno da operação no cartão:"); if (n) onReverse(o.id, n); }}>Estornar</button>}</td></tr>;
+        })}</tbody></table>}
+      {invs.length > 0 && <table className="tbl"><thead><tr><th>Fatura</th><th>Vencimento</th><th className="num">Valor</th><th>Situação</th><th /></tr></thead>
+        <tbody>{invs.map((f) => { const paid = d.payments.filter((p) => p.titleKind === "expense" && p.titleId === f.id && !p.reversedAt).reduce((a, p) => a + p.amount, 0);
+          return <tr key={f.id}><td>{fmtMonth(f.invoiceOf!.month)}</td><td>{fmtDate(f.baseDate)}</td><td className="num">{fmtBRL(f.value)}</td><td>{f.status === "cancelado" ? "Cancelada" : paid >= f.value ? "Paga" : paid ? `Parcial (${fmtBRL(paid)})` : "Em aberto — pagar em Lançamentos → Efetivado"}</td>
+            <td>{f.status !== "cancelado" && !paid && <button className="btn" onClick={() => { const n = prompt("Motivo para reabrir (cancelar) a fatura:"); if (n) onCancelInvoice(f.id, n); }}>Reabrir fatura</button>}</td></tr>; })}</tbody></table>}
     </div>;
-  })}<p className="text-[11px] text-muted-foreground">Compras no cartão não debitam o banco. Antes do fechamento entram no fluxo projetado como projeção da fatura (no vencimento previsto); ao fechar, a fatura as substitui (sem duplicar) e a saída bancária só ocorre ao registrar o pagamento da fatura.</p></div>;
+  })}<p className="text-[11px] text-muted-foreground">Compras e lançamentos pagos no cartão não debitam o banco. Antes do fechamento entram no fluxo como projeção da fatura; ao fechar, a fatura as substitui (sem duplicar) e o banco só é debitado ao pagar a fatura (uma ou mais contas).</p></div>;
 }
 
-function CompraCartaoPanel({ d, onCancel, onSave }: { d: ScenarioData; onCancel: () => void; onSave: (e: { cardId: string; supplierId: string; categoryId: string; document: string; value: number; baseDate: string; notes: string }) => void }) {
+function CardInstPreview({ d, cardId, date, amount, n }: { d: ScenarioData; cardId: string; date: string | null; amount: number | null; n: number }) {
+  const card = d.cards.find((c) => c.id === cardId);
+  if (!card || !date || !amount || !(n >= 1)) return null;
+  return <table className="tbl"><thead><tr><th>Parcela</th><th className="num">Valor</th><th>Fatura</th><th>Vencimento previsto</th></tr></thead>
+    <tbody>{cardInstallments(card, date, amount, n).map((p) => <tr key={p.n}><td>{p.n}/{n}</td><td className="num">{fmtBRL(p.amount)}</td><td>{fmtMonth(p.month)}</td><td>{fmtDate(p.due)}</td></tr>)}</tbody></table>;
+}
+
+function CoberturaPanel({ d, onCancel, onSave }: { d: ScenarioData; onCancel: () => void; onSave: (e: { cardId: string; titleKind: "committed" | "expense"; titleId: string; date: string; amount: number; installments: number }) => void }) {
+  const sup = (id: string) => d.suppliers.find((s) => s.id === id)?.name ?? "—";
+  const opts = [
+    ...d.committed.filter((c) => c.status === "ativo").map((c) => ({ kind: "committed" as const, t: c, due: c.extensionDate ?? c.dueDate, label: `${sup(c.supplierId)} · ${c.purchaseCode || ""} ${c.document || ""}${c.parcelNo ? ` · parcela ${c.parcelNo}/${c.parcelCount}` : ""}` })),
+    ...d.expenses.filter((e) => e.status === "ativo" && !e.cardId && !e.invoiceOf).map((e) => ({ kind: "expense" as const, t: e, due: e.extensionDate ?? e.baseDate, label: `${sup(e.supplierId)} · ${e.document || "despesa"}` })),
+  ].map((o) => ({ ...o, open: titleOpen(d, o.kind, o.t.id).open })).filter((o) => o.open > 0).map((o) => ({ ...o, text: `${o.label.trim()} · venc. ${fmtDate(o.due)} · em aberto ${fmtBRL(o.open)}` }));
+  const [q, setQ] = useState(""); const sel = opts.find((o) => o.text === q);
+  const [cardId, setCard] = useState(d.cards.find((c) => c.active)?.id ?? "");
+  const [date, setDate] = useState<string | null>(todaySP()); const [amount, setAmount] = useState<number | null>(null); const [n, setN] = useState(1);
+  const [review, setReview] = useState(false);
+  const amt = amount ?? sel?.open ?? null;
+  const cat = sel ? d.categories.find((c) => c.id === sel.t.categoryId) : null;
+  const errs = [!sel && "Selecione o lançamento em aberto.", !cardId && "Selecione o cartão.", !date && "Informe a data.", !(amt && amt > 0) && "Informe o valor.", sel && amt && amt > sel.open && "Valor excede o saldo em aberto do lançamento.", !(n >= 1 && n <= 24) && "Parcelas de 1 a 24."].filter(Boolean) as string[];
+  const footer = review ? <><button className="btn" onClick={() => setReview(false)}>Voltar e editar</button><button className="btn btn-primary" onClick={() => onSave({ cardId, titleKind: sel!.kind, titleId: sel!.t.id, date: date!, amount: amt!, installments: n })}>Confirmar pagamento no cartão</button></>
+    : <><button className="btn" onClick={onCancel}>Cancelar</button><button className="btn btn-primary" disabled={errs.length > 0} title={errs.join(" ")} onClick={() => setReview(true)}>Revisar e confirmar</button></>;
+  return <SidePanel wide title={review ? "Revisar pagamento no cartão" : "Pagar lançamento existente com cartão"} sub="Liquidação do fornecedor pelo cartão — não debita banco; a dívida fica no cartão até pagar a fatura" onClose={onCancel} footer={footer}>
+    {!review && <Section n={1} title="Lançamento efetivado em aberto">
+      <input aria-label="Buscar lançamento" className="inp h-8 w-full" list="cob-titles" placeholder="Digite fornecedor ou documento" value={q} onChange={(e) => { setQ(e.target.value); setAmount(null); }} />
+      <datalist id="cob-titles">{opts.map((o) => <option key={o.kind + o.t.id} value={o.text} />)}</datalist>
+      <p className="mt-1 text-muted-foreground">Previsões (Planejada) precisam ser efetivadas antes, com revisão, em Lançamentos.</p>
+    </Section>}
+    {sel && <div className="grid grid-cols-2 gap-2 rounded-md bg-muted p-3 md:grid-cols-4">
+      <div><div className="lbl">Fornecedor</div>{sup(sel.t.supplierId)}</div><div><div className="lbl">Categoria / subgrupo</div>{cat ? `${cat.kind === "compra" ? "Compra" : "Despesa"} · ${cat.name}` : "—"}</div>
+      <div><div className="lbl">Vencimento</div>{fmtDate(sel.due)}</div><div><div className="lbl">Em aberto</div>{fmtBRL(sel.open)}</div></div>}
+    {!review && <Section n={2} title="Cartão e condição"><div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+      <Field l="Cartão"><select className="inp h-8" value={cardId} onChange={(e) => setCard(e.target.value)}>{d.cards.filter((c) => c.active).map((c) => <option key={c.id} value={c.id}>{c.name} ••{c.last4}</option>)}</select></Field>
+      <Field l="Data da compra"><DateInput value={date} onChange={setDate} /></Field>
+      <Field l="Valor no cartão"><MoneyInput className="w-full" value={amt} onChange={setAmount} /></Field>
+      <Field l="Parcelas no cartão"><input className="inp h-8" type="number" min={1} max={24} value={n} onChange={(e) => setN(Number(e.target.value))} /></Field>
+    </div></Section>}
+    <Section title="Parcelas nas faturas"><CardInstPreview d={d} cardId={cardId} date={date} amount={amt} n={n} />
+      {sel && amt && amt <= sel.open && <p className="mt-2">{amt === sel.open ? "O lançamento ficará “Quitado com cartão”." : `Restam ${fmtBRL(sel.open - amt)} em aberto no vencimento original (${fmtDate(sel.due)}).`}</p>}</Section>
+    {!review && errs.length > 0 && <ul className="text-destructive">{errs.map((e) => <li key={e}>{e}</li>)}</ul>}
+  </SidePanel>;
+}
+
+function CompraCartaoPanel({ d, onCancel, onSave }: { d: ScenarioData; onCancel: () => void; onSave: (e: { cardId: string; supplierId: string; categoryId: string; document: string; amount: number; date: string; notes: string; installments: number }) => void }) {
+  const [n, setN] = useState(1);
   const [e, setE] = useState({ cardId: d.cards[0]?.id ?? "", supplierId: "", categoryId: "", document: "", value: null as number | null, baseDate: todaySP() as string | null, notes: "" });
   const [kind, setKind] = useState<CategoryKind>("despesa");
   const ok = e.cardId && e.supplierId && e.categoryId && e.value && e.value > 0 && e.baseDate;
-  return <SidePanel title="Compra no cartão" onClose={onCancel} footer={<><button className="btn" onClick={onCancel}>Cancelar</button><button className="btn btn-primary" disabled={!ok} onClick={() => onSave({ ...e, value: e.value!, baseDate: e.baseDate! })}>Confirmar</button></>}>
+  return <SidePanel wide title="Adicionar nova compra no cartão" sub="Entra no fluxo só pelas faturas do cartão — sem obrigação duplicada" onClose={onCancel} footer={<><button className="btn" onClick={onCancel}>Cancelar</button><button className="btn btn-primary" disabled={!ok} onClick={() => onSave({ cardId: e.cardId, supplierId: e.supplierId, categoryId: e.categoryId, document: e.document, notes: e.notes, amount: e.value!, date: e.baseDate!, installments: n })}>Confirmar compra</button></>}>
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
       <Field l="Cartão" full><select className="inp h-8" value={e.cardId} onChange={(x) => setE({ ...e, cardId: x.target.value })}>{d.cards.map((c) => <option key={c.id} value={c.id}>{c.name} ••{c.last4}</option>)}</select></Field>
       <Field l="Fornecedor" full><SupplierSearch d={d} value={e.supplierId} onChange={(v) => setE({ ...e, supplierId: v })} /></Field>
@@ -211,8 +269,10 @@ function CompraCartaoPanel({ d, onCancel, onSave }: { d: ScenarioData; onCancel:
       <Field l="Documento"><input className="inp h-8" value={e.document} onChange={(x) => setE({ ...e, document: x.target.value })} /></Field>
       <Field l="Valor"><MoneyInput className="w-full" value={e.value} onChange={(v) => setE({ ...e, value: v })} /></Field>
       <Field l="Data da compra"><DateInput value={e.baseDate} onChange={(v) => setE({ ...e, baseDate: v })} /></Field>
+      <Field l="Parcelas no cartão"><input className="inp h-8" type="number" min={1} max={24} value={n} onChange={(x) => setN(Number(x.target.value))} /></Field>
       <Field l="Descrição" full><input className="inp h-8" value={e.notes} onChange={(x) => setE({ ...e, notes: x.target.value })} /></Field>
     </div>
+    <CardInstPreview d={d} cardId={e.cardId} date={e.baseDate} amount={e.value} n={n} />
   </SidePanel>;
 }
 

@@ -224,6 +224,7 @@ export function computeFlow(data: ScenarioData, opt: FlowOptions): FlowResult {
     const ts = titleStatus(value, status, paymentsFor(data, kind, id));
     const show = pass(supplierId);
     for (const pg of ts.payments) {
+      if (pg.method === "cartao") continue; // liquidado no cartão: a saída de caixa vem das parcelas/fatura do cartão
       if (pg.date < p.startDate) { prePaid += pg.amount; continue; }
       if (show) push(pg.date, { ...base, source, amount: pg.amount, paid: true, label: `${base.label} · pago`, note: `pagamento registrado${pg.note ? " · " + pg.note : ""}` });
     }
