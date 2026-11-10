@@ -184,3 +184,12 @@ Script de reprodução local: `bun scripts/validate-ceo-xlsm.ts <arquivo> /tmp/r
 - Busca reconhece nome principal ou apelido e mostra o cadastro principal. Colisão com nome/apelido de outro fornecedor bloqueia a gravação; cadastros nunca são unidos automaticamente.
 - Inativação/reativação são eventos com data de início, usuário e horário. A partir da inativação, o fornecedor não é oferecido nem aceito em novos lançamentos; registros e obrigações existentes continuam consultáveis e operáveis.
 - Exclusão só ocorre sem condições, lançamentos ou histórico de importação vinculados; com vínculo é bloqueada e oferece inativação, sem apagar dados relacionados. Alterações aparecem no Histórico / Auditoria com antes/depois.
+
+## Efetivação com edição manual (protótipo aprovado — 10/11/2026)
+- Ações: **Efetivar esta parcela** (linha) e **Efetivar documento** (seleção de parcelas ainda planejadas); **Ajustar planejamento** replaneja sem efetivar (substitui a antiga área "Definir restante").
+- Carrega valores/vencimentos previstos atuais; não aplica a condição vigente do fornecedor. Reparcelar por condição é opcional e pede confirmação antes de apagar ajustes.
+- Data da efetivação (negócio) é distinta do vencimento e do registro de auditoria.
+- Previsão substituída ≠ valor efetivado: substituir integralmente 1.000 por 900 não gera saldo de 100; saldo só por parcial explícito ("Manter saldo não substituído em Planejada").
+- Sugestões só ao clicar "Aplicar sugestão" (confirmação se houver valores personalizados; datas preservadas): Manter (9.900), Igualar — só com uma parcela de origem (9.000), Aplicar diferença também às restantes (9.800; redução adicional explícita), Manter total original (10.000). Centavos inteiros, resíduo na última; sem restantes nada é redistribuído. Quando a quantidade foi alterada manualmente, a sugestão usa as parcelas presentes na tabela (registrado na regra).
+- Confirmação atômica (`effectivateManual` em `src/lib/efetivacao.ts`): títulos efetivados + restante por parcela com IDs estáveis (`remainingOverride.items`), sem abatimento FIFO; antes/depois por parcela gravado na efetivação e exibido em Detalhes. Previsão original, efetivações anteriores e pagamentos preservados; efetivar não paga. Reversão restaura o estado anterior, exigindo reverter primeiro efetivações manuais posteriores.
+- Pendência: o antes/depois aparece em Lançamentos → Detalhes e no Histórico; ainda não há visão dedicada em Consultas.

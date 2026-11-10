@@ -146,6 +146,14 @@ export function materializePlanned(d: ScenarioData, plannedId: string): void {
   pl.terms = null;
 }
 export function editPlannedParcel(d: ScenarioData, plannedId: string, idx: number, patch: { amount?: number; date?: string }): void {
+  const ov = d.planned.find((p) => p.id === plannedId)?.remainingOverride;
+  if (ov?.items?.length) {
+    const it = ov.items[idx]; if (!it) throw new Error("Parcela não encontrada.");
+    if (patch.amount !== undefined) { if (!(patch.amount > 0)) throw new Error("Valor deve ser positivo."); it.amount = patch.amount; }
+    if (patch.date) it.date = patch.date;
+    ov.value = ov.items.reduce((a, x) => a + x.amount, 0); ov.dates = ov.items.map((x) => x.date);
+    return;
+  }
   materializePlanned(d, plannedId);
   const pl = d.planned.find((p) => p.id === plannedId)!;
   const it = pl.installments![idx];

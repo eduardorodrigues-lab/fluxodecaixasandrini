@@ -119,7 +119,11 @@ export function distributePlanned(pl: Planned, sup: Supplier | undefined, commit
   if (pl.status === "encerrado")
     return { ...base, parcels: [], count: 0, P: 0, Q: 0, R: 0, health: "ok", remaining: 0, mode: "encerrado", warnings };
   if (pl.remainingOverride) {
-    const { value, dates } = pl.remainingOverride;
+    const { value, dates, items } = pl.remainingOverride;
+    if (items?.length) {
+      if (value < 0) warnings.push({ code: "PLAN_NEGATIVO", severity: "alerta", refId: pl.id, message: `Planejada ${pl.purchaseCode}: restante confirmado negativo (mantido).` });
+      return { ...base, parcels: items.map((it, i) => ({ date: it.date, amount: it.amount, exact: it.amount, term: null, idx: i })), count: items.length, P: 0, Q: 0, R: 0, health: "ok", roundingDiff: 0, remaining: items.reduce((a, x) => a + x.amount, 0), mode: "restante_confirmado", warnings };
+    }
     if (!dates.length) return empty(`Planejada ${pl.purchaseCode}: restante confirmado sem datas.`);
     const { parts, residual } = splitCents(value, dates.length);
     if (residual) warnings.push({ code: "ARRED", severity: "info", refId: pl.id, message: `Planejada ${pl.purchaseCode}: ajuste de ${residual} centavo(s) na última parcela do restante.` });

@@ -28,3 +28,5 @@
 - Banking (accounts, cards, platform default-account periods, multi-account payment batches, transfers, balances, opening-balance transition) lives in pure functions in `src/lib/engine/banco.ts`, stored in the same org document; accounts are stamped on records at write time, never recomputed — keeps history stable when defaults change.
 - Supplier aliases/status/deletion rules live in pure helpers in `src/lib/fornecedores.ts`; supplier IDs are stable and links are never cascade-deleted — preserves history and prevents silent merges.
 - Supplier condition edits/cancellations live in `src/lib/condicoes.ts`; retain prior versions and cancelled periods, require explicit replacement/no-default, and freeze legacy planned terms before changing defaults — prevents recalculating existing obligations.
+
+- Manual effectivation/replanning lives in pure helpers in `src/lib/efetivacao.ts`; remaining planned parcels are stored as `remainingOverride.items` with stable IDs and before/after snapshots on the effectivation — avoids FIFO abatement on the wrong parcel.

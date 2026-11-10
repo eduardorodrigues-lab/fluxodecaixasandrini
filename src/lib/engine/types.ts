@@ -34,11 +34,12 @@ export interface Planned {
   baseDate: string; categoryId: string; notes: string;
   condition?: { name: string; terms: (number | null)[] } | null; // condição usada na previsão (histórico)
   status: Status | "encerrado"; // encerrado = efetivação concluída encerrou o saldo previsto
-  remainingOverride: { value: number; dates: string[] } | null; // restante confirmado após efetivação parcial
+  remainingOverride: { value: number; dates: string[]; items?: RemainingItem[] } | null; // restante confirmado; items = parcelas com valor/data próprios e ID estável
   terms?: (number | null)[] | null; // prazos F:O da própria linha (importados); null = usa os do fornecedor
   origin?: Origin | null;
   installments?: PlannedInstallment[] | null; // parcelas próprias (painel Nova nota); null = prazos
 }
+export interface RemainingItem { id: string; amount: number; date: string }
 export interface PlannedInstallment { amount: number; date: string; extensionDate: string | null; extensionHistory: ExtensionEvent[] }
 export interface NoteRef { noteId?: string; parcelNo?: number; parcelCount?: number }
 // EFETIVADO/REALIZADO = compra real ou pedido. NÃO é pagamento (ver payments).
@@ -73,6 +74,7 @@ export interface Effectivation {
   committedIds: string[];
   linkedLegacy?: boolean; // efetivação que reclassificou um título legado existente (sem criar novo)
   prev: { status: Planned["status"]; remainingOverride: Planned["remainingOverride"] };
+  manual?: { effectiveDate: string; before: RemainingItem[]; after: RemainingItem[]; selected: string[]; rule: string } | null; // efetivação com edição manual (antes/depois por parcela)
   reversedAt: string | null; reversalNote: string;
 }
 // Baixa = registro de pagamento realizado (NÃO é transferência bancária).

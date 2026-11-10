@@ -114,6 +114,8 @@ export function reverseEffectivation(d: ScenarioData, effId: string, note: strin
   if (e.reversedAt) return d;
   for (const cid of e.committedIds)
     if (paymentsFor(d, "committed", cid).some((p) => !p.reversedAt)) throw new Error("Há pagamento ativo em parcela desta efetivação: estorne o pagamento antes.");
+  if (e.manual && d.effectivations.some((x) => x.plannedId === e.plannedId && !x.reversedAt && d.effectivations.indexOf(x) > d.effectivations.indexOf(e)))
+    throw new Error("Há efetivação posterior nesta previsão: reverta a mais recente antes.");
   for (const c of d.committed) if (e.committedIds.includes(c.id)) {
     if (e.linkedLegacy) { c.plannedId = null; c.effectivationId = null; c.origin = "legado"; c.notes = `${c.notes} · vínculo desfeito: ${note}`; }
     else { c.status = "cancelado"; c.notes = `${c.notes} · revertida: ${note}`; }
@@ -122,7 +124,8 @@ export function reverseEffectivation(d: ScenarioData, effId: string, note: strin
   // (substituted pode diferir do valor efetivado; registros antigos sem o campo usam o valor).
   const pl = d.planned.find((p) => p.id === e.plannedId);
   if (pl) {
-    if (e.kind === "concluida" && pl.status === "encerrado") { pl.status = e.prev.status === "encerrado" ? "ativo" : e.prev.status; pl.remainingOverride = e.prev.remainingOverride; }
+    if (e.manual) { pl.status = e.prev.status; pl.remainingOverride = e.prev.remainingOverride; }
+    else if (e.kind === "concluida" && pl.status === "encerrado") { pl.status = e.prev.status === "encerrado" ? "ativo" : e.prev.status; pl.remainingOverride = e.prev.remainingOverride; }
     else if (pl.remainingOverride) pl.remainingOverride = { ...pl.remainingOverride, value: pl.remainingOverride.value + (e.substituted ?? e.value) };
   }
   e.reversedAt = at; e.reversalNote = note;

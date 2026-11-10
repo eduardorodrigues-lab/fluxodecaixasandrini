@@ -1,0 +1,124 @@
+// Efetivação com edição manual: rascunho puro (parcelas selecionadas → Efetivado; demais → Planejada editável).
+// Sugestões automáticas só ao chamar applySuggestion; nunca recalculam sobre edições sem pedido explícito.
+import type { Committed, RemainingItem, ScenarioData } from "@/lib/engine/types";
+import { distributePlanned, splitCents } from "@/lib/engine/engine";
+
+export interface Parcel { key: string; amount: number; date: string } // parcela atual planejada, chave estável
+export interface EffLine { amount: number | null; date: string | null }
+export interface RestLine { id: string; amount: number | null; date: string | null; origin: string | null } // origin = key da parcela atual (null = nova)
+export type Suggestion = "manter" | "igualar" | "diferenca" | "total";
+
+const ISO = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Parcelas atuais ainda planejadas com chave estável (ID do restante, ou índice da parcela própria/prazo). */
+export function currentParcels(d: ScenarioData, plannedId: string): Parcel[] {
+  const pl = d.planned.find((p) => p.id === plannedId);
+  if (!pl || pl.status !== "ativo") return [];
+  const items = pl.remainingOverride?.items;
+  if (items?.length) return items.map((i) => ({ key: i.id, amount: i.amount, date: i.date }));
+  const r = distributePlanned(pl, d.suppliers.find((s) => s.id === pl.supplierId), d.committed, d.params.profile, d.effectivations);
+  return r.parcels.map((p, i) => ({ key: `${pl.id}#${p.idx ?? i}`, amount: p.amount, date: p.date }));
+}
+
+export function initDraft(parcels: Parcel[], selected: string[]) {
+  const sel = parcels.filter((p) => selected.includes(p.key));
+  return {
+    eff: sel.map((p): EffLine => ({ amount: p.amount, date: p.date })),
+    rest: parcels.filter((p) => !selected.includes(p.key)).map((p): RestLine => ({ id: p.key, amount: p.amount, date: p.date, origin: p.key })),
+  };
+}
+
+const sum = (xs: (number | null)[]) => xs.reduce<number>((a, x) => a + (x ?? 0), 0);
+
+/** Sugestão explícita. origTotal = total planejado antes; substituted = previsão substituída; effTotal = efetivado. Preserva datas. */
+export function applySuggestion(mode: Suggestion, rest: RestLine[], ctx: { parcels: Parcel[]; selected: string[]; substituted: number; effTotal: number }): RestLine[] {
+  if (!rest.length) return rest; // sem restantes: nada a redistribuir
+  const orig = (l: RestLine) => ctx.parcels.find((p) => p.key === l.origin)?.amount ?? l.amount ?? 0;
+  const spread = (target: number) => { const { parts } = splitCents(target, rest.length); return rest.map((l, i) => ({ ...l, amount: parts[i]! })); };
+  const restOrig = rest.reduce((a, l) => a + orig(l), 0);
+  if (mode === "manter") return rest.map((l) => ({ ...l, amount: orig(l) }));
+  if (mode === "igualar") {
+    if (ctx.selected.length !== 1) throw new Error("Igualar valor só se aplica quando uma única parcela de origem é efetivada.");
+    return rest.map((l) => ({ ...l, amount: ctx.effTotal }));
+  }
+  if (mode === "diferenca") return spread(restOrig - (ctx.substituted - ctx.effTotal));
+  const origTotal = ctx.parcels.reduce((a, p) => a + p.amount, 0);
+  return spread(origTotal - ctx.effTotal);
+}
+
+export function draftTotals(eff: EffLine[], rest: RestLine[], parcels: Parcel[]) {
+  const effTotal = sum(eff.map((e) => e.amount)), restTotal = sum(rest.map((r) => r.amount));
+  return { before: parcels.reduce((a, p) => a + p.amount, 0), effTotal, restTotal, after: effTotal + restTotal };
+}
+
+export function validateDraft(eff: EffLine[], rest: RestLine[], substituted: number | null, selectedTotal: number, effectiveDate: string | null): string[] {
+  const e: string[] = [];
+  if (!effectiveDate || !ISO.test(effectiveDate)) e.push("Informe a data da efetivação.");
+  if (eff.length && eff.some((l) => !(l.amount !== null && Number.isInteger(l.amount) && l.amount > 0))) e.push("Toda linha efetivada precisa de valor positivo.");
+  if (eff.some((l) => !l.date || !ISO.test(l.date))) e.push("Toda linha efetivada precisa de vencimento.");
+  if (rest.some((l) => !(l.amount !== null && Number.isInteger(l.amount) && l.amount > 0))) e.push("Parcelas planejadas precisam de valor positivo (remova as que não devem continuar).");
+  if (rest.some((l) => !l.date || !ISO.test(l.date))) e.push("Parcelas planejadas precisam de vencimento.");
+  if (eff.length) {
+    if (substituted === null || substituted < 0) e.push("Informe a previsão substituída (zero é válido).");
+    else if (substituted > selectedTotal) e.push("A previsão substituída não pode exceder as parcelas selecionadas.");
+  }
+  return e;
+}
+
+/** Comparação antes/depois por parcela (estável por chave). */
+export function diffParcels(parcels: Parcel[], selected: string[], rest: RestLine[]) {
+  const rows: { kind: "efetivada" | "mantida" | "alterada" | "removida" | "adicionada"; before: Parcel | null; after: RestLine | null }[] = [];
+  for (const p of parcels) {
+    if (selected.includes(p.key)) { rows.push({ kind: "efetivada", before: p, after: null }); continue; }
+    const r = rest.find((l) => l.origin === p.key);
+    rows.push({ kind: !r ? "removida" : r.amount === p.amount && r.date === p.date ? "mantida" : "alterada", before: p, after: r ?? null });
+  }
+  for (const r of rest) if (!r.origin || !parcels.some((p) => p.key === r.origin)) rows.push({ kind: "adicionada", before: null, after: r });
+  return rows;
+}
+
+export interface ManualEffInput {
+  id: string; plannedId: string; at: string; effectiveDate: string; document: string; purchaseCode: string;
+  selected: string[]; eff: { amount: number; date: string }[]; rest: { id: string; amount: number; date: string }[];
+  substituted: number; rule: string;
+}
+/** Aplicação ATÔMICA (sobre rascunho): cria títulos efetivados e redefine o restante por parcela com IDs estáveis. Não paga. */
+export function effectivateManual(d: ScenarioData, inp: ManualEffInput): void {
+  if (d.effectivations.some((e) => e.id === inp.id)) return; // idempotente
+  const pl = d.planned.find((p) => p.id === inp.plannedId);
+  if (!pl || pl.status !== "ativo") throw new Error("Previsão não está ativa.");
+  const r = distributePlanned(pl, d.suppliers.find((s) => s.id === pl.supplierId), d.committed, d.params.profile, d.effectivations);
+  if (r.health !== "ok") throw new Error("Conciliação pendente nesta previsão: resolva antes de efetivar.");
+  const parcels = currentParcels(d, pl.id);
+  if (inp.selected.some((k) => !parcels.some((p) => p.key === k))) throw new Error("Parcela selecionada não está mais planejada.");
+  const errs = validateDraft(inp.eff, inp.rest.map((x) => ({ ...x, origin: null })), inp.substituted, parcels.filter((p) => inp.selected.includes(p.key)).reduce((a, p) => a + p.amount, 0), inp.effectiveDate);
+  if (errs.length) throw new Error(errs[0]);
+  const ids = inp.eff.map((_, n) => `${inp.id}-${n + 1}`);
+  inp.eff.forEach((l, n) => {
+    const c: Committed = {
+      id: ids[n]!, supplierId: pl.supplierId, purchaseCode: inp.purchaseCode || pl.purchaseCode, document: inp.document || pl.document || `${pl.purchaseCode}/${n + 1}`, value: l.amount,
+      dueDate: l.date, extensionDate: null, extensionHistory: [], extensionInfo: "", legacyAbatement: null,
+      origin: "efetivacao", plannedId: pl.id, effectivationId: inp.id, categoryId: pl.categoryId, notes: `Efetivada em ${inp.effectiveDate.split("-").reverse().join("/")}`, status: "ativo", condition: null,
+      noteId: inp.id, parcelNo: n + 1, parcelCount: inp.eff.length,
+    };
+    d.committed.push(c);
+  });
+  const before: RemainingItem[] = parcels.map((p) => ({ id: p.key, amount: p.amount, date: p.date }));
+  const after: RemainingItem[] = inp.rest.map((x) => ({ id: x.id, amount: x.amount, date: x.date }));
+  const value = inp.eff.reduce((a, x) => a + x.amount, 0);
+  d.effectivations.push({ id: inp.id, plannedId: pl.id, at: inp.at, kind: after.length ? "parcial" : "concluida", value, substituted: inp.substituted, committedIds: ids,
+    prev: { status: pl.status, remainingOverride: pl.remainingOverride ? structuredClone(pl.remainingOverride) : null }, manual: { effectiveDate: inp.effectiveDate, before, after, selected: [...inp.selected], rule: inp.rule }, reversedAt: null, reversalNote: "" });
+  if (!after.length) { pl.status = "encerrado"; pl.remainingOverride = null; }
+  else pl.remainingOverride = { value: after.reduce((a, x) => a + x.amount, 0), dates: after.map((x) => x.date), items: after };
+}
+
+/** "Ajustar planejamento": redefine as parcelas ainda planejadas (valores/datas/quantidade), sem efetivar. */
+export function adjustPlanned(d: ScenarioData, plannedId: string, rest: { id: string; amount: number; date: string }[]): void {
+  const pl = d.planned.find((p) => p.id === plannedId);
+  if (!pl || pl.status !== "ativo") throw new Error("Previsão não está ativa.");
+  if (!rest.length) throw new Error("Mantenha ao menos uma parcela ou use Encerrar restante.");
+  const errs = validateDraft([], rest.map((x) => ({ ...x, origin: null })), 0, 0, "2000-01-01");
+  if (errs.length) throw new Error(errs[0]);
+  const items = rest.map((x) => ({ id: x.id, amount: x.amount, date: x.date }));
+  pl.remainingOverride = { value: items.reduce((a, x) => a + x.amount, 0), dates: items.map((x) => x.date), items };
+}
