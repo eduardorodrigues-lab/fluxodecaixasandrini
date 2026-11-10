@@ -119,6 +119,8 @@ describe("cartões", () => {
     expect(invoiceMonthFor(d.cards[0]!, "2026-11-11")).toBe("2026-12");
     for (const [id, v] of [["e1", 1_000], ["e2", 2_000]] as const) d.expenses.push({ id, supplierId: "s1", document: id, value: v, baseDate: "2026-11-05", termDays: null, extensionDate: null, extensionHistory: [], categoryId: "", notes: "", status: "ativo", cardId: "k" });
     expect(() => registerPaymentBatch(d, { batchId: "x", titleKind: "expense", titleId: "e1", note: "", lines: [{ accountId: "A", amount: 1_000, date: "2026-11-05" }] })).toThrow(/fatura/);
+    // antes do fechamento: projeção da fatura no vencimento previsto (não some do caixa projetado)
+    expect(computeFlow(d, { start: "2026-11-01", end: "2026-11-30" }).days.find((x) => x.date === "2026-11-20")!.despesa).toBe(3_000);
     createInvoice(d, { id: "inv", cardId: "k", month: "2026-11", dueDate: "2026-11-20", supplierId: "s1", categoryId: "" });
     expect(() => createInvoice(d, { id: "inv2", cardId: "k", month: "2026-11", dueDate: "2026-11-20", supplierId: "s1", categoryId: "" })).toThrow(/já existe/);
     const day = computeFlow(d, { start: "2026-11-01", end: "2026-11-30" }).days.find((x) => x.date === "2026-11-20")!;
