@@ -10,7 +10,7 @@ import { applyNote, editCommittedNote, editPlannedParcel, extendPlannedParcel, p
 import { committedDate, distributePlanned, expenseDate, paymentsFor, splitCents, titleStatus } from "@/lib/engine/engine";
 import { closePlanned, confirmExtension, effectivate, linkLegacyTitle, plannedSummary, reopenPlanned, reverseEffectivation, reversePayment, setPlannedRemaining, suggestEffectivation, todaySP } from "@/lib/engine/actions";
 import type { CategoryKind, ExtensionEvent, Planned, ScenarioData } from "@/lib/engine/types";
-import { addDays, fmtDate, parseBRDate } from "@/lib/dates";
+import { addDays, fmtDate } from "@/lib/dates";
 import { fmtBRL } from "@/lib/money";
 import { uid, useApp } from "@/lib/store";
 import { Consultas } from "@/components/Consultas";
@@ -331,9 +331,8 @@ function EfetivarPanel({ data, planned, onDone, onCancel, userEmail }: { data: S
 function Timeline({ d, p, act }: { d: ScenarioData; p: Planned; act: (fn: (x: ScenarioData) => void, what: string) => boolean }) {
   const s = plannedSummary(d, p.id);
   const [remV, setRemV] = useState<number | null>(s.remaining);
-  const [remD, setRemD] = useState(s.remainingDates.map(fmtDate).join(", "));
+  const [dates, setDates] = useState<(string | null)[]>(s.remainingDates);
   const [link, setLink] = useState("");
-  const dates = remD.split(/[,;\s]+/).filter(Boolean).map(parseBRDate);
   const at = () => new Date().toISOString();
   const K = ({ l, v, neg }: { l: string; v: number; neg?: boolean }) => <div><div className="lbl">{l}</div><div className={`num font-semibold ${neg ? "neg" : ""}`}>{fmtBRL(v)}</div></div>;
   return (
@@ -351,7 +350,8 @@ function Timeline({ d, p, act }: { d: ScenarioData; p: Planned; act: (fn: (x: Sc
           {s.remainingDates.map((dt, i) => <tr key={"r" + i}><td>{i === 0 ? "Restante previsto" : ""}</td><td /><td>previsão</td><td>{fmtDate(dt)}</td><td className="num" colSpan={1}>{i === 0 ? fmtBRL(s.remaining) : ""}</td><td /><td /><td>{i === 0 ? `${s.remainingDates.length} data(s)` : ""}</td><td /></tr>)}
         </tbody></table>
       {p.status === "ativo" ? <div className="flex flex-wrap items-end gap-3">
-        <span>Restante: valor <MoneyInput value={remV} onChange={setRemV} /> datas <input className="inp w-56" value={remD} onChange={(e) => setRemD(e.target.value)} /></span>
+        <span>Restante: valor <MoneyInput value={remV} onChange={setRemV} /></span>
+        <div className="flex flex-wrap gap-2">{dates.map((date, i) => <label key={i} className="flex flex-col gap-1">Data {i + 1}<DateInput value={date} onChange={(v) => setDates((old) => old.map((d, n) => n === i ? v : d))} /><button className="btn" onClick={() => setDates((old) => old.filter((_, n) => n !== i))}>Remover data</button></label>)}<button className="btn" onClick={() => setDates((old) => [...old, null])}>Adicionar data</button></div>
         <button className="btn" disabled={remV === null || !dates.length || !dates.every(Boolean)} onClick={() => act((x) => setPlannedRemaining(x, p.id, remV ?? 0, dates as string[]), "a edição do restante")}>Definir restante</button>
         <button className="btn btn-danger" onClick={async () => { const n = await askText("Motivo do encerramento do restante previsto:"); if (n) act((x) => closePlanned(x, p.id, n), "o encerramento"); }}>Encerrar restante</button>
         {s.legacy.length > 0 && <span>Mesmo título que uma efetivação? <select className="inp" value={link} onChange={(e) => setLink(e.target.value)}><option value="">— título legado —</option>{s.legacy.map((t) => <option key={t.c.id} value={t.c.id}>{t.c.document} · {fmtBRL(t.c.value)}</option>)}</select> <button className="btn" disabled={!link} onClick={() => act((x) => linkLegacyTitle(x, { id: "lk" + uid(), plannedId: p.id, committedId: link, at: at() }), "o vínculo do título legado")}>Vincular (sem duplicar)</button></span>}

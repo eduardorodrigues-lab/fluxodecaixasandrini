@@ -179,6 +179,7 @@ Script de reprodução local: `bun scripts/validate-ceo-xlsm.ts <arquivo> /tmp/r
 
 
 ## Fornecedores: edição, apelidos e situação
+- Datas de preenchimento: calendário em português com seleção de mês/ano, máscara dd/mm/aaaa e colagem; datas inexistentes e períodos invertidos são rejeitados junto ao campo. O armazenamento permanece em dia civil ISO, sem converter seleção do calendário para UTC nem alterar cálculos financeiros.
 - O identificador do fornecedor nunca muda ao editar nome principal, apelidos ou observação; condições, lançamentos, pagamentos, relatórios e histórico continuam vinculados.
 - Busca reconhece nome principal ou apelido e mostra o cadastro principal. Colisão com nome/apelido de outro fornecedor bloqueia a gravação; cadastros nunca são unidos automaticamente.
 - Inativação/reativação são eventos com data de início, usuário e horário. A partir da inativação, o fornecedor não é oferecido nem aceito em novos lançamentos; registros e obrigações existentes continuam consultáveis e operáveis.

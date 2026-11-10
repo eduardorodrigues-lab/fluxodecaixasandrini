@@ -1,5 +1,9 @@
 # Roadmap
 
+## Datas padronizadas (2026-11-10)
+- [x] Calendário em portal e máscara manual/colar em todos os campos (inclusive auditoria, decisões e datas do restante previsto)
+- [x] Validação de datas/períodos e dia civil; 146 testes, mais teste em UTC+14; navegador desktop/mobile isolado sem gravações reais, compilação sem erros
+
 ## Confirmações centralizadas (2026-11-10)
 - [x] Substituir avisos nativos e unificar decisões/revisões, mantendo formulários laterais
 - [x] 141 testes; desktop/mobile isolado: cancelar/excluir simulação, descarte protegido, revisão e pagamento confirmado uma vez com leitura na tela; sem gravação real/publicação

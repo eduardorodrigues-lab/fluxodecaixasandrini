@@ -186,7 +186,7 @@ function Extrato({ d }: { d: ScenarioData }) {
     </div>
     <div className="flex flex-wrap items-end gap-3 text-xs">
       <label>Conta<br /><select className="inp" value={acc} onChange={(e) => setAcc(e.target.value)}><option value="*">Todas</option>{d.bankAccounts.map((a) => <option key={a.id} value={a.id}>{accountName(d, a.id)}</option>)}<option value="none">{NO_ACCOUNT}</option></select></label>
-      <label>De<br /><DateInput value={from} onChange={setFrom} /></label><label>Até<br /><DateInput value={to} onChange={setTo} /></label>
+      <label>De<br /><DateInput allowEmpty value={from} maxDate={to} onChange={setFrom} /></label><label>Até<br /><DateInput allowEmpty value={to} minDate={from} onChange={setTo} /></label>
     </div>
     <div className="card max-h-[65vh] overflow-auto"><table className="tbl"><thead><tr><th>Data</th><th>Conta</th><th>Tipo</th><th>Descrição</th><th>Situação</th><th className="num">Valor</th>{running !== null && <th className="num">Saldo realizado</th>}</tr></thead>
       <tbody>{list.length === 0 ? <tr><td colSpan={7} className="text-muted-foreground">Sem movimentos no período.</td></tr> : list.map((m, i) => { if (running !== null && m.realized) running += m.amount; return <tr key={i}><td>{fmtDate(m.date)}</td><td>{m.accountId ? accountName(d, m.accountId) : <span className="tag tag-warn">{NO_ACCOUNT}</span>}</td><td>{m.kind}</td><td>{m.desc}</td><td>{m.realized ? <span className="tag tag-ok">Realizado</span> : <span className="tag tag-warn">Informado, a confirmar</span>}</td><td className={`num ${m.amount < 0 ? "neg" : ""}`}>{fmtBRL(m.amount)}</td>{running !== null && <td className="num">{fmtBRL(running)}</td>}</tr>; })}</tbody></table></div>

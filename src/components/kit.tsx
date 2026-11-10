@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { fmtDate, parseBRDate } from "@/lib/dates";
+export { DateInput } from "@/components/DateField";
 import { fmtNum, parseBRL } from "@/lib/money";
 import type { Warning } from "@/lib/engine/types";
 
@@ -7,15 +7,6 @@ export function MoneyInput({ value, onChange, className = "w-28" }: { value: num
   const [t, setT] = useState(fmtNum(value));
   useEffect(() => setT(fmtNum(value)), [value]);
   return <input className={`inp num ${className}`} value={t} placeholder="vazio" onChange={(e) => setT(e.target.value)} onBlur={() => { const v = parseBRL(t); onChange(v); setT(fmtNum(v)); }} />;
-}
-export function DateInput({ value, onChange, allowEmpty }: { value: string | null; onChange: (v: string | null) => void; allowEmpty?: boolean }) {
-  const [t, setT] = useState(fmtDate(value));
-  const [bad, setBad] = useState(false);
-  useEffect(() => setT(fmtDate(value)), [value]);
-  return <input className={`inp w-24 ${bad ? "ring-1 ring-destructive" : ""}`} value={t} placeholder="dd/mm/aaaa" onChange={(e) => setT(e.target.value)} onBlur={() => {
-    if (!t.trim() && allowEmpty) { setBad(false); return onChange(null); }
-    const v = parseBRDate(t); setBad(!v); if (v) onChange(v);
-  }} />;
 }
 export function IntInput({ value, onChange, className = "w-12" }: { value: number | null; onChange: (v: number | null) => void; className?: string }) {
   return <input className={`inp num ${className}`} value={value ?? ""} placeholder="—" onChange={(e) => { const s = e.target.value.trim(); if (s === "") return onChange(null); const n = Number(s); if (Number.isFinite(n)) onChange(Math.trunc(n)); }} />;

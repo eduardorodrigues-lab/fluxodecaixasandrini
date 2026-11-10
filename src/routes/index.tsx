@@ -41,8 +41,8 @@ function FluxoPage() {
         </div>
       </PageHeader>
       <div className="card mb-3 flex flex-wrap items-end gap-3 p-2">
-        <div><div className="lbl">De</div><DateInput value={ui.start} onChange={(v) => v && setUi({ start: v })} /></div>
-        <div><div className="lbl">Até</div><DateInput value={ui.end} onChange={(v) => v && setUi({ end: v })} /></div>
+        <div><div className="lbl">De</div><DateInput value={ui.start} maxDate={ui.end} onChange={(v) => v && setUi({ start: v })} /></div>
+        <div><div className="lbl">Até</div><DateInput value={ui.end} minDate={ui.start} onChange={(v) => v && setUi({ end: v })} /></div>
         <div><div className="lbl">Fornecedor</div><select className="inp" value={ui.supplierId} onChange={(e) => setUi({ supplierId: e.target.value })}><option value="">Todos</option>{data.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
         <div><div className="lbl">Grupo</div><select className="inp" value={ui.group} onChange={(e) => setUi({ group: e.target.value })}><option value="">Todos</option>{groups.map((g) => <option key={g}>{g}</option>)}</select></div>
         <div><div className="lbl">Apresentação das saídas</div><select className="inp" value={ui.flowMode} onChange={(e) => setUi({ flowMode: e.target.value as "consolidada" | "etapa" })}><option value="consolidada">Consolidada por subgrupo</option><option value="etapa">Separada por etapa (planejada/efetuada)</option></select></div>

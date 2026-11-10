@@ -109,8 +109,8 @@ function ConsultaBoletos({ d }: { d: ScenarioData }) {
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-end gap-2 text-xs">
-        <label><span className="lbl block">De</span><DateInput value={f.from} onChange={(v) => up({ from: v })} /></label>
-        <label><span className="lbl block">Até</span><DateInput value={f.to} onChange={(v) => up({ to: v })} /></label>
+        <label><span className="lbl block">De</span><DateInput allowEmpty value={f.from} maxDate={f.to} onChange={(v) => up({ from: v })} /></label>
+        <label><span className="lbl block">Até</span><DateInput allowEmpty value={f.to} minDate={f.from} onChange={(v) => up({ to: v })} /></label>
         <label><span className="lbl block">Filtrar data por</span><select className="inp" value={f.by} onChange={(e) => up({ by: e.target.value as ConsultaFilter["by"] })}><option value="venc">Vencimento</option><option value="pag">Data do pagamento</option></select></label>
         <label><span className="lbl block">Fornecedor</span><span className="block w-56"><SupplierSearch d={d} value={f.supplier} onChange={(v) => up({ supplier: v })} existing allowAll placeholder="Todos" /></span></label>
         <label><span className="lbl block">Pagamento</span><select className="inp" value={f.pay} onChange={(e) => up({ pay: e.target.value as ConsultaFilter["pay"] })}><option value="">Todos</option><option>Em aberto</option><option>Parcialmente pago</option><option>Pago</option></select></label>

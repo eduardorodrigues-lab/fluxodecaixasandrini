@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { DateInput } from "@/components/DateField";
 import { accountName } from "@/lib/engine/banco";
 import type { Change } from "@/lib/diff";
 import { fmtDate } from "@/lib/dates";
@@ -193,8 +194,8 @@ export function HistoryView({ entries, data, scope = "Fluxo real", onRestore }: 
   };
   const filters = (
     <div className="no-print mb-2 flex flex-wrap items-end gap-2 text-xs">
-      <label><div className="lbl">De</div><input type="date" className="inp" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
-      <label><div className="lbl">Até</div><input type="date" className="inp" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+      <label><div className="lbl">De</div><DateInput allowEmpty value={from || null} maxDate={to || null} onChange={(v) => setFrom(v ?? "")} /></label>
+      <label><div className="lbl">Até</div><DateInput allowEmpty value={to || null} minDate={from || null} onChange={(v) => setTo(v ?? "")} /></label>
       <label><div className="lbl">Usuário</div><select className="inp" value={who} onChange={(e) => setWho(e.target.value)}><option value="">Todos</option>{users.map((u) => <option key={u}>{u}</option>)}</select></label>
       {(from || to || who) && <button className="btn" onClick={() => { setFrom(""); setTo(""); setWho(""); }}>Limpar</button>}
       <span className="ml-auto" /><button className="btn" onClick={exportCsv} disabled={!vis.length}>Exportar (Excel/CSV)</button>

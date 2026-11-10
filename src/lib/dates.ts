@@ -36,3 +36,28 @@ export function parseBRDate(s: string): string | null {
   return null;
 }
 export const weekday = (s: string) => ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"][toD(s).getUTCDay()];
+
+/** Display-only input mask; ISO paste is converted to the Brazilian format. */
+export function maskDateInput(text: string) {
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(text.trim()) ? parseBRDate(text.trim()) : null;
+  if (iso) return fmtDate(iso);
+  const digits = text.replace(/\D/g, "").slice(0, 8);
+  return [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)].filter(Boolean).join("/");
+}
+// Calendar dates use local civil components, never ISO/UTC conversion.
+export function calendarDate(iso: string | null): Date | undefined {
+  if (!iso || !parseBRDate(iso)) return undefined;
+  const [year = 0, month = 1, day = 1] = iso.split("-").map(Number);
+  const date = new Date(0); date.setFullYear(year, month - 1, day); date.setHours(12, 0, 0, 0);
+  return date;
+}
+export function calendarIso(date: Date) {
+  return `${String(date.getFullYear()).padStart(4, "0")}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+export function dateInputError(text: string, allowEmpty = false, min?: string | null, max?: string | null) {
+  if (!text.trim()) return allowEmpty ? "" : "Informe a data.";
+  const date = parseBRDate(text);
+  if (!date) return "Data inválida. Use dd/mm/aaaa e um dia existente.";
+  if (min && date < min || max && date > max) return "A data final não pode ser anterior à data inicial.";
+  return "";
+}
