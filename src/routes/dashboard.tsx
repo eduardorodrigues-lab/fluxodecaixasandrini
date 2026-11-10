@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { PageHeader, ProfileBadge } from "@/components/kit";
+import { PageHeader } from "@/components/kit";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { computeFlow } from "@/lib/engine/engine";
 import { computeDashboard, type Card, type OpenTitle } from "@/lib/engine/dashboard";
@@ -31,7 +31,7 @@ function Page() {
   const supName = d.suppliers.find((s) => s.id === ui.supplierId)?.name;
   return (
     <div className="space-y-3">
-      <PageHeader title="Dashboard" sub={`${active.isBase ? "Real" : "Simulação"} · cenário "${active.name}" · período ${fmtDate(ui.start)} a ${fmtDate(ui.end)}${supName ? ` · fornecedor ${supName}` : ""}${ui.group ? ` · grupo ${ui.group}` : ""} · hoje ${fmtDate(today)} (America/Sao_Paulo)`}><ProfileBadge /></PageHeader>
+      <PageHeader title="Dashboard" sub={`${active.isBase ? "Real" : "Simulação"} · cenário "${active.name}" · período ${fmtDate(ui.start)} a ${fmtDate(ui.end)}${supName ? ` · fornecedor ${supName}` : ""}${ui.group ? ` · grupo ${ui.group}` : ""} · hoje ${fmtDate(today)} (America/Sao_Paulo)`}></PageHeader>
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7">
         {k.cards.map((c) => (
           <button key={c.key} type="button" onClick={() => setSel(c)} aria-haspopup="dialog" aria-label={`${c.label}: ${fmtBRL(c.value)}. Abrir detalhes`}

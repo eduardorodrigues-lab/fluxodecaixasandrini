@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { DateInput, MoneyInput, PageHeader, ProfileBadge } from "@/components/kit";
+import { DateInput, MoneyInput, PageHeader } from "@/components/kit";
 import { dailyEstimate, platformActiveOn, receiptInformed, receiptPlatformIssues } from "@/lib/engine/engine";
 import { addPlatform, deletePlatform, setReceiptPlatform, todaySP, updatePlatform } from "@/lib/engine/actions";
 import type { Platform } from "@/lib/engine/types";
@@ -59,7 +59,7 @@ function Page() {
   return (
     <div className="space-y-3">
       <PageHeader title="Recebimentos" sub="Vazio (não informado) usa estimativa; ZERO confirmado é valor informado. Linha com valor só grava com data.">
-        <ProfileBadge /><button className="btn" onClick={() => setShowPf(true)}>Plataformas</button><button className="btn btn-primary" onClick={() => act((x) => { x.receipts.push({ id: uid(), date: "", platforms: {}, general: null, notes: "", residual: {} }); })}>+ Recebimento</button>
+        <button className="btn" onClick={() => setShowPf(true)}>Plataformas</button><button className="btn btn-primary" onClick={() => act((x) => { x.receipts.push({ id: uid(), date: "", platforms: {}, general: null, notes: "", residual: {} }); })}>+ Recebimento</button>
       </PageHeader>
       {err && <div className="rounded border border-destructive p-2 text-xs text-destructive">{err}</div>}
       <div className="rounded border border-warning bg-warning-soft p-2 text-xs text-warning-foreground">A regra original SOMA(D:O) inclui geral e plataformas. Se ambos estiverem preenchidos, o valor é somado e marcado como possível dupla contagem — nada é corrigido automaticamente.</div>

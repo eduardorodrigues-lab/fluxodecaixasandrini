@@ -2,7 +2,6 @@ import { useEffect, useState, type ReactNode } from "react";
 import { fmtDate, parseBRDate } from "@/lib/dates";
 import { fmtNum, parseBRL } from "@/lib/money";
 import type { Warning } from "@/lib/engine/types";
-import { useApp } from "@/lib/store";
 
 export function MoneyInput({ value, onChange, className = "w-28" }: { value: number | null; onChange: (v: number | null) => void; className?: string }) {
   const [t, setT] = useState(fmtNum(value));
@@ -28,12 +27,6 @@ export function PageHeader({ title, sub, children }: { title: string; sub?: stri
       <div className="flex flex-wrap items-center gap-2">{children}</div>
     </div>
   );
-}
-export function ProfileBadge() {
-  const { active } = useApp();
-  const p = active.data.params;
-  const n = Object.keys(active.data.targetConfigs).length;
-  return <span className="tag tag-ok" title="Perfil de cálculo ativo — não implica homologação. Redutores/divisor/defasagem por mês na página Meta de Faturamento.">Perfil: {p.profile === "legado" ? "Excel legado" : "Web"} · redutores/divisor/defasagem por mês ({n} mês(es))</span>;
 }
 export function WarningList({ items, max = 50 }: { items: Warning[]; max?: number }) {
   if (!items.length) return <p className="text-xs text-muted-foreground">Nenhum alerta.</p>;

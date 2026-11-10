@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { IntInput, MoneyInput, PageHeader, ProfileBadge } from "@/components/kit";
+import { IntInput, MoneyInput, PageHeader } from "@/components/kit";
 import { addDays, daysInMonth, fmtDate, fmtMonth } from "@/lib/dates";
 import { dailyEstimate, lagFor, monthTarget } from "@/lib/engine/engine";
 import { removeMonthTarget, setMonthTarget } from "@/lib/engine/actions";
@@ -39,7 +39,7 @@ function Page() {
   for (let s = addDays(ui.start, -lagFor(p, d.targetConfigs, ui.start)); s.slice(0, 7) <= addDays(ui.end, -lagFor(p, d.targetConfigs, ui.end)).slice(0, 7); s = addDays(`${s.slice(0, 7)}-01`, 32)) months.add(s.slice(0, 7));
   return (
     <div className="space-y-3">
-      <PageHeader title="Meta de Faturamento" sub={active.isBase ? "Cada mês tem faturamento, redutores, bases, divisor e defasagem próprios. Alterações vão para o rascunho e exigem revisão/confirmação." : "Simulação: alterações imediatas, isoladas e apenas visuais."}><ProfileBadge /></PageHeader>
+      <PageHeader title="Meta de Faturamento" sub={active.isBase ? "Cada mês tem faturamento, redutores, bases, divisor e defasagem próprios. Alterações vão para o rascunho e exigem revisão/confirmação." : "Simulação: alterações imediatas, isoladas e apenas visuais."}></PageHeader>
       {err && <div className="rounded border border-destructive p-2 text-xs text-destructive">{err}</div>}
       <div className="card p-3 text-xs">
         <b>Perfil ativo: {legacy ? "Excel legado (referência conferida do CEO)" : "Web"}</b> — {legacy

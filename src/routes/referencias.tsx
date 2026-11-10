@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { DateInput, IntInput, MoneyInput, PageHeader, ProfileBadge } from "@/components/kit";
+import { DateInput, IntInput, MoneyInput, PageHeader } from "@/components/kit";
 import type { Params } from "@/lib/engine/types";
 import { fmtDate, fmtMonth } from "@/lib/dates";
 import { uid, useApp } from "@/lib/store";
@@ -25,7 +25,7 @@ function Page() {
   const setP = (patch: Partial<Params>) => update((x) => { Object.assign(x.params, patch); });
   return (
     <div className="space-y-3">
-      <PageHeader title="Referências" sub={`Editando o cenário "${active.name}". Na base, alterações vão para rascunho e exigem confirmação.`}><ProfileBadge /></PageHeader>
+      <PageHeader title="Referências" sub={`Editando o cenário "${active.name}". Na base, alterações vão para rascunho e exigem confirmação.`}></PageHeader>
 
       <section className="card p-3">
         <div className="lbl mb-2">Parâmetros de cálculo</div>

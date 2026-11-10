@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, type ReactElement } from "react";
-import { DateInput, IntInput, MoneyInput, PageHeader, ProfileBadge } from "@/components/kit";
+import { DateInput, IntInput, MoneyInput, PageHeader } from "@/components/kit";
 import { committedDate, distributePlanned, expenseDate, paymentsFor, splitCents, titleStatus } from "@/lib/engine/engine";
 import { closePlanned, confirmExtension, effectivate, linkLegacyTitle, plannedSummary, registerPayment, reopenPlanned, reverseEffectivation, reversePayment, setPlannedRemaining, suggestEffectivation, todaySP } from "@/lib/engine/actions";
 import type { CategoryKind, Committed, Expense, Planned, ScenarioData } from "@/lib/engine/types";
@@ -75,15 +75,21 @@ function Page() {
 
   return (
     <div>
-      <PageHeader title="Lançamentos" sub={active.isBase ? "Planejada = previsão; Efetivado = compra/pedido ou despesa real; Pagamento = baixa registrada. Categoria (Compra/Despesa) e Subgrupo organizam o fluxo." : "Simulação: alterações imediatas e apenas visuais."}>
-        <ProfileBadge />{tab !== "payments" && <button className="btn btn-primary" onClick={add}>+ Novo</button>}
+      <PageHeader title="Lançamentos" sub={active.isBase ? "" : "Simulação: alterações imediatas e apenas visuais."}>
+        {tab !== "payments" && <button className="btn btn-primary" onClick={add}>+ Novo</button>}
       </PageHeader>
       {err && <div className="mb-2 rounded border border-destructive p-2 text-xs text-destructive">{err}</div>}
       <div className="mb-2 flex border-b border-border">{TABS.map((t) => <button key={t.k} className={`tab ${tab === t.k ? "tab-on" : ""}`} onClick={() => setTab(t.k)}>{t.l} ({t.k === "committed" ? d.committed.length + d.expenses.length : (d[t.k] as unknown[]).length})</button>)}</div>
+      {tab !== "payments" && (
+        <div className="mb-2 flex items-center gap-2 text-xs">
+          <span className="lbl">Categoria</span>
+          <select className="inp" value={fKind} onChange={(e) => setFKind(e.target.value as "" | CategoryKind)}><option value="">Todas</option><option value="compra">Compra</option><option value="despesa">Despesa</option></select>
+        </div>
+      )}
       <div className="card overflow-auto">
         {tab === "planned" && (
           <table className="tbl"><thead><tr><th>Fornecedor</th><th>Cód. compra</th><th>Documento</th><th className="num">Valor previsto</th><th>Data base</th><th>Categoria / Subgrupo</th><th>Descrição</th><th>Restante previsto / parcelas</th><th>Estado</th><th>Ações</th></tr></thead>
-            <tbody>{d.planned.map((p: Planned) => {
+            <tbody>{d.planned.filter((p: Planned) => !fKind || (kindOfCat(p.categoryId) || "compra") === fKind).map((p: Planned) => {
               const r = distributePlanned(p, sup(p.supplierId), d.committed, d.params.profile, d.effectivations);
               const effs = d.effectivations.filter((e) => e.plannedId === p.id);
               return [
@@ -113,15 +119,8 @@ function Page() {
             })}</tbody></table>
         )}
         {tab === "committed" && (
-          <>
-            <div className="flex items-center gap-2 border-b border-border p-2 text-xs">
-              <span className="lbl">Categoria</span>
-              <select className="inp" value={fKind} onChange={(e) => setFKind(e.target.value as "" | CategoryKind)}><option value="">Todas</option><option value="compra">Compra</option><option value="despesa">Despesa</option></select>
-              <span className="text-muted-foreground">Compras/pedidos efetivados e despesas efetuadas na mesma lista; efetivação e pagamento continuam controles separados.</span>
-            </div>
-            <table className="tbl"><thead><tr><th>Tipo</th><th>Categoria / Subgrupo</th><th>Descrição</th><th>Fornecedor</th><th>Documento</th><th className="num">Valor</th><th>Venc. vigente</th><th>Pagamento</th><th>Estado</th><th>Ações</th></tr></thead>
-              <tbody>{efetivados.map((r) => r.t === "committed" ? <CommittedRow key={r.c.id} c={r.c} d={d} set={set} del={del} act={act} CatSub={CatSub} Txt={Txt} StSel={StSel} isBase={active.isBase} isOpen={isOpen} toggle={toggle} /> : <ExpenseRow key={r.e.id} e={r.e} d={d} set={set} del={del} act={act} CatSub={CatSub} Txt={Txt} StSel={StSel} isBase={active.isBase} isOpen={isOpen} toggle={toggle} />)}</tbody></table>
-          </>
+          <table className="tbl"><thead><tr><th>Tipo</th><th>Categoria / Subgrupo</th><th>Descrição</th><th>Fornecedor</th><th>Documento</th><th className="num">Valor</th><th>Venc. vigente</th><th>Pagamento</th><th>Estado</th><th>Ações</th></tr></thead>
+            <tbody>{efetivados.map((r) => r.t === "committed" ? <CommittedRow key={r.c.id} c={r.c} d={d} set={set} del={del} act={act} CatSub={CatSub} Txt={Txt} StSel={StSel} isBase={active.isBase} isOpen={isOpen} toggle={toggle} /> : <ExpenseRow key={r.e.id} e={r.e} d={d} set={set} del={del} act={act} CatSub={CatSub} Txt={Txt} StSel={StSel} isBase={active.isBase} isOpen={isOpen} toggle={toggle} />)}</tbody></table>
         )}
         {tab === "payments" && (
           <table className="tbl"><thead><tr><th>Data</th><th>Título</th><th className="num">Valor</th><th>Obs.</th><th>Situação</th><th /></tr></thead>

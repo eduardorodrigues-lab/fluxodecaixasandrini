@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { DateInput, PageHeader, ProfileBadge } from "@/components/kit";
+import { DateInput, PageHeader } from "@/components/kit";
 import { computeFlow, isOutItem, itemKind, itemStage, itemSub } from "@/lib/engine/engine";
 import type { Item } from "@/lib/engine/types";
 import { fmtDate } from "@/lib/dates";
@@ -61,7 +61,6 @@ function Page() {
   return (
     <div>
       <PageHeader title="Relatório de despesas" sub="Mesmos lançamentos do fluxo (planejado restante + efetuado, sem duplicar previsão efetivada). Filtros alteram só a apresentação.">
-        <ProfileBadge />
       </PageHeader>
       <div className="card mb-3 flex flex-wrap items-end gap-3 p-2">
         <div><div className="lbl">De</div><DateInput value={start} onChange={(v) => v && setStart(v)} /></div>
