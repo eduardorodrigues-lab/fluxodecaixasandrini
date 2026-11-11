@@ -24,6 +24,7 @@
 - Official data is one JSON document per organization in `official_data`; writes only via `commitOfficial` server fn → service-role RPC `commit_official` (version check, idempotent request_id, audit before/after) — never grant direct table writes to clients.
 - Team access (invites, member removal, access log) goes only through service-role RPCs `team_*` that re-check owner role in SQL; invite tokens are stored as SHA-256 hashes only — keeps authorization in the database.
 - Server fns take an explicit `orgId`; org resolution never picks an arbitrary membership — prevents cross-org writes for invited users.
+- `pickOrg` prioritizes existing shared-company membership over stale defaults in store/server — grants no new access.
 - XLSX adapters use the verified CEO layout (header row 3, fixed columns) and block reconciliation when essential rows are missing — never report healthy numbers from guessed rows.
 - Every base mutation goes through `update()` in `src/lib/store.tsx` and is auto-saved (debounced) through `commitOfficial` with audit — editors asked for no manual review; simulation edits keep a local per-sim history; simulations stay local per user+org and are never promoted; there is no demo space — no financial data is rendered without a signed-in, loaded organization.
 - Business rules are documented in `docs/regras-fluxo.md` and covered by `src/lib/**/*.test.ts`; update both when a rule changes.

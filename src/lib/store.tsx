@@ -7,6 +7,7 @@ import { normalizeData } from "./engine/actions";
 import type { ScenarioData } from "./engine/types";
 import { commitOfficial, getOfficial, listAudit } from "./official.functions";
 import { listMyOrgs } from "./team.functions";
+import { pickOrg } from "./team";
 import { baseMovedSince, editSession, migrateSims, purgeUser, scopeKey, visibleDraft, type DraftSession, type SimStore } from "./session";
 
 // UMA base operacional por organização (login obrigatório, gravação só via servidor com auditoria).
@@ -95,8 +96,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const orgsQ = useQuery({ queryKey: ["official", "orgs", user?.id], queryFn: () => fetchOrgs(), enabled: hydrated && !!user });
   const orgs = orgsQ.data ?? [];
-  // Organização explícita: a escolhida (se ainda membro); senão a única ou a própria; nunca arbitrária.
-  const selOrg = orgs.find((o) => o.orgId === orgId)?.orgId ?? (orgs.length === 1 ? orgs[0]!.orgId : orgs.find((o) => o.own)?.orgId ?? null);
+  const resolvedOrg = pickOrg(orgs.map((o) => ({ org_id: o.orgId, created_by: o.own ? user?.id ?? null : null })), user?.id ?? "", orgId);
+  const selOrg = resolvedOrg && resolvedOrg !== "choose" ? resolvedOrg.org_id : null;
   const offQ = useQuery({ queryKey: ["official", user?.id, selOrg], queryFn: () => fetchOfficial({ data: { orgId: selOrg } }), enabled: hydrated && !!user && !!selOrg, staleTime: 30_000, refetchOnWindowFocus: false });
   const auditQ = useQuery({ queryKey: ["official", "audit", user?.id, selOrg], queryFn: () => fetchAudit({ data: { orgId: selOrg } }), enabled: hydrated && !!user && !!selOrg });
   const offData = useMemo(() => (offQ.data ? normalizeData(JSON.parse(offQ.data.dataJson)) : null), [offQ.data]);
