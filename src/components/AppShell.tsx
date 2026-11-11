@@ -48,7 +48,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </button>
         </div>
       ) : (
-      <aside className={`sticky top-0 flex h-screen w-52 shrink-0 flex-col ${simMode ? "bg-destructive text-destructive-foreground" : "bg-sidebar text-sidebar-foreground"}`}>
+      <aside className={`app-navigation sticky top-0 flex h-screen w-52 shrink-0 flex-col ${simMode ? "bg-destructive text-destructive-foreground" : "bg-sidebar text-sidebar-foreground"}`}>
         <div className="flex items-start justify-between gap-2 border-b border-sidebar-border px-4 py-4">
           <div>
             <div className="text-[10px] uppercase tracking-widest text-sidebar-primary">Grupo Sandrini</div>
