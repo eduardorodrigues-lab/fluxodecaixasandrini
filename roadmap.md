@@ -1,5 +1,11 @@
 # Roadmap
 
+## Correção pontual da distribuição diária (2026-11-11)
+- [x] Investigar seletor, prévia, configuração persistida e recebimento no fluxo
+- [x] Corrigir cálculo/prévia sem alterar metas reais ou regras de origem não revisadas
+- [x] 176 testes: meses 28/29/30/31, defasagem, informado/zero, precisão, auditoria e isolamento
+- [x] Navegador: seletor → revisão/voltar → confirmação → coluna → reload → fluxo vertical/CEO, simulação isolada e celular; funções interceptadas, uma gravação fictícia, nenhuma real; compilação automática OK
+
 ## Cadastros e configuração financeira unificada (2026-11-11)
 - [x] Renomear Referências e separar fornecedores/categorias em abas
 - [x] Metas compactas, edição/revisão mensal e padrões sem sobrescrever histórico

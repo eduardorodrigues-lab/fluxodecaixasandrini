@@ -1,4 +1,4 @@
-import { defaultMonthTarget, computeFlow } from "./engine/engine";
+import { defaultMonthTarget, computeFlow, estimateMonth } from "./engine/engine";
 import { setMonthTarget } from "./engine/actions";
 import type { FinancialConfig, MonthTarget, Params, ScenarioData } from "./engine/types";
 import { dateInputError } from "./dates";
@@ -32,7 +32,7 @@ export function previewFinancialMonth(d: ScenarioData, month: string, gross: num
   saveFinancialMonth(next, month, gross, f, "");
   const before = computeFlow(d, { start, end });
   const after = computeFlow(next, { start, end });
-  return { before, after, impact: after.kpis.saldoFinal - before.kpis.saldoFinal, first: after.days.find((day, i) => day.saldoFinal !== before.days[i]?.saldoFinal)?.date ?? null };
+  return { before, after, estimate: estimateMonth(next.params, month, next.targetConfigs[month] ?? null), impact: after.kpis.saldoFinal - before.kpis.saldoFinal, first: after.days.find((day, i) => day.saldoFinal !== before.days[i]?.saldoFinal)?.date ?? null };
 }
 export function saveBalanceAdjustment(d: ScenarioData, oldDate: string | null, date: string, value: number, note: string) {
   if (!date || dateInputError(date)) throw new Error("Informe uma data válida.");

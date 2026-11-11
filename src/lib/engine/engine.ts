@@ -22,14 +22,11 @@ export function monthTarget(p: Params, targets: Record<string, number>, cfgs: Re
 export function lagFor(p: Params, cfgs: Record<string, MonthTarget> | undefined, date: string) {
   return cfgs?.[ym(date)]?.financial?.lagDays ?? cfgs?.[ym(date)]?.lagDays ?? p.lagDays;
 }
-export function dailyEstimate(p: Params, targets: Record<string, number>, date: string, cfgs?: Record<string, MonthTarget>) {
-  const lag = lagFor(p, cfgs, date);
-  const ref = addDays(date, -lag);
-  const month = ym(ref);
-  const cfg = monthTarget(p, targets, cfgs, month);
-  if (!cfg) return { value: 0, exact: 0, month, missing: true, liquid: 0, divisor: 0, r1: 0, r2: 0, lag, ref, gross: 0 };
+// Shared by the unsaved month editor, the monthly column and the delayed flow.
+export function estimateMonth(p: Params, month: string, cfg: MonthTarget | null) {
+  if (!cfg) return { value: 0, exact: 0, month, missing: true, liquid: 0, divisor: 0, r1: 0, r2: 0, gross: 0 };
   const meta = cfg.gross;
-  const dim = daysInMonth(ref);
+  const dim = daysInMonth(`${month}-01`);
   let liquid: number, divisor: number, r1: number, r2 = 0;
   if (cfg.financial) {
     const f = cfg.financial;
@@ -48,7 +45,13 @@ export function dailyEstimate(p: Params, targets: Record<string, number>, date: 
     divisor = cfg.divisorWeb === "30" ? 30 : dim;
   }
   const exact = liquid / divisor;
-  return { value: roundCents(exact), exact, month, missing: false, liquid, divisor, r1, r2, lag, ref, gross: meta };
+  return { value: roundCents(exact), exact, month, missing: false, liquid, divisor, r1, r2, gross: meta };
+}
+export function dailyEstimate(p: Params, targets: Record<string, number>, date: string, cfgs?: Record<string, MonthTarget>) {
+  const lag = lagFor(p, cfgs, date);
+  const ref = addDays(date, -lag);
+  const month = ym(ref);
+  return { ...estimateMonth(p, month, monthTarget(p, targets, cfgs, month)), lag, ref };
 }
 
 // ---------- Arredondamento (Regra I / item 10 aprovado) ----------
@@ -294,13 +297,15 @@ export function computeFlow(data: ScenarioData, opt: FlowOptions): FlowResult {
       ini = adj.value;
     }
     const est = dailyEstimate(p, data.targets, d, data.targetConfigs);
+    // Reviewed financial months keep full precision; untouched source months retain their historical rounding.
+    const estimated = data.targetConfigs[est.month]?.financial ? est.exact : est.value;
     const rec = recByDate.get(d);
     const recInformado = rec?.sum ?? 0;
     // Evolução aprovada: qualquer valor informado (inclusive ZERO confirmado) substitui a estimativa; ausente usa estimativa.
     const usouInformado = !!rec?.present;
-    const recUsado = usouInformado ? recInformado : est.value;
+    const recUsado = usouInformado ? recInformado : estimated;
     if (rec) items.push(...rec.items);
-    items.push({ source: "estimativa", amount: est.value, label: `Estimativa (meta ${est.month}${est.missing ? " AUSENTE" : ""})`, note: usouInformado ? "não usada: recebimento informado" : "usada" });
+    items.push({ source: "estimativa", amount: estimated, label: `Estimativa (meta ${est.month}${est.missing ? " AUSENTE" : ""})`, note: usouInformado ? "não usada: recebimento informado" : "usada" });
     const out = byDate.get(d) ?? [];
     items.push(...out);
     let planejada = 0, comprometida = 0, despesa = 0;
@@ -314,7 +319,7 @@ export function computeFlow(data: ScenarioData, opt: FlowOptions): FlowResult {
     }
     const saidas = planejada + comprometida + despesa;
     const saldoFinal = ini - saidas + recUsado;
-    days.push({ date: d, saldoInicial: ini, ajuste, recInformado, recInformadoPresente: !!rec?.present, recEstimado: est.value, recEstimadoExato: est.exact, usouInformado, recUsado, planejada, comprometida, despesa, byCat, saidas, entradasTotal: ini + recUsado, saldoFinal, items });
+    days.push({ date: d, saldoInicial: ini, ajuste, recInformado, recInformadoPresente: !!rec?.present, recEstimado: estimated, recEstimadoExato: est.exact, usouInformado, recUsado, planejada, comprometida, despesa, byCat, saidas, entradasTotal: ini + recUsado, saldoFinal, items });
     carried = saldoFinal;
   }
   const missingMonths = new Set(days.filter((x) => !x.usouInformado).map((x) => ym(addDays(x.date, -lagFor(p, data.targetConfigs, x.date)))).filter((m) => !monthTarget(p, data.targets, data.targetConfigs, m)));

@@ -4,7 +4,7 @@ import { IntInput, MoneyInput, PageHeader } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import { SidePanel, Field, guardClose } from "@/components/NotaPanel";
 import { addDays, fmtDate, fmtMonth } from "@/lib/dates";
-import { dailyEstimate, monthTarget } from "@/lib/engine/engine";
+import { estimateMonth, monthTarget } from "@/lib/engine/engine";
 import { removeMonthTarget } from "@/lib/engine/actions";
 import { askConfirm } from "@/lib/decisions";
 import { financialConfig, previewFinancialMonth, saveFinancialDefaults, saveFinancialMonth, validateFinancial } from "@/lib/financeConfig";
@@ -28,7 +28,7 @@ const percent = (v: number) => `${(v * 100).toLocaleString("pt-BR", { maximumFra
 function label(f: FinancialConfig) { return `${percent(f.deflator1)} sobre bruto; ${percent(f.deflator2)} sobre ${f.base2 === "bruto" ? "bruto" : "após a primeira redução"}; ÷ ${f.divisor === "30" ? "30" : "dias do mês"}; ${f.lagDays} dias de defasagem`; }
 function estimate(d: ReturnType<typeof useApp>["active"]["data"], m: string) {
   const c = monthTarget(d.params, d.targets, d.targetConfigs, m);
-  return dailyEstimate({ ...d.params, lagDays: 0 }, d.targets, `${m}-01`, c ? { [m]: { ...c, lagDays: 0, ...(c.financial ? { financial: { ...c.financial, lagDays: 0 } } : {}) } } : {});
+  return estimateMonth(d.params, m, c);
 }
 function Page() {
   const { focus } = Route.useSearch(); usePendingFocus(focus);
@@ -58,7 +58,8 @@ function MonthEditor({ month, onClose }: { month: string; onClose: () => void })
   let preview: ReturnType<typeof previewFinancialMonth> | null = null;
   try { if (!defaults && gross !== null) preview = previewFinancialMonth(d, month, gross, f, ui.start, ui.end); } catch { /* validated before review */ }
   const before = !defaults ? estimate(d, month) : null;
-  const r1 = (gross ?? 0) * f.deflator1, r2 = (f.base2 === "bruto" ? gross ?? 0 : (gross ?? 0) - r1) * f.deflator2, liquid = (gross ?? 0) - r1 - r2;
+  const proposed = preview?.estimate;
+  const r1 = proposed?.r1 ?? 0, r2 = proposed?.r2 ?? 0, liquid = proposed?.liquid ?? 0;
   const confirm = () => {
     const e = update((x) => { if (defaults) saveFinancialDefaults(x, f); else { if (JSON.stringify(x.targetConfigs[month] ?? null) !== JSON.stringify(c ?? null)) throw new Error("Este mês mudou enquanto o formulário estava aberto. Reabra para conferir."); saveFinancialMonth(x, month, gross ?? 0, f, new Date().toISOString()); } });
     if (e) setErr(e); else onClose();
@@ -68,6 +69,7 @@ function MonthEditor({ month, onClose }: { month: string; onClose: () => void })
       <div className="hidden overflow-auto sm:block"><table className="tbl [&_td]:whitespace-normal"><thead><tr><th>Mês</th><th>Configuração atual</th><th>Configuração proposta</th><th className="num">Líquido antes</th><th className="num">Líquido depois</th><th className="num">Impacto no fluxo</th></tr></thead><tbody><tr><td>{defaults ? "Novos meses" : fmtMonth(month)}</td><td>{label(original)}{c && !c.financial && d.params.profile === "legado" && " · Apenas um deflator aplicado"}</td><td>{label(f)}</td><td className="num">{before ? fmtBRL(Math.round(before.liquid)) : "—"}</td><td className="num">{defaults ? "—" : fmtBRL(Math.round(liquid))}</td><td className="num">{preview ? fmtBRL(preview.impact) : "Sem alterar meses existentes"}</td></tr></tbody></table></div>
       <dl className="space-y-3 sm:hidden"><div><dt className="lbl">Mês</dt><dd>{defaults ? "Novos meses" : fmtMonth(month)}</dd></div><div><dt className="lbl">Configuração atual</dt><dd>{label(original)}{c && !c.financial && d.params.profile === "legado" && " · Apenas um deflator aplicado"}</dd></div><div><dt className="lbl">Configuração proposta</dt><dd>{label(f)}</dd></div><div><dt className="lbl">Líquido antes → depois</dt><dd>{before ? fmtBRL(Math.round(before.liquid)) : "—"} → {defaults ? "—" : fmtBRL(Math.round(liquid))}</dd></div><div><dt className="lbl">Impacto no fluxo</dt><dd>{preview ? fmtBRL(preview.impact) : "Sem alterar meses existentes"}</dd></div></dl>
       {!defaults && <p>Faturamento: {fmtBRL(c?.gross ?? 0)} → {fmtBRL(gross ?? 0)}. Impacto no saldo final de {fmtDate(ui.start)} a {fmtDate(ui.end)}{preview?.first ? `; primeira diferença em ${fmtDate(preview.first)}` : "; nenhuma diferença no período selecionado"}.</p>}
+      {!defaults && <p>Estimativa/dia: {before ? fmtBRL(before.exact) : "—"} → {proposed ? fmtBRL(proposed.exact) : "—"}. Divisor: {proposed?.divisor ?? "—"} dias do mês de origem ({fmtMonth(month)}).</p>}
       <p>Cancelar ou voltar não altera os valores salvos.</p>
     </div> : <>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -80,7 +82,7 @@ function MonthEditor({ month, onClose }: { month: string; onClose: () => void })
         <Field l="Defasagem dos recebimentos (dias)"><IntInput value={f.lagDays} onChange={(v) => patch({ lagDays: v ?? -1 })} /></Field>
       </div>
       {!defined && <label className="flex gap-2"><input type="checkbox" checked={defined} onChange={(e) => setDefined(e.target.checked)} />Antes havia apenas um deflator. Confirmo manter o segundo em 0%.</label>}
-      {defaults ? <p>Estes valores preenchem novos meses. Meses cadastrados permanecem inalterados.</p> : <details open><summary className="cursor-pointer font-semibold">Ver cálculo</summary><div className="mt-2 space-y-2"><p>Faturamento bruto → Deflator 1 → Deflator 2 → Líquido projetado → Distribuição diária → Defasagem → Fluxo.</p><p>{fmtBRL(gross ?? 0)} − {fmtBRL(Math.round(r1))} − {fmtBRL(Math.round(r2))} = {fmtBRL(Math.round(liquid))}</p><p>Defasagem: o dia do fluxo usa a meta da data menos a defasagem configurada no mês desse dia.</p>{c && !c.financial && <p>Memória da origem: {d.params.profile === "legado" ? "Excel legado, um deflator" : "Web, dois deflatores"}. Valores preservados até confirmar.</p>}{c?.history.map((h, i) => <p key={i}>Versão {h.version} · {h.at ? new Date(h.at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "—"} · {h.note}</p>)}</div></details>}
+      {defaults ? <p>Estes valores preenchem novos meses. Meses cadastrados permanecem inalterados.</p> : <details open><summary className="cursor-pointer font-semibold">Ver cálculo</summary><div className="mt-2 space-y-2"><p>Faturamento bruto → Deflator 1 → Deflator 2 → Líquido projetado → Distribuição diária → Defasagem → Fluxo.</p><p>{fmtBRL(gross ?? 0)} − {fmtBRL(r1)} − {fmtBRL(r2)} = {fmtBRL(liquid)}</p><p aria-live="polite">Estimativa/dia: {proposed ? fmtBRL(proposed.exact) : "—"} · {fmtBRL(liquid)} ÷ {proposed?.divisor ?? "—"} dias ({fmtMonth(month)}).</p><p>Defasagem: o dia do fluxo usa a meta da data menos a defasagem configurada no mês desse dia. A distribuição usa os dias do mês de origem da meta.</p>{c && !c.financial && <p>Memória da origem: {d.params.profile === "legado" ? "Excel legado, um deflator" : "Web, dois deflatores"}. Valores preservados até confirmar.</p>}{c?.history.map((h, i) => <p key={i}>Versão {h.version} · {h.at ? new Date(h.at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "—"} · {h.note}</p>)}</div></details>}
       {c && canEdit && <Button variant="destructive" size="sm" onClick={async () => { if (await askConfirm(`Remover a meta de ${fmtMonth(month)}? A estimativa deste mês será zero e o fluxo mostrará uma pendência.`, { title: "Remover meta mensal?", action: "Remover meta", destructive: true })) { const e = update((x) => { removeMonthTarget(x, month); }); if (e) setErr(e); else onClose(); } }}>Remover meta</Button>}
     </>}
     {err && <p className="text-destructive" role="alert">{err}</p>}
