@@ -1,3 +1,6 @@
+import { DetailReport, ReportSearch, SortHead, useReportState } from "@/components/ReportControls";
+import { dateValue, parcelValue, queryReport } from "@/lib/reportTable";
+import { Button } from "@/components/ui/button";
 import { askConfirm, askText } from "@/lib/decisions";
 import { BaixasList, PagamentoPanel } from "@/components/BancoPanels";
 import { accountName, NO_ACCOUNT, registerPaymentBatch, coverTitleWithCard } from "@/lib/engine/banco";
@@ -67,7 +70,11 @@ function Page() {
   const [tab, setTab] = useState<Tab>(TABS.find((t) => t.k === target.tab)?.k ?? "planned");
   usePendingFocus(target.focus, tab);
   const [err, setErr] = useState("");
-  const [fKind, setFKind] = useState<"" | CategoryKind>("");
+  const [kinds, setKinds] = useState<Record<string, "" | CategoryKind>>({ planned: "", committed: "" });
+  const fKind = kinds[tab] ?? "";
+  const setFKind = (v: "" | CategoryKind) => setKinds((k) => ({ ...k, [tab]: v }));
+  const plannedReport = useReportState(), committedReport = useReportState(), paymentsReport = useReportState();
+  const report = tab === "planned" ? plannedReport : tab === "committed" ? committedReport : paymentsReport;
   const [open, setOpen] = useState<{ kind: string; id: string } | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
   const act = (fn: (x: ScenarioData) => void) => { const e = update(fn); setErr(e ?? ""); return !e; };
@@ -86,15 +93,37 @@ function Page() {
   const labels = parcelLabels(d);
 
   // ---- Planejada: uma linha por parcela ----
-  const plannedRows = d.planned.filter((p) => !fKind || (kindOfCat(p.categoryId) || "compra") === fKind).flatMap((p) => {
+  const plannedSource = d.planned.filter((p) => !fKind || (kindOfCat(p.categoryId) || "compra") === fKind).flatMap((p) => {
     const r = distributePlanned(p, sup(p.supplierId), d.committed, d.params.profile, d.effectivations);
     const inst = p.installments?.length && !p.remainingOverride ? p.installments : null;
     const parts = r.parcels.length ? r.parcels : [null];
     return parts.map((pc, i) => ({ p, r, pc, i, n: parts.length, it: inst && pc ? inst[pc.idx ?? i] ?? null : null, idx: pc?.idx ?? i }));
   });
   // ---- Efetivado: títulos (já são parcelas) ----
-  const efetivados = [...d.committed.map((c) => ({ t: "committed" as const, c, catId: c.categoryId })), ...d.expenses.map((e) => ({ t: "expense" as const, e, catId: e.categoryId }))]
+  const committedSource = [...d.committed.map((c) => ({ t: "committed" as const, c, catId: c.categoryId })), ...d.expenses.map((e) => ({ t: "expense" as const, e, catId: e.categoryId }))]
     .filter((r) => !fKind || kindOfCat(r.catId) === fKind || (!r.catId && fKind === "despesa" && r.t === "expense"));
+
+  const plannedValues = ({ p, r, pc, i, n, it }: (typeof plannedSource)[number]) => [kindL(p.categoryId), catOf(p.categoryId)?.name, sup(p.supplierId)?.name, p.purchaseCode, p.document, p.notes, pc ? i + 1 : null, pc?.amount, dateValue(it?.date ?? pc?.date), dateValue(it?.extensionDate), p.status === "encerrado" ? "Encerrada" : p.status === "cancelado" ? "Cancelada" : r.effectivated > 0 ? "Efetivada parcialmente" : "Prevista"];
+  const plannedRows = queryReport(plannedSource, plannedReport.query, plannedReport.sort, plannedValues, (row) => [...plannedValues(row), ...(sup(row.p.supplierId)?.aliases ?? []), row.pc ? `${row.i + 1}/${row.n}` : "", row.pc ? fmtBRL(row.pc.amount) : "", fmtDate(row.it?.date ?? row.pc?.date ?? null), fmtDate(row.it?.extensionDate ?? null), row.r.health !== "ok" ? "conciliação pendente" : ""]);
+  const committedValues = (row: (typeof committedSource)[number]) => {
+    const t = row.t === "committed" ? row.c : row.e;
+    const ts = titleStatus(t.value, t.status, paymentsFor(d, row.t, t.id));
+    const due = row.t === "committed" ? row.c.dueDate : row.e.termDays != null ? addDays(row.e.baseDate, row.e.termDays) : null;
+    return [kindL(t.categoryId, row.t === "expense" ? "despesa" : "compra"), catOf(t.categoryId)?.name, sup(t.supplierId)?.name, row.t === "committed" ? row.c.purchaseCode : null, t.document, t.notes, parcelValue(labels.get(t.id) ?? "1/1"), t.value, dateValue(due), dateValue(t.extensionDate), t.status === "cancelado" ? "Cancelado" : row.t === "committed" && row.c.origin === "efetivacao" ? "Efetivado (previsão)" : row.t === "committed" && row.c.origin === "legado" ? "Efetivado (legado)" : "Efetivado", ts.state === "Parcial" ? "Parcialmente pago" : ts.state, ts.paid, Math.max(0, ts.open)];
+  };
+  const efetivados = queryReport(committedSource, committedReport.query, committedReport.sort, committedValues, (row) => {
+    const t = row.t === "committed" ? row.c : row.e;
+    const v = committedValues(row);
+    return [...v, ...(sup(t.supplierId)?.aliases ?? []), labels.get(t.id) ?? "1/1", ...[7, 12, 13].map((i) => fmtBRL(Number(v[i]))), ...[8, 9].map((i) => typeof v[i] === "number" ? fmtDate(new Date(v[i]).toISOString().slice(0, 10)) : ""), paymentsFor(d, row.t, t.id).some((p) => p.method === "cartao") ? "Quitado com cartão parte no cartão" : ""];
+  });
+  const paymentValues = (p: ScenarioData["payments"][number]) => {
+    const t = p.titleKind === "committed" ? d.committed.find((c) => c.id === p.titleId) : d.expenses.find((e) => e.id === p.titleId);
+    return [dateValue(p.date), `${sup(t?.supplierId ?? "")?.name ?? ""} · ${t?.document || "sem documento"}${labels.get(p.titleId) ? ` · parcela ${labels.get(p.titleId)}` : ""}`, p.method === "cartao" ? "Quitado com cartão" : p.accountId ? accountName(d, p.accountId) : NO_ACCOUNT, p.amount, p.note, p.reversedAt ? `estornado ${fmtDate(p.reversedAt.slice(0, 10))}: ${p.reversalNote}` : "ativo"];
+  };
+  const paymentRows = queryReport(d.payments, paymentsReport.query, paymentsReport.sort, paymentValues, (p) => {
+    const t = p.titleKind === "committed" ? d.committed.find((c) => c.id === p.titleId) : d.expenses.find((e) => e.id === p.titleId);
+    return [...paymentValues(p), ...(sup(t?.supplierId ?? "")?.aliases ?? []), t?.notes, t?.categoryId ? catOf(t.categoryId)?.name : "", fmtDate(p.date), fmtBRL(p.amount)];
+  });
 
   const noteInit = (o: { categoryId: string; supplierId: string; purchaseCode?: string; document: string; notes: string }, fb: CategoryKind): NoteFields => ({ kind: kindOfCat(o.categoryId) || fb, categoryId: o.categoryId, supplierId: o.supplierId, purchaseCode: o.purchaseCode ?? "", document: o.document, notes: o.notes });
 
@@ -111,9 +140,11 @@ function Page() {
           <select className="inp" value={fKind} onChange={(e) => setFKind(e.target.value as "" | CategoryKind)}><option value="">Todas</option><option value="compra">Compra</option><option value="despesa">Despesa</option></select>
         </div>
       )}
-      {tab === "consultas" ? <Consultas d={d} /> : <div className="card overflow-auto">
+      {tab !== "consultas" && <div className="mb-2 flex flex-wrap items-end gap-2"><ReportSearch value={report.query} onChange={report.setQuery} count={tab === "planned" ? plannedRows.length : tab === "committed" ? efetivados.length : paymentRows.length} /><Button variant="outline" size="sm" onClick={() => { report.setQuery(""); setFKind(""); }}>Limpar filtros</Button></div>}
+      <div hidden={tab !== "consultas"}><Consultas d={d} /></div>
+      {tab === "consultas" ? null : <div className="card overflow-auto">
         {tab === "planned" && (
-          <table className="tbl"><thead><tr><th>Categoria</th><th>Subgrupo</th><th>Fornecedor</th><th>Código do pedido</th><th>Documento</th><th>Descrição</th><th>Parcela</th><th className="num">Valor da parcela</th><th>Vencimento</th><th>Prorrogar para</th><th>Situação do lançamento</th><th>Ações</th></tr></thead>
+          <table className="tbl"><thead><tr><SortHead label="Categoria" column={0} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Subgrupo" column={1} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Fornecedor" column={2} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Código do pedido" column={3} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Documento" column={4} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Descrição" column={5} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Parcela" column={6} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Valor da parcela" column={7} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={true} /><SortHead label="Vencimento" column={8} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Prorrogar para" column={9} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Situação do lançamento" column={10} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><th>Ações</th></tr></thead>
             <tbody>{plannedRows.flatMap(({ p, r, pc, i, n, it, idx }) => {
               const label = `${sup(p.supplierId)?.name ?? "—"} · ${p.document || p.purchaseCode || "sem documento"} · parcela ${i + 1}/${n}`;
               const baseAmt = it?.amount ?? distributePlanned(p, sup(p.supplierId), d.committed, d.params.profile, []).parcels[idx]?.amount ?? 0;
@@ -132,20 +163,18 @@ function Page() {
                     {pc && p.status === "ativo" && <button className="btn" onClick={() => setPanel({ t: "parcela", label, amount: baseAmt, date: it ? it.date : pc.date, save: (x, amount, date) => editPlannedParcel(x, p.id, idx, { amount, date }) })}>Editar esta parcela</button>}
                     <button className="btn" onClick={() => setPanel({ t: "nota", init: noteInit(p, "compra"), siblings: n, save: (x, f) => { const t = x.planned.find((y) => y.id === p.id); if (t) Object.assign(t, { categoryId: f.categoryId, supplierId: f.supplierId, purchaseCode: f.purchaseCode, document: f.document, notes: f.notes }); } })}>Editar dados da nota</button>
                     {pc && p.status === "ativo" && <button className="btn" onClick={() => setPanel({ t: "prorrogar", label, current: it?.extensionDate ?? null, original: it ? it.date : pc.date, history: it?.extensionHistory ?? [], save: (x, to, note) => extendPlannedParcel(x, p.id, idx, to, note, now()) })}>Prorrogar parcela</button>}
-                    <button className="btn" onClick={() => toggle("tl", p.id)}>Detalhes ({effs.length})</button>
+                    <button className="btn" onClick={() => toggle("tl", p.id + ":" + idx)}>Detalhes ({effs.length})</button>
                     <button className="btn btn-danger" onClick={async () => await askConfirm("Excluir esta previsão (todas as parcelas)?") && del("planned", p.id)}>Excluir nota</button>
                   </Acoes></td>
                 </tr>,
               ];
-              if (i === n - 1) {
-                if (isOpen("tl", p.id)) out.push(<tr key={p.id + "-e"}><td colSpan={12} className="bg-muted"><Timeline d={d} p={p} act={actAlone} /></td></tr>);
-              }
+              if (isOpen("tl", p.id + ":" + idx)) out.push(<tr key={p.id + ":" + idx + "-e"}><td colSpan={12} className="bg-muted"><Timeline d={d} p={p} act={actAlone} /></td></tr>);
               return out;
             })}
-            {!plannedRows.length && <tr><td colSpan={12} className="text-center text-muted-foreground">Nenhum lançamento planejado.</td></tr>}</tbody></table>
+            {!plannedRows.length && <tr><td colSpan={12} className="text-center text-muted-foreground">Nenhum resultado para os filtros informados</td></tr>}</tbody></table>
         )}
         {tab === "committed" && (
-          <table className="tbl"><thead><tr><th>Categoria</th><th>Subgrupo</th><th>Fornecedor</th><th>Código do pedido</th><th>Documento</th><th>Descrição</th><th>Parcela</th><th className="num">Valor da parcela</th><th>Vencimento</th><th>Prorrogar para</th><th>Situação do lançamento</th><th>Situação do pagamento</th><th className="num">Pago</th><th className="num">Saldo em aberto</th><th>Ações</th></tr></thead>
+          <table className="tbl"><thead><tr><SortHead label="Categoria" column={0} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Subgrupo" column={1} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Fornecedor" column={2} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Código do pedido" column={3} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Documento" column={4} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Descrição" column={5} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Parcela" column={6} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Valor da parcela" column={7} sort={committedReport.sort} onSort={committedReport.toggle} numeric={true} /><SortHead label="Vencimento" column={8} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Prorrogar para" column={9} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Situação do lançamento" column={10} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Situação do pagamento" column={11} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Pago" column={12} sort={committedReport.sort} onSort={committedReport.toggle} numeric={true} /><SortHead label="Saldo em aberto" column={13} sort={committedReport.sort} onSort={committedReport.toggle} numeric={true} /><th>Ações</th></tr></thead>
             <tbody>{efetivados.flatMap((r) => {
               if (r.t === "committed") {
                 const c = r.c;
@@ -204,16 +233,16 @@ function Page() {
                 isOpen("det", e.id) && <tr key={e.id + "-d"}><td colSpan={15} className="bg-muted p-2"><div className="lbl mb-1">Baixas da parcela</div><BaixasList d={d} kind="expense" titleId={e.id} canReverse={active.isBase} onReverse={(id, n) => act((x) => reversePayment(x, id, n, now()))} />{e.cardId && <p className="mt-1">Compra no cartão — paga pela fatura{e.invoiceId ? "" : " (fatura ainda não fechada)"}.</p>}</td></tr>,
               ];
             })}
-            {!efetivados.length && <tr><td colSpan={15} className="text-center text-muted-foreground">Nenhum lançamento efetivado.</td></tr>}</tbody></table>
+            {!efetivados.length && <tr><td colSpan={15} className="text-center text-muted-foreground">Nenhum resultado para os filtros informados</td></tr>}</tbody></table>
         )}
         {tab === "payments" && (
-          <table className="tbl"><thead><tr><th>Data</th><th>Título</th><th>Conta</th><th className="num">Valor</th><th>Obs.</th><th>Situação</th><th /></tr></thead>
-            <tbody>{[...d.payments].sort((a, b) => a.date.localeCompare(b.date)).map((p) => {
+          <table className="tbl"><thead><tr><SortHead label="Data" column={0} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><SortHead label="Título" column={1} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><SortHead label="Conta" column={2} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><SortHead label="Valor" column={3} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={true} /><SortHead label="Obs." column={4} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><SortHead label="Situação" column={5} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><th>Ações</th></tr></thead>
+            <tbody>{paymentRows.map((p) => {
               const t = p.titleKind === "committed" ? d.committed.find((c) => c.id === p.titleId) : d.expenses.find((e) => e.id === p.titleId);
               return <tr key={p.id}><td>{fmtDate(p.date)}</td><td>{sup(t?.supplierId ?? "")?.name} · {t?.document || "sem documento"}{p.titleKind === "committed" && labels.get(p.titleId) ? ` · parcela ${labels.get(p.titleId)}` : ""}</td><td>{p.method === "cartao" ? <span className="tag tag-ok">Quitado com cartão</span> : p.accountId ? accountName(d, p.accountId) : <span className="tag tag-warn">{NO_ACCOUNT}</span>}</td><td className="num">{fmtBRL(p.amount)}</td><td>{p.note}</td>
                 <td>{p.reversedAt ? <span className="tag tag-err">estornado {fmtDate(p.reversedAt.slice(0, 10))}: {p.reversalNote}</span> : <span className="tag tag-ok">ativo</span>}</td>
                 <td>{!p.reversedAt && p.method !== "cartao" && <button className="btn" disabled={!active.isBase} onClick={async () => { const n = await askText("Motivo do estorno (auditado):"); if (n) act((x) => reversePayment(x, p.id, n, now())); }}>Estornar</button>}</td></tr>;
-            })}</tbody></table>
+            })}{!paymentRows.length && <tr><td colSpan={7} className="text-center text-muted-foreground">Nenhum resultado para os filtros informados</td></tr>}</tbody></table>
         )}
       </div>}
       <p className="mt-2 text-[11px] text-muted-foreground">Registrar pagamento é o registro de uma baixa já realizada (Pix, TED, DOC ou Boleto) — não executa transferência bancária. Boleto pago com cartão não debita conta: passa para a fatura.</p>
@@ -367,12 +396,13 @@ function Timeline({ d, p, act }: { d: ScenarioData; p: Planned; act: (fn: (x: Sc
         <div><div className="lbl">Situação</div><span className={`tag ${s.health === "ok" ? "tag-ok" : "tag-err"}`}>{s.status} · {s.health === "ok" ? "conciliado" : "conciliação pendente"}</span></div>
       </div>
       <p className="text-[11px] text-muted-foreground">Original + efetivações não somam de novo: fluxo = efetivados (títulos) + restante previsto. Conferência: efetivado {fmtBRL(s.effectivated)} + legado {fmtBRL(s.legacyAbated)} + restante {fmtBRL(s.remaining)} = {fmtBRL(s.effectivated + s.legacyAbated + s.remaining)}{s.status === "ativo" && !p.remainingOverride && s.effectivated + s.legacyAbated + s.remaining !== s.original ? " ⚠ diverge do original" : ""}.</p>
-      <table className="tbl"><thead><tr><th>Evento</th><th>Data</th><th>Título</th><th>Vencimento</th><th className="num">Valor</th><th className="num">Pago</th><th className="num">Aberto</th><th>Situação</th><th>Ação</th></tr></thead>
-        <tbody>
-          {s.timeline.flatMap(({ e, titles }) => titles.length ? titles.map((t, i) => <tr key={e.id + t.c.id}><td>{i === 0 ? `Efetivação ${e.linkedLegacy ? "(título legado vinculado)" : e.kind}${e.manual ? ` · previsão substituída ${fmtBRL(e.substituted ?? 0)} · planejado ${fmtBRL(e.manual.before.reduce((a, x) => a + x.amount, 0))} → ${fmtBRL(e.manual.after.reduce((a, x) => a + x.amount, 0))} (${e.manual.before.length} → ${e.manual.after.length} parcelas) · ${e.manual.rule}` : ""}` : ""}</td><td>{i === 0 ? fmtDate(e.manual?.effectiveDate ?? e.at.slice(0, 10)) : ""}</td><td>{t.c.document}</td><td>{fmtDate(committedDate(t.c))}</td><td className="num">{fmtBRL(t.c.value)}</td><td className="num">{fmtBRL(t.paid)}</td><td className="num">{fmtBRL(Math.max(0, t.open))}</td><td>{e.reversedAt ? <span className="tag tag-err">revertida: {e.reversalNote}</span> : t.state}</td><td>{i === 0 && !e.reversedAt && <button className="btn" onClick={async () => { const n = await askText("Motivo da reversão (auditado):"); if (n) act((x) => reverseEffectivation(x, e.id, n, at()), "a reversão"); }}>Reverter</button>}</td></tr>) : [])}
-          {s.legacy.map((t) => <tr key={t.c.id}><td>Título legado distinto (M)</td><td>—</td><td>{t.c.document}</td><td>{fmtDate(committedDate(t.c))}</td><td className="num">{fmtBRL(t.c.value)}</td><td className="num">{fmtBRL(t.paid)}</td><td className="num">{fmtBRL(Math.max(0, t.open))}</td><td>{t.c.legacyAbatement === null ? <span className="tag tag-err">M ausente</span> : `M ${fmtBRL(t.c.legacyAbatement)}`}</td><td /></tr>)}
-          {s.remainingDates.map((dt, i) => <tr key={"r" + i}><td>{i === 0 ? "Restante previsto" : ""}</td><td /><td>previsão</td><td>{fmtDate(dt)}</td><td className="num" colSpan={1}>{i === 0 ? fmtBRL(s.remaining) : ""}</td><td /><td /><td>{i === 0 ? `${s.remainingDates.length} data(s)` : ""}</td><td /></tr>)}
-        </tbody></table>
+      <DetailReport rows={[
+        ...s.timeline.flatMap(({ e, titles }) => titles.map((t) => ({ key: e.id + t.c.id, event: `Efetivação ${e.linkedLegacy ? "(título legado vinculado)" : e.kind}${e.manual ? ` · previsão substituída ${fmtBRL(e.substituted ?? 0)} · planejado ${fmtBRL(e.manual.before.reduce((a, x) => a + x.amount, 0))} → ${fmtBRL(e.manual.after.reduce((a, x) => a + x.amount, 0))} (${e.manual.before.length} → ${e.manual.after.length} parcelas) · ${e.manual.rule}` : ""}`, date: e.manual?.effectiveDate ?? e.at.slice(0, 10), title: t.c.document, due: committedDate(t.c), value: t.c.value, paid: t.paid, open: Math.max(0, t.open), state: e.reversedAt ? `revertida: ${e.reversalNote}` : t.state, action: titles[0] === t && !e.reversedAt ? <button className="btn" onClick={async () => { const n = await askText("Motivo da reversão (auditado):"); if (n) act((x) => reverseEffectivation(x, e.id, n, at()), "a reversão"); }}>Reverter</button> : null }))),
+        ...s.legacy.map((t) => ({ key: t.c.id, event: "Título legado distinto (M)", date: null, title: t.c.document, due: committedDate(t.c), value: t.c.value, paid: t.paid, open: Math.max(0, t.open), state: t.c.legacyAbatement === null ? "M ausente" : `M ${fmtBRL(t.c.legacyAbatement)}`, action: null })),
+        ...s.remainingDates.map((dt, i) => ({ key: "r" + i, event: "Restante previsto", date: null, title: "previsão", due: dt, value: i === 0 ? s.remaining : null, paid: null, open: null, state: `${s.remainingDates.length} data(s)`, action: null })),
+      ]} head={["Evento", "Data", "Título", "Vencimento", "Valor", "Pago", "Aberto", "Situação"]} rowKey={(r) => r.key}
+        values={(r) => [r.event, dateValue(r.date), r.title, dateValue(r.due), r.value, r.paid, r.open, r.state]}
+        cells={(r) => [r.event, fmtDate(r.date), r.title, fmtDate(r.due), r.value == null ? "—" : fmtBRL(r.value), r.paid == null ? "—" : fmtBRL(r.paid), r.open == null ? "—" : fmtBRL(r.open), r.state]} actions={(r) => r.action} />
       {p.status === "ativo" ? <div className="flex flex-wrap items-end gap-3">
         <button className="btn btn-danger" onClick={async () => { const n = await askText("Motivo do encerramento do restante previsto:"); if (n) act((x) => closePlanned(x, p.id, n), "o encerramento"); }}>Encerrar restante</button>
         {s.legacy.length > 0 && <span>Mesmo título que uma efetivação? <select className="inp" value={link} onChange={(e) => setLink(e.target.value)}><option value="">— título legado —</option>{s.legacy.map((t) => <option key={t.c.id} value={t.c.id}>{t.c.document} · {fmtBRL(t.c.value)}</option>)}</select> <button className="btn" disabled={!link} onClick={() => act((x) => linkLegacyTitle(x, { id: "lk" + uid(), plannedId: p.id, committedId: link, at: at() }), "o vínculo do título legado")}>Vincular (sem duplicar)</button></span>}

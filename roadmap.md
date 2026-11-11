@@ -1,5 +1,9 @@
 # Roadmap
 
+## Busca e ordenação em Lançamentos (2026-11-11)
+- [x] Planejada, Efetivado, baixas e subvisões/detalhes de Consultas: busca, cabeçalhos e estado independente
+- [x] Totais, impressão/exportação filtrados e ordenados; 190 testes e navegador desktop 1280×1800 com dados interceptados; sem escrita real/publicação
+
 ## Dashboard e Meta de Faturamento aprovados (2026-11-11)
 - [x] Dashboard: preservar 15 KPIs, quatro gráficos, expansão inline, relatório paginado e informações sequenciais
 - [x] Metas: 13 colunas, edição multicélula, mês/ano, nomes, revisão atômica, histórico e datas reais impactadas

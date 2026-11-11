@@ -1,4 +1,6 @@
 import { askText } from "@/lib/decisions";
+import { DetailReport } from "@/components/ReportControls";
+import { dateValue } from "@/lib/reportTable";
 import { useState } from "react";
 import { DateInput, MoneyInput } from "@/components/kit";
 import { Field, guardClose, Section, SidePanel } from "@/components/NotaPanel";
@@ -127,11 +129,11 @@ export function PagamentoPanel({ d, kind, titleId, label, onCancel, onConfirm }:
 /** Lista de baixas da parcela (todas, inclusive estornadas), com a conta de cada uma. */
 export function BaixasList({ d, kind, titleId, canReverse, onReverse }: { d: ScenarioData; kind: Payment["titleKind"]; titleId: string; canReverse: boolean; onReverse: (id: string, note: string) => void }) {
   const ps = d.payments.filter((p) => p.titleKind === kind && p.titleId === titleId);
-  if (!ps.length) return <span className="text-muted-foreground">Sem baixas.</span>;
-  return <table className="tbl"><thead><tr><th>Data</th><th>Forma</th><th>Origem</th><th className="num">Valor</th><th>Situação</th><th>Observação</th><th /></tr></thead>
-    <tbody>{ps.map((p) => <tr key={p.id}><td>{fmtDate(p.date)}</td><td>{p.form ? FORM_LABEL[p.form] : "—"}</td><td>{p.method === "cartao" ? <CardLink d={d} p={p} /> : p.accountId ? accountName(d, p.accountId) : <span className="tag tag-warn">{NO_ACCOUNT}</span>}</td><td className="num">{fmtBRL(p.amount)}</td>
-      <td>{p.reversedAt ? <span className="tag tag-err" title={p.reversalNote}>Estornada em {fmtDate(p.reversedAt.slice(0, 10))}</span> : <span className="tag tag-ok">Ativa</span>}</td><td>{p.reversedAt ? p.reversalNote : p.note}</td>
-      <td>{!p.reversedAt && canReverse && p.method !== "cartao" && <button className="btn" onClick={async () => { const n = await askText("Motivo do estorno desta baixa:"); if (n) onReverse(p.id, n); }}>Estornar</button>}</td></tr>)}</tbody></table>;
+  const origin = (p: Payment) => p.method === "cartao" ? cardName(d, d.cardOps.find((o) => o.id === p.cardOpId)?.cardId ?? "") : p.accountId ? accountName(d, p.accountId) : NO_ACCOUNT;
+  return <DetailReport rows={ps} head={["Data", "Forma", "Origem", "Valor", "Situação", "Observação"]} rowKey={(p) => p.id}
+    values={(p) => [dateValue(p.date), p.form ? FORM_LABEL[p.form] : null, origin(p), p.amount, p.reversedAt ? "Estornada" : "Ativa", p.reversedAt ? p.reversalNote : p.note]}
+    cells={(p) => [fmtDate(p.date), p.form ? FORM_LABEL[p.form] : "—", p.method === "cartao" ? <CardLink d={d} p={p} /> : origin(p), fmtBRL(p.amount), p.reversedAt ? `Estornada em ${fmtDate(p.reversedAt.slice(0, 10))}` : "Ativa", p.reversedAt ? p.reversalNote : p.note]}
+    actions={(p) => !p.reversedAt && canReverse && p.method !== "cartao" && <button className="btn" onClick={async () => { const n = await askText("Motivo do estorno desta baixa:"); if (n) onReverse(p.id, n); }}>Estornar</button>} />;
 }
 
 /** Vínculo boleto → operação no cartão → fatura(s). */
