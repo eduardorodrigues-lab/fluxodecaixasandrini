@@ -19,7 +19,9 @@ const COLLECTIONS: { key: keyof ScenarioData; label: string; id: (x: Record<stri
   { key: "adjustments", label: "Ajuste de saldo", id: (x) => String(x["date"]) },
   { key: "importLog", label: "Registro de importação", id: (x) => String(x["key"]) },
 ];
-const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+// Comparação independente da ordem das chaves (o banco reordena chaves de objetos JSON ao gravar).
+const stable = (v: unknown): unknown => (Array.isArray(v) ? v.map(stable) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v as object).sort().map((k) => [k, stable((v as Record<string, unknown>)[k])])) : v);
+const eq = (a: unknown, b: unknown) => JSON.stringify(stable(a)) === JSON.stringify(stable(b));
 
 export function diffData(a: ScenarioData, b: ScenarioData): Change[] {
   const out: Change[] = [];

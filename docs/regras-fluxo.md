@@ -224,3 +224,6 @@ Script de reprodução local: `bun scripts/validate-ceo-xlsm.ts <arquivo> /tmp/r
 - Tabela editável Valor real / Vencimento real com calendário, adicionar/remover parcelas. Regerar linhas pede confirmação.
 - Revisão mostra todas as parcelas e a conferência da soma; "Confirmar lançamento" exige marcar "Conferi os valores e vencimentos com o documento ou a negociação desta operação."
 - Condições da operação não alteram o fornecedor nem outros lançamentos; salvar como nova condição é opcional. Efetivado = obrigação real confirmada, não paga.
+
+## Carga real (11/11/2026, versões 115→139)
+Fonte: FLUXO_DE_CAIXA_ORIGINAL.xlsm + Despesas_corrigidas.xlsx. Recebimento importado com soma do dia 0 aciona estimativa (IF(D6=0) da fonte); zero digitado no sistema continua substituindo. Meses importados e planejadas importadas usam valores exatos (sem arredondar ao centavo). Divergências da fonte não reproduzidas: GI4 (07/07/2025) exclui recebimentos; HL32 (05/08/2025) não subtrai saídas; JX7 (08/10/2025) estimativa digitada 0; RECEBIMENTOS 02/01/2027 com -1 sem linha fonte; distribuição de efetivadas 14–16/11/2026 desatualizada (total igual); arredondamento da macro nas planejadas. UR32 (15/07/2026) digitado foi importado como ajuste de saldo em 16/07/2026.
