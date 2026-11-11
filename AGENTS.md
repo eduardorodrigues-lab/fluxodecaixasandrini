@@ -10,6 +10,8 @@
 <!-- LOVABLE:END -->
 
 ## Project rules
+- Dashboard reports adapt source records from unchanged KPI/flow outputs; pagination and available-space measurement stay presentation-only — preserves financial scopes while fitting the application shell.
+- Monthly inline drafts use `monthReport.ts`, apply atomically through the existing store, and resolve affected dates through `dailyEstimate`; name-only edits preserve source calculations — avoids premature autosave, silent base changes and guessed lag intervals.
 - All editable civil dates use `DateInput` from `DateField` (also re-exported by kit); calendar conversion uses local year/month/day components, not UTC serialization — avoids timezone shifts and inconsistent masks.
 - User decisions use the queued `src/lib/decisions.ts` service and the single root-mounted `DecisionDialog`; review panels use the centered SidePanel variant — avoids browser dialogs and duplicate decision layers.
 - Flow warning presentation is grouped by code and affected period in `src/lib/pendencias.ts`; contextual links use validated search and focus without changing shared flow filters — keeps diagnostics separate from financial calculations.

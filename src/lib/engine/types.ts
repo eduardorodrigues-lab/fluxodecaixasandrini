@@ -117,8 +117,9 @@ export interface Receipt { id: string; date: string; platforms: Record<string, n
 }
 // Meta mensal versionada: valores próprios do mês; parâmetros gerais são só default na criação.
 export type R2Base = "apos_r1" | "bruto";
-export interface FinancialConfig { deflator1: number; deflator2: number; base1: "bruto"; base2: R2Base; divisor: Divisor; lagDays: number }
+export interface FinancialConfig { deflator1: number; deflator2: number; base1: "bruto"; base2: R2Base; divisor: Divisor; lagDays: number; deflator1Name?: string; deflator2Name?: string }
 export interface MonthTarget {
+  deflator1Name?: string; deflator2Name?: string;
   financial?: FinancialConfig; // configuração confirmada; ausência preserva regra da fonte
   gross: number; // faturamento bruto (centavos)
   legacyReducer: number; divisorLegado: Divisor; // perfil Excel legado: redutor único sobre o bruto

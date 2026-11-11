@@ -1,5 +1,12 @@
 # Fluxo de Caixa Sandrini — Regras, schema e critérios de aceite (NÃO homologado)
 
+## Dashboard e relatório mensal aprovados — 11/11/2026
+- Dashboard mantém os 15 KPIs e seus escopos originais. Quatro gráficos iniciais: saldo diário, fornecedores em aberto, vencimentos no período e despesas por subgrupo. Expansão abaixo dos KPIs, relatório fonte paginado e card sequencial Dados/Observações/Legenda. Seleção gráfica filtra registros/total; minimizar preserva filtros compartilhados.
+- Metas: 13 colunas completas, edição multicélula local antes de `update`, revisão conjunta e confirmação atômica. Valores revisados usam D1=bruto×p1, D2=(bruto−D1)×p2. Base histórica de meses não editados fica preservada; renomear sozinho não altera cálculo, percentuais ou precisão. Nomes por mês auditados. Segundo deflator legado permanece 0% até alteração explícita.
+- Datas do relatório são resolvidas por `dailyEstimate` para cada data do horizonte completo permitido (defasagem 0–120), respeitando o parâmetro do mês de destino. Agrupar intervalos somente após resolução; informado inclusive zero suprime estimativa. Detalhamento mostra datas estimadas e suprimidas separadas.
+- Novo mês mm/aaaa com máscara e seletor mês/ano, validação e duplicidade; padrões opcionais somente meses novos. Meses ordenados cronologicamente. Rascunhos por modo/organização não se propagam ao trocar contexto.
+- Números positivos azuis, negativos vermelhos, zero neutro; deduções com sinal negativo. Cor de fornecedor por ID separada da semântica dos valores. Sem importação de nomes/valores fictícios do HTML aprovado.
+
 ## Correção da distribuição diária — 11/11/2026
 - Causa reproduzida: o seletor alterava o rascunho, mas a memória mostrava apenas o líquido (independente do divisor), sem estimativa/dia. A revisão também omitia a diária; a persistência mensal já guardava `financial.divisor`. O fluxo usava centavos arredondados a cada dia, perdendo precisão nas projeções revisadas.
 - Rascunho, coluna mensal e fluxo usam `estimateMonth`. Deflator 1 sobre bruto, deflator 2 sequencial após a primeira redução na configuração aprovada; bases anteriormente cadastradas são preservadas até revisão. Líquido dividido por 30 ou pelos dias corridos do mês/ano **de origem** da meta (28/29/30/31), não do destino após defasagem. Janeiro líquido R$ 93.000: /30 = R$ 3.100 e /31 = R$ 3.000 por dia.

@@ -1,118 +1,69 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
-import { PageHeader } from "@/components/kit";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { DateInput } from "@/components/kit";
+import { Button } from "@/components/ui/button";
+import { Maximize2, Minimize2 } from "lucide-react";
+import { DashboardChart } from "@/components/DashboardChart";
+import { useAvailableArea } from "@/components/AvailableArea";
 import { computeFlow } from "@/lib/engine/engine";
-import { computeDashboard, type Card, type OpenTitle } from "@/lib/engine/dashboard";
+import { computeDashboard } from "@/lib/engine/dashboard";
+import { cardReport, cashReport, expensesReport, titlesReport, moneyTone, signedMoney, supplierSlot, type DashboardReport } from "@/lib/dashboardReport";
 import { todaySP } from "@/lib/engine/actions";
 import { fmtDate } from "@/lib/dates";
-import { fmtBRL } from "@/lib/money";
 import { useApp } from "@/lib/store";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({ meta: [
     { title: "Dashboard · Fluxo de Caixa Sandrini" },
-    { name: "description", content: "Títulos em aberto por fornecedor, vencimentos, saldo mínimo e necessidade de caixa." },
+    { name: "description", content: "Indicadores, gráficos e registros reconciliados do caixa Sandrini." },
     { property: "og:title", content: "Dashboard · Fluxo de Caixa Sandrini" },
-    { property: "og:description", content: "Aberto por fornecedor, vencidos, a vencer e necessidade de caixa." },
+    { property: "og:description", content: "Fornecedores, vencimentos, despesas e saldo projetado com relatórios fonte." },
     { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" },
-  ] }),
-  component: Page,
+  ] }), component: Page,
 });
-
 function Page() {
-  const { active, ui } = useApp();
-  const d = active.data;
-  const today = todaySP();
-  const filter = { supplierId: ui.supplierId, group: ui.group };
-  const flow = useMemo(() => computeFlow(d, { start: ui.start, end: ui.end, filter }), [d, ui.start, ui.end, ui.supplierId, ui.group]); // eslint-disable-line react-hooks/exhaustive-deps
-  const k = useMemo(() => computeDashboard(d, flow, today, { start: ui.start, end: ui.end, ...filter }), [d, flow, today, ui.start, ui.end, ui.supplierId, ui.group]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [sel, setSel] = useState<Card | null>(null);
-  const supName = d.suppliers.find((s) => s.id === ui.supplierId)?.name;
-  return (
-    <div className="space-y-3">
-      <PageHeader title="Dashboard" sub={`${active.isBase ? "Real" : "Simulação"} · cenário "${active.name}" · período ${fmtDate(ui.start)} a ${fmtDate(ui.end)}${supName ? ` · fornecedor ${supName}` : ""}${ui.group ? ` · grupo ${ui.group}` : ""} · hoje ${fmtDate(today)} (America/Sao_Paulo)`}></PageHeader>
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7">
-        {k.cards.map((c) => (
-          <button key={c.key} type="button" onClick={() => setSel(c)} aria-haspopup="dialog" aria-label={`${c.label}: ${fmtBRL(c.value)}. Abrir detalhes`}
-            className="card flex flex-col items-start p-2 text-left transition-colors hover:border-primary hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            <span className="lbl">{c.label}</span>
-            <span className={`num text-base font-semibold ${c.tone === "neg" && c.value !== 0 ? "neg" : ""}`}>{c.kind === "day" && c.key === "neg" ? (c.day ? fmtDate(c.day.date) : "nenhum") : fmtBRL(c.value)}</span>
-            <span className="text-[10px] text-muted-foreground">{c.key === "top" && k.ranking[0] ? k.ranking[0].supplier : `${c.count} item(ns)`}{c.tone === "warn" ? " · pendência" : ""}</span>
-          </button>
-        ))}
-      </div>
-      <p className="text-[11px] text-muted-foreground">Aberto = títulos efetivados e despesas − pagamentos registrados (estornos desconsiderados). Previsão não entra. Vencimento passado não significa pago. Cada card mostra seu escopo: estoque na data-base (hoje) ou vencimentos do período.</p>
-      <Sheet open={!!sel} onOpenChange={(o) => !o && setSel(null)}>
-        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-3xl">
-          {sel && <Detail c={sel} today={today} />}
-        </SheetContent>
-      </Sheet>
-    </div>
-  );
+  const { active, ui, setUi } = useApp(); const d = active.data; const today = todaySP();
+  const { ref, height } = useAvailableArea();
+  const flow = useMemo(() => computeFlow(d, { start: ui.start, end: ui.end, filter: { supplierId: ui.supplierId, group: ui.group } }), [d, ui]);
+  const k = useMemo(() => computeDashboard(d, flow, today, { start: ui.start, end: ui.end, supplierId: ui.supplierId, group: ui.group }), [d, flow, today, ui]);
+  const [selected, setSelected] = useState<string | null>(null), [point, setPoint] = useState<string | null>(null), [page, setPage] = useState(0);
+  const overview = useMemo(() => [
+    { key: "cash-chart", title: "Saldo projetado no período", report: cashReport(flow.days), note: "Saldo final diário projetado. Inclui previsões; não é saldo bancário realizado.", scope: `${fmtDate(ui.start)} a ${fmtDate(ui.end)}` },
+    { key: "suppliers-chart", title: "Fornecedores em aberto", report: titlesReport(d, k.titles), note: "Somente efetivado validado em aberto, descontadas baixas ativas. Previsões e situação a confirmar ficam separadas.", scope: `Estoque em ${fmtDate(today)}` },
+    { key: "due-chart", title: "Vencimentos do período", report: titlesReport(d, k.cards.find((c) => c.key === "period")?.titles ?? [], "date"), note: "Vencimento vigente, incluindo prorrogação confirmada. Não somar janelas acumuladas de 7, 15 e 30 dias.", scope: `${fmtDate(ui.start)} a ${fmtDate(ui.end)}` },
+    { key: "expenses-chart", title: "Despesas por subgrupo", report: expensesReport(d, k.titles, k.cards.find((c) => c.key === "planned")?.parcels ?? []), note: "Efetivado em aberto: estoque na data-base. Planejado restante: período selecionado. Etapas separadas, sem repetir previsões substituídas.", scope: `Estoque ${fmtDate(today)} / previsão ${fmtDate(ui.start)} a ${fmtDate(ui.end)}` },
+  ], [d, k, flow, ui, today]);
+  const card = k.cards.find((c) => c.key === selected), graph = overview.find((g) => g.key === selected);
+  const report = card ? cardReport(d, card, flow.days) : graph?.report;
+  const select = (key: string | null) => { setSelected(key); setPoint(null); setPage(0); };
+  const filtered = report?.rows.filter((r) => point === null || r.group === point) ?? [];
+  const tableArea = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState(1);
+  useLayoutEffect(() => {
+    const element = tableArea.current;
+    if (!element) return;
+    const measure = () => {
+      const header = element.querySelector("thead")?.getBoundingClientRect().height ?? 35;
+      const rowHeight = Math.max(38, ...Array.from(element.querySelectorAll("tbody tr")).map((row) => row.getBoundingClientRect().height));
+      setSize(Math.max(1, Math.floor((element.getBoundingClientRect().height - header - 6) / rowHeight)));
+    };
+    measure(); const observer = new ResizeObserver(measure); observer.observe(element);
+    return () => observer.disconnect();
+  }, [selected, report, height, page]);
+  const pages = Math.max(1, Math.ceil(filtered.length / size)), current = Math.min(page, pages - 1);
+  const rows = filtered.slice(current * size, (current + 1) * size);
+  const title = card?.label ?? graph?.title ?? "";
+  const total = report?.type === "line" ? filtered.at(-1)?.value ?? 0 : filtered.reduce((s, r) => s + r.value, 0);
+  const scope = (card?.scope ?? graph?.scope ?? "").replace(/\d{4}-\d{2}-\d{2}/g, (s) => fmtDate(s));
+  return <div ref={ref} className="dashboard-page" style={{ "--available-height": `${height}px` } as React.CSSProperties}>
+    <header className="dashboard-header"><div><h1 className="text-lg font-semibold">Dashboard</h1><p className="text-xs text-muted-foreground">{active.isBase ? "Fluxo real" : `Simulação ${active.name}`} · {fmtDate(ui.start)} a {fmtDate(ui.end)} · referência {fmtDate(today)}</p></div><div className="flex flex-wrap items-center gap-2"><label className="text-xs">De <DateInput value={ui.start} maxDate={ui.end} onChange={(s) => s && setUi({ start: s })} /></label><label className="text-xs">Até <DateInput value={ui.end} minDate={ui.start} onChange={(s) => s && setUi({ end: s })} /></label><select aria-label="Fornecedor do dashboard" className="inp max-w-40" value={ui.supplierId} onChange={(e) => { setUi({ supplierId: e.target.value }); setPage(0); setPoint(null); }}><option value="">Todos os fornecedores</option>{d.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div></header>
+    <div className="dashboard-kpis">{k.cards.map((c) => <Button key={c.key} variant="outline" aria-pressed={selected === c.key} aria-label={`${c.label}: ${signedMoney(c.value)}. Abrir relatório`} className="dashboard-kpi" onClick={() => select(c.key)}><span>{c.label}</span><strong className={moneyTone(c.value)}>{c.key === "neg" && !c.day ? "Nenhum" : signedMoney(c.value)}</strong><small>{c.key === "top" ? k.ranking[0]?.supplier ?? "Sem títulos" : c.day ? fmtDate(c.day.date) : ["planned", "period"].includes(c.key) ? `${fmtDate(ui.start)}–${fmtDate(ui.end)}` : `${c.count} registros · ${fmtDate(today)}`}</small></Button>)}</div>
+    {!selected ? <div className="dashboard-overview">{overview.map((g) => <section key={g.key} className="dashboard-chart-section"><header><h2>{g.title}</h2><Button variant="ghost" size="sm" onClick={() => select(g.key)} aria-label={`Expandir ${g.title}`}><Maximize2 className="size-4" />Expandir</Button></header><DashboardChart compact report={g.report} selected={null} onSelect={(key) => { setSelected(g.key); setPoint(key); setPage(0); }} /><p className="text-xs text-muted-foreground">{g.scope}</p></section>)}</div> : report && <section className="dashboard-expanded"><header className="flex items-center justify-between gap-2"><div><h2 className="font-semibold">{title}</h2><p className="text-xs text-muted-foreground">{scope}</p></div><Button variant="outline" size="sm" onClick={() => select(null)}><Minimize2 className="size-4" />Minimizar</Button></header><div className="dashboard-detail-layout"><div className="dashboard-primary">
+      <DashboardChart key={selected} report={report} selected={point} onSelect={(key) => { setPoint(point === key ? null : key); setPage(0); }} />
+      <div className="dashboard-report"><div className="flex items-center justify-between gap-2"><h3 className="font-semibold">Relatório dos dados</h3>{point && <Button size="sm" variant="ghost" onClick={() => { setPoint(null); setPage(0); }}>Mostrar todos</Button>}</div><SourceTable report={report} rows={rows} areaRef={tableArea} /><div className="flex items-center justify-between gap-2 text-xs"><span>{report.totalLabel}</span><strong className={moneyTone(total)}>{signedMoney(total)}</strong></div><div className="flex items-center justify-between gap-2 text-xs"><span>{filtered.length} registros · Página {current + 1} de {pages}</span><div className="flex gap-1"><Button size="sm" variant="outline" disabled={current === 0} onClick={() => setPage(current - 1)}>Anterior</Button><Button size="sm" variant="outline" disabled={current + 1 >= pages} onClick={() => setPage(current + 1)}>Próxima</Button></div></div></div>
+    </div><aside className="dashboard-info"><h3>Dados</h3><dl><dt>{card ? card.label : report.totalLabel}</dt><dd className={moneyTone(card?.value ?? report.total)}>{signedMoney(card?.value ?? report.total)}</dd><dt>Registros representados</dt><dd>{report.rows.length}</dd><dt>Escopo</dt><dd>{scope}</dd>{point && <><dt>Seleção</dt><dd>{report.groups.find((g) => g.key === point)?.label}</dd></>}</dl><h3>Observações / considerações</h3><p>{(card?.explanation ?? graph?.note ?? "").replace(/\d{4}-\d{2}-\d{2}/g, (s) => fmtDate(s))}</p><h3>Legenda / critério</h3><p>{report.type === "line" ? "Linha: saldo final diário. Zero é referência; saldos não são somados. Azul positivo, vermelho negativo, sinal explícito." : report.type === "paired" ? "Primeira barra: efetivado. Segunda barra: planejado restante. As duas etapas estão identificadas no relatório." : report.type === "list" ? "Registros fonte sem gráfico: a lista preserva as pendências, sem inventar classificação ou vencimento." : "Barras: saldo dos registros por fornecedor ou vencimento. Azul positivo, vermelho negativo. Seleção filtra os registros e o total."}</p>{report.groups.some((g) => g.supplierId) && <div className="dashboard-legend">{report.groups.map((g) => <div key={g.key} className={g.supplierId ? `supplier-${supplierSlot(g.supplierId)}` : ""}><i className="supplier-swatch" /><span>{g.label}</span></div>)}</div>}</aside></div></section>}
+  </div>;
 }
-
-function TitlesTable({ titles, today }: { titles: OpenTitle[]; today: string }) {
-  const tot = (f: (t: OpenTitle) => number) => titles.reduce((a, t) => a + f(t), 0);
-  return (
-    <table className="tbl">
-      <thead><tr><th>Vencimento</th><th>Tipo</th><th>Fornecedor</th><th>Documento</th><th className="num">Original</th><th className="num">Pago</th><th className="num">Pendente</th><th>Situação</th></tr></thead>
-      <tbody>{titles.map((t) => <tr key={t.kind + t.id}><td className={t.due && t.due < today ? "neg" : ""}>{t.due ? fmtDate(t.due) : <span className="tag tag-warn">sem vencimento</span>}{t.due && t.due < today && " (vencido)"}</td><td>{t.kind === "committed" ? "Efetivado" : "Despesa"}</td><td>{t.supplier}</td><td>{t.document}</td><td className="num">{fmtBRL(t.value)}</td><td className="num">{fmtBRL(t.paid)}</td><td className="num">{fmtBRL(t.open)}</td><td>{t.state}</td></tr>)}</tbody>
-      <tfoot><tr className="font-semibold"><td colSpan={4}>Total ({titles.length})</td><td className="num">{fmtBRL(tot((t) => t.value))}</td><td className="num">{fmtBRL(tot((t) => t.paid))}</td><td className="num">{fmtBRL(tot((t) => t.open))}</td><td /></tr></tfoot>
-    </table>
-  );
-}
-
-function Detail({ c, today }: { c: Card; today: string }) {
-  const [sup, setSup] = useState<string | null>(null);
-  const empty = c.count === 0;
-  return (
-    <div className="space-y-3 text-xs">
-      <SheetHeader><SheetTitle>{c.label}: {c.key === "neg" && c.day ? fmtDate(c.day.date) : fmtBRL(c.value)}</SheetTitle><SheetDescription>{c.scope}</SheetDescription></SheetHeader>
-      <p>{c.explanation}</p>
-      {empty && <p className="rounded border border-border bg-muted p-2">Nada compõe este valor no escopo atual. Ajuste período, cenário ou filtros para ver outros dados.</p>}
-      {!empty && c.kind === "titles" && <div className="overflow-auto"><TitlesTable titles={c.titles!} today={today} /></div>}
-      {!empty && c.kind === "ranking" && <>
-        <div className="overflow-auto"><table className="tbl"><thead><tr><th>#</th><th>Fornecedor</th><th className="num">Títulos</th><th className="num">Aberto</th></tr></thead>
-          <tbody>{c.ranking!.map((r, i) => <tr key={r.supplierId}><td>{i + 1}</td><td><button type="button" className="underline hover:text-primary" onClick={() => setSup(r.supplierId)}>{r.supplier}</button></td><td className="num">{r.titles.length}</td><td className="num">{fmtBRL(r.open)}</td></tr>)}</tbody>
-          <tfoot><tr className="font-semibold"><td colSpan={3}>Total</td><td className="num">{fmtBRL(c.ranking!.reduce((a, r) => a + r.open, 0))}</td></tr></tfoot></table></div>
-        <div className="lbl">Títulos · {c.ranking!.find((r) => r.supplierId === (sup ?? c.ranking![0]!.supplierId))?.supplier}</div>
-        <div className="overflow-auto"><TitlesTable titles={c.ranking!.find((r) => r.supplierId === (sup ?? c.ranking![0]!.supplierId))!.titles} today={today} /></div>
-      </>}
-      {!empty && c.kind === "parcels" && <div className="overflow-auto"><table className="tbl"><thead><tr><th>Data</th><th>Fornecedor</th><th>Cód. compra</th><th className="num">Parcela prevista</th></tr></thead>
-        <tbody>{c.parcels!.map((p, i) => <tr key={i}><td>{fmtDate(p.date)}</td><td>{p.supplier}</td><td>{p.code}</td><td className="num">{fmtBRL(p.amount)}</td></tr>)}</tbody>
-        <tfoot><tr className="font-semibold"><td colSpan={3}>Total ({c.parcels!.length})</td><td className="num">{fmtBRL(c.value)}</td></tr></tfoot></table></div>}
-      {c.kind === "day" && c.day && <>
-        <div className="lbl">Composição de {fmtDate(c.day.date)}</div>
-        <table className="tbl"><tbody>
-          <tr><td>Saldo inicial</td><td className="num">{fmtBRL(c.day.saldoInicial)}</td></tr>
-          <tr><td>+ Recebimento usado ({c.day.usouInformado ? "informado" : "estimado"})</td><td className="num">{fmtBRL(c.day.recUsado)}</td></tr>
-          <tr><td>− Compras planejadas</td><td className="num">{fmtBRL(c.day.planejada)}</td></tr>
-          <tr><td>− Compras efetivadas</td><td className="num">{fmtBRL(c.day.comprometida)}</td></tr>
-          <tr><td>− Despesas</td><td className="num">{fmtBRL(c.day.despesa)}</td></tr>
-          <tr className="font-semibold"><td>= Saldo final</td><td className={`num ${c.day.saldoFinal < 0 ? "neg" : ""}`}>{fmtBRL(c.day.saldoFinal)}</td></tr>
-        </tbody></table>
-      </>}
-      {c.kind === "day" && c.curve && c.curve.length > 0 && <Curve curve={c.curve} mark={c.day?.date ?? null} />}
-    </div>
-  );
-}
-
-function Curve({ curve, mark }: { curve: { date: string; saldo: number }[]; mark: string | null }) {
-  const W = 640, H = 140;
-  const min = Math.min(0, ...curve.map((x) => x.saldo)), max = Math.max(0, ...curve.map((x) => x.saldo));
-  const y = (v: number) => H - ((v - min) / (max - min || 1)) * H;
-  const x = (i: number) => (i / Math.max(1, curve.length - 1)) * W;
-  const mi = curve.findIndex((c) => c.date === mark);
-  return (
-    <figure>
-      <div className="lbl mb-1">Curva de saldo final no período</div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Curva do saldo final diário">
-        <line x1={0} x2={W} y1={y(0)} y2={y(0)} className="stroke-destructive" strokeDasharray="4 3" />
-        <polyline fill="none" className="stroke-primary" strokeWidth={2} points={curve.map((c, i) => `${x(i)},${y(c.saldo)}`).join(" ")} />
-        {mi >= 0 && <circle cx={x(mi)} cy={y(curve[mi]!.saldo)} r={4} className="fill-destructive" />}
-      </svg>
-      <figcaption className="text-[11px] text-muted-foreground">{fmtDate(curve[0]!.date)} a {fmtDate(curve.at(-1)!.date)} · linha tracejada = zero{mark ? ` · ponto = ${fmtDate(mark)}` : ""}</figcaption>
-    </figure>
-  );
+function SourceTable({ report, rows, areaRef }: { report: DashboardReport; rows: DashboardReport["rows"]; areaRef: React.RefObject<HTMLDivElement | null> }) {
+  return <div ref={areaRef} className="dashboard-table-wrap"><table className="tbl dashboard-source"><thead><tr>{report.heads.map((head) => <th key={head}>{head}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={row.id}>{row.cells.map((c, i) => <td key={i} className={c.amount !== undefined ? `num ${moneyTone(c.amount)}` : ""}>{i === 0 && row.supplierId && <i aria-hidden className={`supplier-swatch supplier-${supplierSlot(row.supplierId)}`} />}{c.text}</td>)}</tr>)}{!rows.length && <tr><td colSpan={report.heads.length}>Nenhum registro neste escopo.</td></tr>}</tbody></table></div>;
 }

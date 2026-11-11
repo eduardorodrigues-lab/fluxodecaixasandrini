@@ -1,5 +1,10 @@
 # Roadmap
 
+## Dashboard e Meta de Faturamento aprovados (2026-11-11)
+- [ ] Dashboard: preservar 15 KPIs, quatro gráficos, expansão inline, relatório paginado e informações sequenciais
+- [ ] Metas: 13 colunas, edição multicélula, mês/ano, nomes, revisão atômica, histórico e datas reais impactadas
+- [ ] Testes automáticos e navegador isolado desktop/mobile; capturas e matriz de evidências, sem publicar
+
 ## Correção pontual da distribuição diária (2026-11-11)
 - [x] Investigar seletor, prévia, configuração persistida e recebimento no fluxo
 - [x] Corrigir cálculo/prévia sem alterar metas reais ou regras de origem não revisadas
