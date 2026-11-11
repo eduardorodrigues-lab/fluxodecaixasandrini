@@ -26,7 +26,7 @@ export interface Supplier { id: string; name: string; group: string; terms: (num
 export type CategoryKind = "compra" | "despesa";
 export interface Category { id: string; name: string; kind: CategoryKind; group: string }
 export type Status = "ativo" | "cancelado";
-export interface Origin { file: string; sheet: string; row: number }
+export interface Origin { file: string; sheet: string; row: number; raw?: unknown[]; sourceRow?: number } // raw = células da linha fonte (valor bruto preservado)
 export interface ExtensionEvent { from: string | null; to: string | null; at: string; note: string }
 
 // PLANEJADO = previsão. Não é compra nem pagamento.
@@ -38,6 +38,7 @@ export interface Planned {
   remainingOverride: { value: number; dates: string[]; items?: RemainingItem[] } | null; // restante confirmado; items = parcelas com valor/data próprios e ID estável
   terms?: (number | null)[] | null; // prazos F:O da própria linha (importados); null = usa os do fornecedor
   origin?: Origin | null;
+  sourceSupplier?: string; // nome do fornecedor na fonte (sem vínculo cadastral)
   installments?: PlannedInstallment[] | null; // parcelas próprias (painel Nova nota); null = prazos
 }
 export interface RemainingItem { id: string; amount: number; date: string }
@@ -57,6 +58,7 @@ export interface Committed {
   categoryId: string; notes: string; status: Status; importOrigin?: Origin | null;
   paymentUnconfirmed?: boolean; // importado sem informação de pagamento: "situação a confirmar" (não é aberto validado nem pago)
   noteId?: string; parcelNo?: number; parcelCount?: number;
+  sourceSupplier?: string;
 }
 export interface Expense {
   id: string; supplierId: string; document: string; value: number; baseDate: string;
@@ -64,6 +66,7 @@ export interface Expense {
   extensionDate: string | null; extensionHistory: ExtensionEvent[];
   categoryId: string; notes: string; status: Status; importOrigin?: Origin | null;
   paymentUnconfirmed?: boolean;
+  sourceSupplier?: string; purchaseCode?: string;
   cardOpId?: string | null; // operação no cartão que gerou esta parcela
   cardId?: string | null; // compra no cartão: detalhe da fatura; não debita banco nem entra no fluxo (a fatura entra)
   invoiceId?: string | null; // fatura à qual a compra no cartão foi vinculada
@@ -110,7 +113,9 @@ export interface Transfer { id: string; fromAccountId: string; toAccountId: stri
 export interface PlatformAccountPeriod { from: string; accountId: string; at: string; note: string }
 export interface Platform { id: string; name: string; start: string; end: string | null; importedCode: string | null; defaultAccounts?: PlatformAccountPeriod[]; history: { at: string; field: string; from: unknown; to: unknown; note: string }[] }
 // Recebimento: valores por ID de plataforma. residual[id] = repasse APÓS inativação, exceção explícita com nota.
-export interface Receipt { id: string; date: string; platforms: Record<string, number | null>; general: number | null; notes: string; residual?: Record<string, { note: string; at: string }>;
+export interface Receipt { id: string; date: string; origin?: Origin | null; kind?: "realizado" | "previsto";
+  legacyZeroEstimate?: boolean; // importado da fonte Excel: soma do dia = 0 aciona estimativa (regra IF(D6=0) da fonte)
+  platforms: Record<string, number | null>; general: number | null; notes: string; residual?: Record<string, { note: string; at: string }>;
   accountByPlatform?: Record<string, { accountId: string; override: boolean }>; // conta gravada no registro (nunca recalculada pelo padrão)
   generalAccountId?: string | null; // conta do valor geral (sem plataforma)
   realized?: boolean; // explicitamente confirmado como creditado em conta; informado ≠ realizado
@@ -125,6 +130,7 @@ export interface MonthTarget {
   legacyReducer: number; divisorLegado: Divisor; // perfil Excel legado: redutor único sobre o bruto
   webR1: number; webR2: number; r2Base: R2Base; divisorWeb: Divisor; // perfil Web
   lagDays: number; // defasagem aplicada aos dias de fluxo DESTE mês civil
+  sourceExact?: boolean; // mês importado da fonte: estimativa diária sem arredondamento antecipado
   version: number; history: { at: string; version: number; before: Omit<MonthTarget, "history"> | null; note: string }[];
 }
 export interface Adjustment { date: string; value: number | null; note: string } // value 0 é válido

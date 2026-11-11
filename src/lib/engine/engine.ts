@@ -180,8 +180,10 @@ export function distributePlanned(pl: Planned, sup: Supplier | undefined, commit
   const R = P - Q;
   if (R < 0)
     warnings.push({ code: "PLAN_NEGATIVO", severity: "alerta", refId: pl.id, message: `Planejada ${pl.purchaseCode}: saldo planejado negativo por parcela (mantido, não truncado).` });
-  const target = roundCents(R * used.length);
-  const { parts, residual } = splitCents(target, used.length);
+  // Linha importada da fonte: valor exato por parcela (sem arredondamento antecipado); demais: centavos com resíduo na última.
+  const exactSrc = !!pl.origin;
+  const target = exactSrc ? R * used.length : roundCents(R * used.length);
+  const { parts, residual } = exactSrc ? { parts: used.map(() => R), residual: 0 } : splitCents(target, used.length);
   const parcels = used.map((t, i) => ({ date: addDays(pl.baseDate, t), amount: parts[i]!, exact: R, term: t }));
   const seen = new Set<string>();
   for (const pc of parcels) {
@@ -221,7 +223,7 @@ export function computeFlow(data: ScenarioData, opt: FlowOptions): FlowResult {
     if (!byDate.has(d)) byDate.set(d, []);
     byDate.get(d)!.push(it);
   };
-  const supName = (id: string) => supMap.get(id)?.name ?? "(sem fornecedor)";
+  const supName = (id: string, src?: string) => supMap.get(id)?.name ?? (src || "(sem fornecedor)");
   let prePaid = 0;
 
   for (const pl of data.planned) {
@@ -230,7 +232,7 @@ export function computeFlow(data: ScenarioData, opt: FlowOptions): FlowResult {
     warnings.push(...dist.warnings);
     if (!pass(pl.supplierId)) continue;
     for (const pc of dist.parcels)
-      push(pc.date, { source: "planejada", refId: pl.id, categoryId: pl.categoryId, amount: pc.amount, label: `Previsão · ${supName(pl.supplierId)} · ${pl.purchaseCode}`, note: `${pc.term !== null ? `prazo ${pc.term}d` : pl.installments?.length && !pl.remainingOverride ? "parcela" : "restante confirmado"}${dist.health !== "ok" ? " · " + dist.health : ""}` });
+      push(pc.date, { source: "planejada", refId: pl.id, categoryId: pl.categoryId, amount: pc.amount, label: `Previsão · ${supName(pl.supplierId, pl.sourceSupplier)} · ${pl.purchaseCode}`, note: `${pc.term !== null ? `prazo ${pc.term}d` : pl.installments?.length && !pl.remainingOverride ? "parcela" : "restante confirmado"}${dist.health !== "ok" ? " · " + dist.health : ""}` });
   }
   // Títulos efetivados e despesas: pagamentos na data real + somente o restante no vencimento.
   const title = (kind: Payment["titleKind"], id: string, value: number, status: string, due: string, source: "comprometida" | "despesa", base: Omit<Item, "amount" | "source">, supplierId: string) => {
@@ -249,7 +251,7 @@ export function computeFlow(data: ScenarioData, opt: FlowOptions): FlowResult {
       if (paymentsFor(data, "committed", c.id).some((x) => !x.reversedAt)) warnings.push({ code: "PAG_CANCELADO", severity: "alerta", refId: c.id, message: `Efetivado ${c.document}: cancelado com pagamento ativo — estornar ou conciliar.` });
       continue;
     }
-    title("committed", c.id, c.value, c.status, committedDate(c), "comprometida", { refId: c.id, categoryId: c.categoryId, label: `${supName(c.supplierId)} · ${c.purchaseCode} · ${c.document}` }, c.supplierId);
+    title("committed", c.id, c.value, c.status, committedDate(c), "comprometida", { refId: c.id, categoryId: c.categoryId, label: `${supName(c.supplierId, c.sourceSupplier)} · ${c.purchaseCode} · ${c.document}` }, c.supplierId);
   }
   for (const e of data.expenses) {
     if (e.status === "cancelado") continue;
@@ -266,19 +268,20 @@ export function computeFlow(data: ScenarioData, opt: FlowOptions): FlowResult {
       warnings.push({ code: "DESP_SEM_PRAZO", severity: "alerta", refId: e.id, message: `Despesa ${e.document}: prazo (G) vazio — não distribuída.` });
       continue;
     }
-    title("expense", e.id, e.value, e.status, d, "despesa", { refId: e.id, categoryId: e.categoryId, label: `${supName(e.supplierId)} · ${e.document}` }, e.supplierId);
+    title("expense", e.id, e.value, e.status, d, "despesa", { refId: e.id, categoryId: e.categoryId, label: `${supName(e.supplierId, e.sourceSupplier)} · ${e.document}` }, e.supplierId);
   }
   if (prePaid) warnings.push({ code: "PAG_ANTES_INICIO", severity: "info", message: `Pagamentos anteriores ao início do fluxo (${prePaid} centavos) reduzem o saldo em aberto mas não entram como saída: devem estar refletidos no saldo inicial.` });
 
-  const recByDate = new Map<string, { sum: number; present: boolean; items: Item[] }>();
+  const recByDate = new Map<string, { sum: number; present: boolean; strict: boolean; items: Item[] }>();
   for (const r of data.receipts) {
     const inf = receiptInformed(r);
     if (inf.doubleCount)
       warnings.push({ code: "REC_DUPLA", severity: "alerta", refId: r.id, date: r.date, message: `Recebimento ${r.date}: geral e plataformas preenchidos. A regra original soma ambos — possível dupla contagem (não corrigido).` });
     for (const w of receiptPlatformIssues(data.platforms ?? [], r)) warnings.push(w);
-    const cur = recByDate.get(r.date) ?? { sum: 0, present: false, items: [] };
+    const cur = recByDate.get(r.date) ?? { sum: 0, present: false, strict: false, items: [] };
     cur.sum += inf.sum;
     cur.present ||= inf.present;
+    cur.strict ||= inf.present && !r.legacyZeroEstimate; // zero confirmado só vale para registros fora da regra legada
     if (inf.present) cur.items.push({ source: "recebimento", refId: r.id, amount: inf.sum, label: `Recebimento informado${inf.confirmedZero ? " (zero confirmado)" : ""}${inf.doubleCount ? " (possível dupla contagem)" : ""}` });
     recByDate.set(r.date, cur);
   }
@@ -298,11 +301,12 @@ export function computeFlow(data: ScenarioData, opt: FlowOptions): FlowResult {
     }
     const est = dailyEstimate(p, data.targets, d, data.targetConfigs);
     // Reviewed financial months keep full precision; untouched source months retain their historical rounding.
-    const estimated = data.targetConfigs[est.month]?.financial ? est.exact : est.value;
+    const estimated = data.targetConfigs[est.month]?.financial || data.targetConfigs[est.month]?.sourceExact ? est.exact : est.value;
     const rec = recByDate.get(d);
     const recInformado = rec?.sum ?? 0;
     // Evolução aprovada: qualquer valor informado (inclusive ZERO confirmado) substitui a estimativa; ausente usa estimativa.
-    const usouInformado = !!rec?.present;
+    // Registros importados da fonte Excel mantêm IF(soma=0; estimativa): só substituem quando a soma do dia ≠ 0.
+    const usouInformado = !!rec?.present && (rec.strict || rec.sum !== 0);
     const recUsado = usouInformado ? recInformado : estimated;
     if (rec) items.push(...rec.items);
     items.push({ source: "estimativa", amount: estimated, label: `Estimativa (meta ${est.month}${est.missing ? " AUSENTE" : ""})`, note: usouInformado ? "não usada: recebimento informado" : "usada" });

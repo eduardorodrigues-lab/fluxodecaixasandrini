@@ -20,16 +20,17 @@ export function buildConsulta(d: ScenarioData): ConsultaRow[] {
   const sup = (id: string) => d.suppliers.find((s) => s.id === id)?.name ?? "—";
   const cat = (id: string) => d.categories.find((c) => c.id === id);
   const rows: ConsultaRow[] = [];
-  const push = (kind: "committed" | "expense", id: string, supplierId: string, document: string, groupKey: string, value: number, status: string, due: string | null, ext: string | null, categoryId: string, history: ExtensionEvent[]) => {
+  const push = (kind: "committed" | "expense", id: string, supplierId: string, document: string, groupKey: string, value: number, status: string, due: string | null, ext: string | null, categoryId: string, history: ExtensionEvent[], srcName?: string) => {
     const ts = titleStatus(value, status, paymentsFor(d, kind, id));
     const c = cat(categoryId);
     const pays = [...ts.payments].sort((a, b) => a.date.localeCompare(b.date));
-    rows.push({ key: `${kind}:${id}|${groupKey}`, supplierId, supplier: sup(supplierId), document, parcel: "", category: c ? (c.kind === "compra" ? "Compra" : "Despesa") : "—", sub: c?.name ?? "—", value, due, extended: ext, effective: ext || due, paid: ts.paid, open: Math.max(0, ts.open), state: ts.state === "Parcial" ? "Parcialmente pago" : ts.state, lastPay: pays.at(-1)?.date ?? null, payments: pays, history });
+    rows.push({ key: `${kind}:${id}|${groupKey}`, supplierId, supplier: supplierId || !srcName ? sup(supplierId) : srcName, document, parcel: "", category: c ? (c.kind === "compra" ? "Compra" : "Despesa") : "—", sub: c?.name ?? "—", value, due, extended: ext, effective: ext || due, paid: ts.paid, open: Math.max(0, ts.open), state: ts.state === "Parcial" ? "Parcialmente pago" : ts.state, lastPay: pays.at(-1)?.date ?? null, payments: pays, history });
   };
-  for (const c of d.committed) push("committed", c.id, c.supplierId, c.document, `${c.supplierId}|${c.purchaseCode}|${c.document}`, c.value, c.status, c.dueDate, c.extensionDate, c.categoryId, c.extensionHistory ?? []);
+  // Importados sem vínculo cadastral: agrupa pelo nome da fonte; documento vazio = título independente.
+  for (const c of d.committed) push("committed", c.id, c.supplierId, c.document, c.supplierId || c.document ? `${c.supplierId || c.sourceSupplier}|${c.purchaseCode}|${c.document}` : c.id, c.value, c.status, c.dueDate, c.extensionDate, c.categoryId, c.extensionHistory ?? [], c.sourceSupplier);
   for (const e of d.expenses) {
     const orig = e.termDays != null ? addDays(e.baseDate, e.termDays) : null;
-    push("expense", e.id, e.supplierId, e.document, `${e.supplierId}||${e.document}`, e.value, e.status, orig, e.extensionDate, e.categoryId, e.extensionHistory ?? []);
+    push("expense", e.id, e.supplierId, e.document, e.supplierId || e.document ? `${e.supplierId || e.sourceSupplier}||${e.document}` : e.id, e.value, e.status, orig, e.extensionDate, e.categoryId, e.extensionHistory ?? [], e.sourceSupplier);
   }
   // número da parcela: ordem por vencimento dentro de fornecedor+código+documento
   const groups = new Map<string, ConsultaRow[]>();
