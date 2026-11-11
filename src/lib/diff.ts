@@ -38,6 +38,10 @@ export function diffData(a: ScenarioData, b: ScenarioData): Change[] {
     const x = a.targets?.[m], y = b.targets?.[m];
     if (x !== y) out.push({ entity: "Meta de faturamento", id: m, kind: x == null ? "inclusão" : y == null ? "exclusão" : "alteração", before: x ?? null, after: y ?? null, fields: ["meta"] });
   }
+  for (const m of new Set([...Object.keys(a.targetConfigs ?? {}), ...Object.keys(b.targetConfigs ?? {})])) {
+    const x = a.targetConfigs?.[m], y = b.targetConfigs?.[m];
+    if (!eq(x, y)) out.push({ entity: "Configuração financeira mensal", id: m, kind: !x ? "inclusão" : !y ? "exclusão" : "alteração", before: x ?? null, after: y ?? null, fields: Object.keys({ ...x, ...y }).filter((k) => k !== "history" && !eq(x?.[k as keyof typeof x], y?.[k as keyof typeof y])) });
+  }
   if (!eq(a.params, b.params)) {
     const keys = Object.keys({ ...a.params, ...b.params }) as (keyof ScenarioData["params"])[];
     const f = keys.filter((k) => !eq(a.params?.[k], b.params?.[k]));

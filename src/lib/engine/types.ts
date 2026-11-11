@@ -15,6 +15,7 @@ export interface Params {
   // na data inicial. Só muda por transição revisada/confirmada (bankTransition). Nunca soma os dois.
   openingMode?: "legado" | "contas";
   bankTransition?: { at: string; by: string; legacyValue: number; accountsValue: number; note: string } | null;
+  financialDefaults?: FinancialConfig; // novos meses apenas; não modifica snapshots existentes
 }
 
 export interface ConditionPeriod { from: string | null; at: string; by: string; cancelled?: { at: string; by: string; reason: string } }
@@ -116,7 +117,9 @@ export interface Receipt { id: string; date: string; platforms: Record<string, n
 }
 // Meta mensal versionada: valores próprios do mês; parâmetros gerais são só default na criação.
 export type R2Base = "apos_r1" | "bruto";
+export interface FinancialConfig { deflator1: number; deflator2: number; base1: "bruto"; base2: R2Base; divisor: Divisor; lagDays: number }
 export interface MonthTarget {
+  financial?: FinancialConfig; // configuração confirmada; ausência preserva regra da fonte
   gross: number; // faturamento bruto (centavos)
   legacyReducer: number; divisorLegado: Divisor; // perfil Excel legado: redutor único sobre o bruto
   webR1: number; webR2: number; r2Base: R2Base; divisorWeb: Divisor; // perfil Web

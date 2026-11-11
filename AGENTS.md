@@ -14,6 +14,7 @@
 - User decisions use the queued `src/lib/decisions.ts` service and the single root-mounted `DecisionDialog`; review panels use the centered SidePanel variant — avoids browser dialogs and duplicate decision layers.
 - Flow warning presentation is grouped by code and affected period in `src/lib/pendencias.ts`; contextual links use validated search and focus without changing shared flow filters — keeps diagnostics separate from financial calculations.
 - Single calculation engine in `src/lib/engine/engine.ts`; both flow views must render from the same `buildRows` output — keeps vertical/horizontal totals identical.
+- Confirmed monthly financial settings use `MonthTarget.financial`; missing settings read source parameters without mutation, and defaults apply only to newly created months — prevents silent changes during financial configuration transition.
 - Money is stored as integer cents; rounding via `roundCents`/`splitCents` (residual on last installment, always reported) — no hidden cent loss.
 - Domain mutations (effectivate, pay, reverse, extend) are pure functions in `src/lib/engine/actions.ts` applied to a draft — keeps them testable and reviewable.
 - Official data is one JSON document per organization in `official_data`; writes only via `commitOfficial` server fn → service-role RPC `commit_official` (version check, idempotent request_id, audit before/after) — never grant direct table writes to clients.

@@ -4,7 +4,8 @@ import { accountName } from "@/lib/engine/banco";
 import type { Change } from "@/lib/diff";
 import { fmtDate } from "@/lib/dates";
 import { fmtNum } from "@/lib/money";
-import type { ScenarioData } from "@/lib/engine/types";
+import { financialConfig } from "@/lib/financeConfig";
+import type { MonthTarget, ScenarioData } from "@/lib/engine/types";
 
 // Histórico legível: cada registro agrupa as alterações de um mesmo envio; cada item mostra a linha
 // completa Antes / Depois com as mesmas colunas da tela, destacando em vermelho só as células alteradas.
@@ -18,11 +19,11 @@ const pct = (v: unknown) => (v == null || v === "" ? "" : `${(Number(v) * 100).t
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 const mes = (ym: string) => { const [y, m] = ym.split("-"); return `${MESES[Number(m) - 1] ?? m}/${y}`; };
 const EMPTY = "Não preenchido";
-const ABA: Record<string, string> = { "Recebimento": "Recebimentos", "Plataformas": "Recebimentos", "Previsão (planejada)": "Lançamentos", "Efetivado (compra/pedido)": "Lançamentos", "Despesa": "Lançamentos", "Efetivação": "Lançamentos", "Pagamento (baixa)": "Lançamentos", "Fornecedor": "Referências", "Categoria": "Referências", "Parâmetros": "Referências", "Ajuste de saldo": "Referências", "Meta de faturamento": "Meta de Faturamento", "Conta bancária": "Bancos", "Cartão": "Bancos", "Transferência": "Bancos" };
+const ABA: Record<string, string> = { "Recebimento": "Recebimentos", "Plataformas": "Recebimentos", "Previsão (planejada)": "Lançamentos", "Efetivado (compra/pedido)": "Lançamentos", "Despesa": "Lançamentos", "Efetivação": "Lançamentos", "Pagamento (baixa)": "Lançamentos", "Fornecedor": "Cadastros", "Categoria": "Cadastros", "Parâmetros": "Meta de Faturamento", "Ajuste de saldo": "Fluxo", "Configuração financeira mensal": "Meta de Faturamento", "Meta de faturamento": "Meta de Faturamento", "Conta bancária": "Bancos", "Cartão": "Bancos", "Transferência": "Bancos" };
 const ACAO: Record<string, string> = { "inclusão": "Inclusão", "alteração": "Alteração", "exclusão": "Remoção" };
 const txt = (v: unknown) => (v == null ? "" : String(v));
 const STATUS: R = { ativo: "Ativo", cancelado: "Cancelado", encerrado: "Encerrado" };
-const PARAMS: Record<string, string> = { profile: "Perfil", legacyReducer: "Redutor legado", webR1: "Redutor Web 1", webR2: "Redutor Web 2", divisorLegado: "Divisor legado", divisorWeb: "Divisor Web", lagDays: "Defasagem (dias)", startDate: "Data inicial", saldoInicial: "Saldo inicial" };
+const PARAMS: Record<string, string> = { profile: "Origem da regra de cálculo", legacyReducer: "Deflator da origem", webR1: "Deflator 1 da origem", webR2: "Deflator 2 da origem", divisorLegado: "Distribuição da origem (Excel)", divisorWeb: "Distribuição da origem (Web)", financialDefaults: "Configurações para novos meses", lagDays: "Defasagem (dias)", startDate: "Data inicial", saldoInicial: "Saldo inicial" };
 
 function columns(entity: string, d: ScenarioData, sample: R): Col[] {
   const sup = (id: unknown) => d.suppliers.find((s) => s.id === id)?.name ?? (id ? "(fornecedor removido)" : "");
@@ -56,8 +57,12 @@ function columns(entity: string, d: ScenarioData, sample: R): Col[] {
       return [{ label: "Origem", get: (o) => accountName(d, o["fromAccountId"] as string) }, { label: "Destino", get: (o) => accountName(d, o["toAccountId"] as string) }, F("Valor", "amount", money, true), F("Data", "date", date), F("Observação", "note"), { label: "Estorno", get: (o) => (o["reversedAt"] ? `Estornada: ${txt(o["reversalNote"])}` : "") }];
     case "Efetivação":
       return [F("Tipo", "kind"), F("Valor", "value", money, true), { label: "Data", get: (o) => date(String(o["at"] ?? "").slice(0, 10)) }, { label: "Estorno", get: (o) => (o["reversedAt"] ? "Estornada" : "") }];
+    case "Configuração financeira mensal": {
+      const config = (o: R) => financialConfig(d.params, o as unknown as MonthTarget);
+      return [F("Faturamento bruto", "gross", money, true), { label: "Deflator 1", get: (o) => pct(config(o).deflator1) }, { label: "Base 1", get: () => "Faturamento bruto" }, { label: "Deflator 2", get: (o) => pct(config(o).deflator2) }, { label: "Base 2", get: (o) => config(o).base2 === "bruto" ? "Faturamento bruto" : "Após a primeira redução" }, { label: "Distribuição diária", get: (o) => config(o).divisor === "30" ? "30 dias" : "Dias reais do mês" }, { label: "Defasagem (dias)", get: (o) => String(config(o).lagDays) }];
+    }
     case "Parâmetros":
-      return Object.keys(sample).map((k) => ({ label: PARAMS[k] ?? k, num: k === "saldoInicial", get: (o: R) => (k === "saldoInicial" ? money(o[k]) : /Reducer|R1|R2/.test(k) ? pct(o[k]) : txt(o[k])) }));
+      return Object.keys(sample).map((k) => ({ label: PARAMS[k] ?? k, num: k === "saldoInicial", get: (o: R) => (k === "financialDefaults" ? (o[k] ? (() => { const f = o[k] as { deflator1: number; deflator2: number; divisor: string; lagDays: number }; return `${pct(f.deflator1)} / ${pct(f.deflator2)} · ${f.divisor === "30" ? "30 dias" : "dias do mês"} · ${f.lagDays} dias`; })() : "Não configurado") : k === "saldoInicial" ? money(o[k]) : /Reducer|R1|R2/.test(k) ? pct(o[k]) : txt(o[k])) }));
     default:
       return Object.keys(sample).filter((k) => !["id", "history", "origin", "importOrigin"].includes(k)).map((k) => ({ label: k, get: (o: R) => (typeof o[k] === "object" ? "" : txt(o[k])) }));
   }
@@ -101,6 +106,7 @@ function recordLabel(c: Change, d: ScenarioData): string {
   const o = ((c.after ?? c.before) ?? {}) as R;
   const sup = d.suppliers.find((x) => x.id === o["supplierId"])?.name;
   switch (c.entity) {
+    case "Configuração financeira mensal":
     case "Meta de faturamento": return mes(c.id);
     case "Plataformas": return "Cadastro de plataformas";
     case "Parâmetros": return "Parâmetros gerais";

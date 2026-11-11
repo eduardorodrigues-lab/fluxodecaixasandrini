@@ -32,7 +32,7 @@ const TABS: { k: Tab; l: string }[] = [{ k: "contas", l: "Contas" }, { k: "extra
 const now = () => new Date().toISOString();
 
 function Page() {
-  const { active, update, user } = useApp();
+  const { active, update, user, canEdit } = useApp();
   const d = active.data;
   const [tab, setTab] = useState<Tab>(Route.useSearch().tab === "cartoes" ? "cartoes" : "contas");
   const [err, setErr] = useState("");
@@ -52,7 +52,7 @@ function Page() {
       {tab === "extrato" && <Extrato d={d} />}
       {tab === "transf" && <Transfers d={d} sim={!active.isBase} canReverse onReverse={(id, n) => act((x) => reverseTransfer(x, id, n, now()))} />}
       {tab === "cartoes" && <Cartoes d={d} onReverse={(id, n) => act((x) => reverseCardOp(x, id, n, now()))} onCancelInvoice={(id, n) => act((x) => cancelInvoice(x, id, n))} />}
-      {tab === "saldo" && <SaldoInicial d={d} isBase={active.isBase} onConfirm={(note) => act((x) => confirmBankTransition(x, user?.email ?? "", note, now()))} onRevert={async () => await askConfirm("Voltar a usar o saldo inicial legado no fluxo?") && act((x) => revertBankTransition(x))} />}
+      {tab === "saldo" && <SaldoInicial d={d} isBase={active.isBase} canEdit={canEdit} onSource={(startDate, saldoInicial) => act((x) => { x.params.startDate = startDate; x.params.saldoInicial = saldoInicial; })} onConfirm={(note) => act((x) => confirmBankTransition(x, user?.email ?? "", note, now()))} onRevert={async () => await askConfirm("Voltar a usar o saldo inicial de origem no fluxo?") && act((x) => revertBankTransition(x))} />}
 
       {panel?.t === "conta" && <ContaPanel d={d} acc={panel.acc} onCancel={() => setPanel(null)} onSave={(a, note) => done((x) => (panel.acc ? updateAccount(x, panel.acc.id, a, note, now()) : addAccount(x, uid(), a, now())))} />}
       {panel?.t === "cartao" && <CartaoPanel onCancel={() => setPanel(null)} onSave={(c) => done((x) => addCard(x, { id: uid(), accountId: panel.accountId, active: true, ...c }))} />}
@@ -309,14 +309,17 @@ function FaturaPanel({ d, onCancel, onSave }: { d: ScenarioData; onCancel: () =>
   </SidePanel>;
 }
 
-function SaldoInicial({ d, isBase, onConfirm, onRevert }: { d: ScenarioData; isBase: boolean; onConfirm: (note: string) => void; onRevert: () => void }) {
+function SaldoInicial({ d, isBase, canEdit, onSource, onConfirm, onRevert }: { d: ScenarioData; isBase: boolean; canEdit: boolean; onSource: (start: string, saldo: number) => void; onConfirm: (note: string) => void; onRevert: () => void }) {
   const p = previewBankTransition(d);
   const [note, setNote] = useState("");
   const mode = d.params.openingMode ?? "legado";
+  const [start, setStart] = useState<string | null>(d.params.startDate);
+  const [opening, setOpening] = useState<number | null>(d.params.saldoInicial);
   return <div className="card max-w-3xl space-y-3 p-4 text-xs">
-    <div>Regra em uso no fluxo: <b>{mode === "contas" ? "soma dos saldos das contas" : "saldo inicial legado (Referências)"}</b>. Nunca as duas ao mesmo tempo.</div>
+    <div className="flex flex-wrap items-end gap-3"><Field l="Início do fluxo"><DateInput value={start} onChange={setStart} /></Field><Field l="Saldo inicial de origem"><MoneyInput value={opening} onChange={setOpening} /></Field><button className="btn btn-primary" disabled={!canEdit || !start || opening === null} onClick={async () => { if (start && opening !== null && await askConfirm(`Início do fluxo: ${fmtDate(d.params.startDate)} → ${fmtDate(start)}. Saldo de origem: ${fmtBRL(d.params.saldoInicial)} → ${fmtBRL(opening)}. ${mode === "contas" ? "O fluxo continua usando as contas; o saldo de origem não será somado." : "Os saldos do fluxo serão recalculados."}`, { title: "Salvar saldo de origem?", action: "Salvar configuração" })) onSource(start, opening); }}>Revisar e salvar</button></div>
+    <div>Regra em uso no fluxo: <b>{mode === "contas" ? "soma dos saldos das contas" : "saldo inicial de origem"}</b>. Nunca as duas ao mesmo tempo.</div>
     <table className="tbl"><tbody>
-      <tr><td>Saldo inicial legado</td><td className="num">{fmtBRL(p.legacyValue)}</td></tr>
+      <tr><td>Saldo inicial de origem</td><td className="num">{fmtBRL(p.legacyValue)}</td></tr>
       <tr><td>Soma das contas ao fim de {fmtDate(p.refDate)} (véspera do início do fluxo)</td><td className="num">{fmtBRL(p.accountsValue)}</td></tr>
       <tr><td>Diferença</td><td className={`num ${p.diff ? "neg" : ""}`}>{fmtBRL(p.diff)}</td></tr>
     </tbody></table>

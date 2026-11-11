@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { DateInput, MoneyInput, PageHeader } from "@/components/kit";
 import { PendenciasFluxo } from "@/components/PendenciasFluxo";
+import { SaldoAdjustments } from "@/components/SaldoAdjustments";
+import { Button } from "@/components/ui/button";
 import { buildRows, computeFlow, toVertical, type Row } from "@/lib/engine/engine";
 import { fmtDate, weekday } from "@/lib/dates";
 import { fmtBRL, fmtNum } from "@/lib/money";
@@ -27,6 +29,7 @@ function FluxoPage() {
   const rows = useMemo(() => buildRows(res, data.categories, ui.flowMode), [res, data.categories, ui.flowMode]);
   const [open, setOpen] = useState<Set<string>>(new Set(["entradas", "saidas", "compras", "despesas"]));
   const [sel, setSel] = useState<{ row: Row; i: number } | null>(null);
+  const [adjustmentsOpen, setAdjustmentsOpen] = useState(false);
   const visible = rows.filter((r) => { let p = r.parent; while (p) { if (!open.has(p)) return false; p = rows.find((x) => x.key === p)?.parent; } return true; });
   const hasKids = (k: string) => rows.some((r) => r.parent === k);
   const toggle = (k: string) => setOpen((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
@@ -35,11 +38,13 @@ function FluxoPage() {
 
   return (
     <div>
+      {adjustmentsOpen && <SaldoAdjustments onClose={() => setAdjustmentsOpen(false)} />}
       <PageHeader title="Fluxo de caixa" sub="Ambas as visões usam o mesmo motor, cenário, período e filtros. Base: atualiza após confirmação; rascunho e simulação aparecem imediatamente.">
         <div className="flex rounded border border-input">
           {(["vertical", "horizontal"] as const).map((v) => <button key={v} className={`px-2.5 py-1 text-xs ${ui.view === v ? "bg-primary text-primary-foreground" : ""}`} onClick={() => setUi({ view: v })}>{v === "vertical" ? "Vertical (equipe)" : "Visão CEO horizontal"}</button>)}
         </div>
       </PageHeader>
+      <div className="mb-2"><Button variant="outline" onClick={() => setAdjustmentsOpen(true)}>Ajustes manuais de saldo</Button></div>
       <div className="card mb-3 flex flex-wrap items-end gap-3 p-2">
         <div><div className="lbl">De</div><DateInput value={ui.start} maxDate={ui.end} onChange={(v) => v && setUi({ start: v })} /></div>
         <div><div className="lbl">Até</div><DateInput value={ui.end} minDate={ui.start} onChange={(v) => v && setUi({ end: v })} /></div>
@@ -116,10 +121,6 @@ function Vertical({ rows, res, onPick, update, receipts, adjustments }: VProps) 
     const r = d.receipts.find((x) => x.date === date);
     if (r) r.general = v; else if (v !== null) d.receipts.push({ id: uid(), date, platforms: {}, general: v, notes: "lançado na visão vertical" });
   });
-  const setAdj = (date: string, v: number | null) => update((d) => {
-    d.adjustments = d.adjustments.filter((a) => a.date !== date);
-    if (v !== null) d.adjustments.push({ date, value: v, note: "ajuste manual (visão vertical)" });
-  });
   return (
     <div className="card max-h-[70vh] overflow-auto">
       <table className="tbl">
@@ -128,7 +129,7 @@ function Vertical({ rows, res, onPick, update, receipts, adjustments }: VProps) 
           {vert.map((v, i) => (
             <tr key={v.date}>
               <td className="sticky left-0 z-[5] bg-card">{fmtDate(v.date)} <span className="text-muted-foreground">{weekday(v.date)}</span></td>
-              <td className="num"><MoneyInput value={adjustments.find((a) => a.date === v.date)?.value ?? null} onChange={(x) => setAdj(v.date, x)} /></td>
+              <td className="num">{adjustments.find((a) => a.date === v.date)?.value != null ? fmtNum(adjustments.find((a) => a.date === v.date)?.value) : "—"}</td>
               <td className="num"><MoneyInput value={receipts.find((r) => r.date === v.date)?.general ?? null} onChange={(x) => setGeneral(v.date, x)} /></td>
               {cols.map((c) => <td key={c.key} onClick={() => onPick(c, i)} className={`num cursor-pointer hover:bg-accent ${(v.cells[c.key] ?? 0) < 0 ? "neg" : ""} ${c.emphasis ? "font-semibold" : ""}`}>{fmtNum(v.cells[c.key])}</td>)}
             </tr>

@@ -1,5 +1,12 @@
 # Roadmap
 
+## Cadastros e configuração financeira unificada (2026-11-11)
+- [x] Renomear Referências e separar fornecedores/categorias em abas
+- [x] Metas compactas, edição/revisão mensal e padrões sem sobrescrever histórico
+- [x] Cálculo compartilhado com transição explícita preservando números anteriores
+- [x] Ajustes de saldo no Fluxo; saldo de origem e transição em Bancos
+- [x] 165 testes; navegador desktop/mobile com organização fictícia, revisão/voltar/confirmar e ajuste; sem gravação real/publicação
+
 ## Datas padronizadas (2026-11-10)
 - [x] Calendário em portal e máscara manual/colar em todos os campos (inclusive auditoria, decisões e datas do restante previsto)
 - [x] Validação de datas/períodos e dia civil; 146 testes, mais teste em UTC+14; navegador desktop/mobile isolado sem gravações reais, compilação sem erros

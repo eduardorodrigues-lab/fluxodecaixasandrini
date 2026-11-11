@@ -1,5 +1,13 @@
 # Fluxo de Caixa Sandrini — Regras, schema e critérios de aceite (NÃO homologado)
 
+## Cadastros e Meta de Faturamento — revisão 11/11/2026
+- Referências passa a se chamar Cadastros, mantendo a URL e os vínculos; abas Fornecedores e Categorias e subgrupos. Parâmetros e ajustes não ficam nessa página.
+- Meta de Faturamento concentra bruto, dois deflatores, bases, reduções, líquido, divisor e defasagem; lista compacta e painel por mês. Base do primeiro = bruto; base do segundo = bruto ou líquido após primeira redução. Percentuais nunca somados automaticamente.
+- Configuração mensal confirmada usa `financial`; na ausência, a regra de origem continua sendo lida sem alterar percentuais, divisor ou defasagem. Meses com só um deflator exigem definir o segundo ou confirmar explicitamente 0%. Referências Excel/Web aparecem apenas na memória/histórico, não como escolha operacional.
+- Revisão compara configuração e líquido antes/depois por mês e impacto no saldo final do período selecionado; voltar/cancelar não persiste. Confirmar salva uma versão mensal auditada. Padrões preenchem apenas novos meses, sem atualizar meses cadastrados.
+- As duas visões continuam usando o mesmo cálculo. Ajustes manuais de saldo ficam em área própria do Fluxo, com data, valor (zero válido), justificativa e confirmação. Ajustes anteriores não são excluídos na reorganização; a edição inline do ajuste passa a ser consulta. Saldo de origem, início do fluxo e conferência de transição ficam em Bancos; nunca se soma saldo de origem ao saldo das contas.
+- Testes: `src/lib/financeConfig.test.ts` cobre preservação antes de confirmar, dois deflatores sequenciais, bases, padrões, igualdade entre visões, auditoria e ajustes em cenário isolado.
+
 ## Fornecedores e condições — revisão 10/11/2026
 - Lista compacta com fornecedor/apelidos, situação, condição vigente e Gerenciar. Painel em Dados do fornecedor e Condições de pagamento; detalhes e histórico expansíveis.
 - Edição de condição guarda versão anterior (nome, observação, prazos, data/usuário); não altera condições gravadas nos lançamentos e congela prazos das previsões legadas antes de mudar padrão.

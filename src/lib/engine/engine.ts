@@ -10,7 +10,7 @@ const isNum = (t: number | null | undefined): t is number => t !== null && t !==
 // ---------- Regra A/B: estimativa diária com configuração MENSAL versionada ----------
 // Parâmetros gerais (Params) são apenas default para meses NOVOS; um mês configurado usa só seus próprios valores.
 export function defaultMonthTarget(p: Params, gross: number): MonthTarget {
-  return { gross, legacyReducer: p.legacyReducer, divisorLegado: p.divisorLegado, webR1: p.webR1, webR2: p.webR2, r2Base: "apos_r1", divisorWeb: p.divisorWeb, lagDays: p.lagDays, version: 1, history: [] };
+  return { gross, legacyReducer: p.legacyReducer, divisorLegado: p.divisorLegado, webR1: p.webR1, webR2: p.webR2, r2Base: "apos_r1", divisorWeb: p.divisorWeb, lagDays: p.financialDefaults?.lagDays ?? p.lagDays, ...(p.financialDefaults ? { financial: { ...p.financialDefaults } } : {}), version: 1, history: [] };
 }
 export function monthTarget(p: Params, targets: Record<string, number>, cfgs: Record<string, MonthTarget> | undefined, month: string): MonthTarget | null {
   // Bruto: espelho `targets` (sempre sincronizado por setMonthTarget); parâmetros: configuração própria do mês.
@@ -20,7 +20,7 @@ export function monthTarget(p: Params, targets: Record<string, number>, cfgs: Re
   return c ? (c.gross === g ? c : { ...c, gross: g }) : defaultMonthTarget(p, g); // sem override: mesmo resultado dos parâmetros gerais
 }
 export function lagFor(p: Params, cfgs: Record<string, MonthTarget> | undefined, date: string) {
-  return cfgs?.[ym(date)]?.lagDays ?? p.lagDays;
+  return cfgs?.[ym(date)]?.financial?.lagDays ?? cfgs?.[ym(date)]?.lagDays ?? p.lagDays;
 }
 export function dailyEstimate(p: Params, targets: Record<string, number>, date: string, cfgs?: Record<string, MonthTarget>) {
   const lag = lagFor(p, cfgs, date);
@@ -31,7 +31,13 @@ export function dailyEstimate(p: Params, targets: Record<string, number>, date: 
   const meta = cfg.gross;
   const dim = daysInMonth(ref);
   let liquid: number, divisor: number, r1: number, r2 = 0;
-  if (p.profile === "legado") {
+  if (cfg.financial) {
+    const f = cfg.financial;
+    r1 = meta * f.deflator1;
+    r2 = (f.base2 === "bruto" ? meta : meta - r1) * f.deflator2;
+    liquid = meta - r1 - r2;
+    divisor = f.divisor === "30" ? 30 : dim;
+  } else if (p.profile === "legado") {
     r1 = meta * cfg.legacyReducer;
     liquid = meta - r1;
     divisor = cfg.divisorLegado === "30" ? 30 : dim;
