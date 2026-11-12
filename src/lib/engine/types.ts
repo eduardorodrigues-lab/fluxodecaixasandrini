@@ -30,7 +30,9 @@ export interface Origin { file: string; sheet: string; row: number; raw?: unknow
 export interface ExtensionEvent { from: string | null; to: string | null; at: string; note: string }
 
 // PLANEJADO = previsão. Não é compra nem pagamento.
+export interface EditLog { at: string; by: string; note: string; parcel?: string; before: { amount: number; date: string | null }; after: { amount: number; date: string | null } }
 export interface Planned {
+  editLog?: EditLog[]; // justificativas de alteração de valor/vencimento (antes/depois, autor, horário)
   id: string; supplierId: string; purchaseCode: string; document: string; value: number;
   baseDate: string; categoryId: string; notes: string;
   condition?: { name: string; terms: (number | null)[] } | null; // condição usada na previsão (histórico)
@@ -47,6 +49,7 @@ export interface NoteRef { noteId?: string; parcelNo?: number; parcelCount?: num
 // EFETIVADO/REALIZADO = compra real ou pedido. NÃO é pagamento (ver payments).
 export type CommittedOrigin = "legado" | "efetivacao" | "manual";
 export interface Committed {
+  editLog?: EditLog[]; // justificativas de alteração de valor/vencimento (antes/depois, autor, horário)
   id: string; supplierId: string; purchaseCode: string; document: string; value: number;
   dueDate: string; // vencimento original (preservado)
   condition?: { name: string; terms: (number | null)[] } | null; // condição real confirmada na efetivação/criação
@@ -61,6 +64,7 @@ export interface Committed {
   sourceSupplier?: string;
 }
 export interface Expense {
+  editLog?: EditLog[]; // justificativas de alteração de valor/vencimento (antes/depois, autor, horário)
   id: string; supplierId: string; document: string; value: number; baseDate: string;
   termDays: number | null; // G: vazio = não distribui; 0 = data base
   extensionDate: string | null; extensionHistory: ExtensionEvent[];

@@ -7,7 +7,8 @@ import { DateInput, MoneyInput } from "@/components/kit";
 import type { CategoryKind, ScenarioData } from "@/lib/engine/types";
 import { fmtDate } from "@/lib/dates";
 import { fmtBRL } from "@/lib/money";
-import { adjustLast, currentCondition, generateParcels, manualParcels, supplierConditions, parcelsTotal, validateNote, type DraftParcel, type NoteDraft } from "@/lib/notas";
+import { useApp, uid } from "@/lib/store";
+import { addSupplier, adjustLast, currentCondition, generateParcels, manualParcels, supplierConditions, parcelsTotal, validateNote, type DraftParcel, type NoteDraft } from "@/lib/notas";
 import { filterSuppliers, supplierActive } from "@/lib/fornecedores";
 import { todaySP } from "@/lib/engine/actions";
 import { plannedRemaining } from "@/lib/engine/actions";
@@ -45,7 +46,9 @@ export const Field = ({ l, full, children }: { l: string; full?: boolean; childr
 /** Fornecedor com busca: clique abre a lista; digitar filtra por nome e apelidos (sem diferenciar
  *  maiúsculas/acentos). Só a seleção (clique ou Enter) vincula o cadastro — texto digitado não vale.
  *  A lista abre em portal acima do painel, sem cortá-lo nem fechá-lo. */
-export function SupplierSearch({ d, value, onChange, existing = false, allowAll = false, placeholder }: { d: ScenarioData; value: string; onChange: (id: string) => void; existing?: boolean; allowAll?: boolean; placeholder?: string }) {
+export function SupplierSearch({ d, value, onChange, existing = false, allowAll = false, placeholder, allowCreate = false }: { d: ScenarioData; value: string; onChange: (id: string) => void; existing?: boolean; allowAll?: boolean; placeholder?: string; allowCreate?: boolean }) {
+  const { update } = useApp();
+  const [creating, setCreating] = useState<{ name: string; aliases: string; note: string; err: string } | null>(null);
   const cur = d.suppliers.find((s) => s.id === value)?.name ?? "";
   const [t, setT] = useState(cur);
   const [open, setOpen] = useState(false);
@@ -63,15 +66,23 @@ export function SupplierSearch({ d, value, onChange, existing = false, allowAll 
     document.addEventListener("mousedown", down);
     return () => document.removeEventListener("mousedown", down);
   }, [show]);
-  const pick = (id: string) => { onChange(id); setT(id ? d.suppliers.find((s) => s.id === id)?.name ?? "" : ""); setOpen(false); };
+  const pick = (id: string) => { if (id === "__new") { setCreating({ name: t.trim(), aliases: "", note: "", err: "" }); setOpen(false); return; } onChange(id); setT(id ? d.suppliers.find((s) => s.id === id)?.name ?? "" : ""); setOpen(false); };
   const items: { id: string; label: ReactNode }[] = [
     ...(allowAll ? [{ id: "", label: <span className="font-medium">Todos</span> }] : []),
     ...opts.map((s) => ({
       id: s.id,
       label: <span>{s.name}{!supplierActive(s, todaySP()) && <span className="tag tag-warn ml-1">inativo</span>}{s.aliases?.length ? <span className="block text-[11px] text-muted-foreground">Apelidos: {s.aliases.join(", ")}</span> : null}</span>,
     })),
+    ...(allowCreate && t.trim() && !opts.some((s) => s.name.trim().toLocaleLowerCase("pt-BR") === t.trim().toLocaleLowerCase("pt-BR")) ? [{ id: "__new", label: <span className="font-medium text-primary">+ Cadastrar fornecedor “{t.trim()}”</span> }] : []),
   ];
   const total = items.length;
+  const create = () => {
+    if (!creating) return;
+    const id = uid(), name = creating.name.trim();
+    const e = update((x) => addSupplier(x, { id, name, note: creating.note.trim(), aliases: creating.aliases.split(",").map((a) => a.trim()).filter(Boolean) }));
+    if (e) { setCreating({ ...creating, err: e }); return; }
+    setCreating(null); setT(name); onChange(id);
+  };
   return (
     <div data-supplier-combobox className="relative">
       <input
@@ -103,6 +114,12 @@ export function SupplierSearch({ d, value, onChange, existing = false, allowAll 
         document.body,
       )}
       {value && <span className="text-muted-foreground">Cadastro: {cur}</span>}
+      {creating && <DecisionWindow title="Cadastrar fornecedor" description="O lançamento em preenchimento é preservado; o fornecedor fica selecionado após confirmar." footer={<><button className="btn" onClick={() => setCreating(null)}>Cancelar</button><button className="btn btn-primary" disabled={!creating.name.trim()} onClick={create}>Cadastrar e selecionar</button></>}>
+        <Field l="Nome"><input className="inp h-8" autoFocus value={creating.name} onChange={(e) => setCreating({ ...creating, name: e.target.value, err: "" })} /></Field>
+        <Field l="Apelidos (separados por vírgula, opcional)"><input className="inp h-8" value={creating.aliases} onChange={(e) => setCreating({ ...creating, aliases: e.target.value, err: "" })} /></Field>
+        <Field l="Observação (opcional)"><input className="inp h-8" value={creating.note} onChange={(e) => setCreating({ ...creating, note: e.target.value })} /></Field>
+        {creating.err && <p className="text-destructive">{creating.err}</p>}
+      </DecisionWindow>}
     </div>
   );
 }
@@ -193,7 +210,7 @@ export function NovaNota({ d, isBase, onCancel, onConfirm }: { d: ScenarioData; 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <CatSubFields d={d} kind={n.kind} categoryId={n.categoryId} onChange={(kind, categoryId) => up({ kind, categoryId })} />
             {err("Selecione o subgrupo.")}
-            <Field l="Fornecedor" full><SupplierSearch d={d} existing={!!n.plannedId} value={n.supplierId} onChange={(supplierId) => { up({ supplierId, parcels: [], condition: null }); setSaveAs(null); }} />{err("Selecione o fornecedor.")}</Field>
+            <Field l="Fornecedor" full><SupplierSearch d={d} allowCreate={!n.plannedId} existing={!!n.plannedId} value={n.supplierId} onChange={(supplierId) => { up({ supplierId, parcels: [], condition: null }); setSaveAs(null); }} />{err("Selecione o fornecedor.")}</Field>
             <Field l={stage === "planned" ? "Código do pedido (opcional)" : "Código do pedido"}><input className="inp h-8" value={n.purchaseCode} onChange={(e) => up({ purchaseCode: e.target.value })} /></Field>
             <Field l={stage === "planned" ? "Documento (opcional)" : "Documento"}><input className="inp h-8" value={n.document} onChange={(e) => up({ document: e.target.value })} />{err("Informe o documento.")}</Field>
             <Field l="Descrição" full><input className="inp h-8" value={n.description} onChange={(e) => up({ description: e.target.value })} /></Field>
@@ -276,17 +293,20 @@ export function ProrrogarPanel({ label, current, original, history, isBase, onCa
     </SidePanel>
   );
 }
-export function ParcelaPanel({ label, amount, date, onCancel, onSave }: { label: string; amount: number; date: string; onCancel: () => void; onSave: (amount: number, date: string) => void }) {
+export function ParcelaPanel({ label, amount, date, onCancel, onSave }: { label: string; amount: number; date: string; onCancel: () => void; onSave: (amount: number, date: string, note: string) => void }) {
   const [a, setA] = useState<number | null>(amount);
   const [dt, setDt] = useState<string | null>(date);
-  const dirty = a !== amount || dt !== date;
+  const [note, setNote] = useState("");
+  const changed = a !== amount || dt !== date;
+  const dirty = changed || !!note.trim();
   const cancel = guardClose(dirty, onCancel);
   return (
-    <SidePanel title="Editar esta parcela" sub={label} onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" disabled={!a || a <= 0 || !dt} onClick={async () => { if (a && dt && await askConfirm(`${label}: ${fmtBRL(a)} com vencimento em ${fmtDate(dt)}. As demais parcelas não serão alteradas.`, { title: "Salvar parcela?", action: "Salvar parcela" })) onSave(a, dt); }}>Salvar parcela</button></>}>
+    <SidePanel title="Editar esta parcela" sub={label} onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" disabled={!a || a <= 0 || !dt || !changed || !note.trim()} title={changed && !note.trim() ? "Informe a justificativa da alteração" : ""} onClick={async () => { if (a && dt && await askConfirm(`${label}: ${fmtBRL(amount)} → ${fmtBRL(a)}; vencimento ${fmtDate(date)} → ${fmtDate(dt)}.\nJustificativa: ${note.trim()}`, { title: "Salvar parcela?", action: "Salvar parcela" })) onSave(a, dt, note.trim()); }}>Salvar parcela</button></>}>
       <p className="text-muted-foreground">Altera somente esta parcela; as demais parcelas da nota não mudam.</p>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <Field l="Valor da parcela"><MoneyInput className="h-8 w-full" value={a} onChange={setA} /></Field>
         <Field l="Vencimento"><DateInput value={dt} onChange={setDt} /></Field>
+        <Field l="Justificativa da alteração (obrigatória)" full><input className="inp h-8" value={note} onChange={(e) => setNote(e.target.value)} />{changed && !note.trim() && <span className="text-destructive">Informe a justificativa para alterar valor ou vencimento.</span>}</Field>
       </div>
     </SidePanel>
   );

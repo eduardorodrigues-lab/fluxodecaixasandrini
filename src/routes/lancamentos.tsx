@@ -1,7 +1,7 @@
-import { DetailReport, ReportSearch, SortHead, useReportState } from "@/components/ReportControls";
+import { ColumnFilter, columnTest, DetailReport, Pager, ReportSearch, SortHead, suggestFrom, useColumnFilter, usePager, useReportState, type FilterCol } from "@/components/ReportControls";
 import { dateValue, parcelValue, queryReport } from "@/lib/reportTable";
 import { Button } from "@/components/ui/button";
-import { askConfirm, askText } from "@/lib/decisions";
+import { askConfirm, askText, showMessage } from "@/lib/decisions";
 import { BaixasList, PagamentoPanel } from "@/components/BancoPanels";
 import { accountName, NO_ACCOUNT, registerPaymentBatch, coverTitleWithCard } from "@/lib/engine/banco";
 import { createFileRoute } from "@tanstack/react-router";
@@ -12,7 +12,7 @@ import { ConditionPicker, DadosNotaPanel, Field, guardClose, NovaNota, ParcelaPa
 import { applyNote, editCommittedNote, editPlannedParcel, extendPlannedParcel, parcelLabels, saveSupplierCondition } from "@/lib/notas";
 import { committedDate, distributePlanned, expenseDate, paymentsFor, splitCents, titleStatus } from "@/lib/engine/engine";
 import { closePlanned, confirmExtension, linkLegacyTitle, plannedSummary, reopenPlanned, reverseEffectivation, reversePayment, todaySP } from "@/lib/engine/actions";
-import type { CategoryKind, ExtensionEvent, Planned, ScenarioData } from "@/lib/engine/types";
+import type { CategoryKind, EditLog, ExtensionEvent, Planned, ScenarioData } from "@/lib/engine/types";
 import { addDays, fmtDate } from "@/lib/dates";
 import { fmtBRL } from "@/lib/money";
 import { uid, useApp } from "@/lib/store";
@@ -37,6 +37,10 @@ export const Route = createFileRoute("/lancamentos")({
 
 // Duas etapas (Planejada/Efetivado) × duas categorias (Compra/Despesa). Pagamentos = controle separado (baixas).
 // Tabelas: UMA LINHA POR PARCELA; identificadores da nota repetidos, sem somar o total da nota por linha.
+const T = (label: string, type: FilterCol["type"] = "text"): FilterCol => ({ label, type });
+const PLANNED_COLS = [T("Categoria"), T("Subgrupo"), T("Fornecedor"), T("Código do pedido"), T("Documento"), T("Descrição"), T("Parcela"), T("Valor da parcela", "money"), T("Vencimento", "date"), T("Prorrogar para", "date"), T("Situação do lançamento")];
+const COMMITTED_COLS = [...PLANNED_COLS.slice(0, 10), T("Situação do lançamento"), T("Situação do pagamento"), T("Pago", "money"), T("Saldo em aberto", "money")];
+const PAYMENT_COLS = [T("Data", "date"), T("Título"), T("Conta"), T("Valor", "money"), T("Obs."), T("Situação")];
 type Tab = "planned" | "committed" | "payments" | "consultas";
 const TABS: { k: Tab; l: string }[] = [{ k: "planned", l: "Planejada" }, { k: "committed", l: "Efetivado" }, { k: "payments", l: "Pagamentos (baixas)" }, { k: "consultas", l: "Consultas" }];
 const now = () => new Date().toISOString();
@@ -45,11 +49,16 @@ const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.p
 type Panel =
   | { t: "new" }
   | { t: "pay"; kind: "committed" | "expense"; id: string; label: string }
-  | { t: "parcela"; label: string; amount: number; date: string; save: (x: ScenarioData, amount: number, date: string) => void }
+  | { t: "parcela"; label: string; amount: number; date: string; save: (x: ScenarioData, amount: number, date: string) => void; log: (x: ScenarioData) => { editLog?: EditLog[] } | undefined }
   | { t: "nota"; init: NoteFields; siblings: number; save: (x: ScenarioData, f: NoteFields) => void }
   | { t: "prorrogar"; label: string; current: string | null; original: string | null; history: ExtensionEvent[]; save: (x: ScenarioData, to: string | null, note: string) => void }
   | { t: "eff"; id: string; mode: "parcela" | "documento" | "ajustar"; sel: string[] };
 
+/** Texto longo: largura limitada com reticências; clique mostra o conteúdo completo. */
+function Txt({ v }: { v: string | null | undefined }) {
+  if (!v) return <td>—</td>;
+  return <td className="txt" title={v} onClick={() => { if (v.length > 24) void showMessage(v); }}>{v}</td>;
+}
 // Menu em portal (Radix): fora do overflow da tabela, ancorado ao botão, com colisão e rolagem só se necessário.
 function Acoes({ children }: { children: ReactNode }) {
   const items = Children.toArray(children).filter(isValidElement) as ReactElement<{ disabled?: boolean; className?: string }>[];
@@ -74,12 +83,14 @@ function Page() {
   const fKind = kinds[tab] ?? "";
   const setFKind = (v: "" | CategoryKind) => setKinds((k) => ({ ...k, [tab]: v }));
   const plannedReport = useReportState(), committedReport = useReportState(), paymentsReport = useReportState();
+  const plannedCF = useColumnFilter(), committedCF = useColumnFilter(), paymentsCF = useColumnFilter();
+  const cf = tab === "planned" ? plannedCF : tab === "committed" ? committedCF : paymentsCF;
   const report = tab === "planned" ? plannedReport : tab === "committed" ? committedReport : paymentsReport;
   const [open, setOpen] = useState<{ kind: string; id: string } | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
   const act = (fn: (x: ScenarioData) => void) => { const e = update(fn); setErr(e ?? ""); return !e; };
   const actAlone = (fn: (x: ScenarioData) => void, what: string) => {
-    if (active.isBase && changes.length) { setErr(`Há outras alterações pendentes. Aguarde o salvamento antes de ${what}.`); return false; }
+    if (active.isBase && changes.length) { setErr(`Há alterações não salvas. Salve ou descarte antes de ${what}.`); return false; }
     return act(fn);
   };
   const doPanel = (fn: (x: ScenarioData) => void) => { if (act(fn)) setPanel(null); };
@@ -104,14 +115,14 @@ function Page() {
     .filter((r) => !fKind || kindOfCat(r.catId) === fKind || (!r.catId && fKind === "despesa" && r.t === "expense"));
 
   const plannedValues = ({ p, r, pc, i, n, it }: (typeof plannedSource)[number]) => [kindL(p.categoryId), catOf(p.categoryId)?.name, (sup(p.supplierId)?.name ?? p.sourceSupplier), p.purchaseCode, p.document, p.notes, pc ? i + 1 : null, pc?.amount, dateValue(it?.date ?? pc?.date), dateValue(it?.extensionDate), p.status === "encerrado" ? "Encerrada" : p.status === "cancelado" ? "Cancelada" : r.effectivated > 0 ? "Efetivada parcialmente" : "Prevista"];
-  const plannedRows = queryReport(plannedSource, plannedReport.query, plannedReport.sort, plannedValues, (row) => [...plannedValues(row), ...(sup(row.p.supplierId)?.aliases ?? []), row.pc ? `${row.i + 1}/${row.n}` : "", row.pc ? fmtBRL(row.pc.amount) : "", fmtDate(row.it?.date ?? row.pc?.date ?? null), fmtDate(row.it?.extensionDate ?? null), row.r.health !== "ok" ? "conciliação pendente" : ""]);
+  const plannedRows = queryReport(plannedSource.filter((r) => columnTest(plannedCF.f, PLANNED_COLS, plannedValues(r))), plannedReport.query, plannedReport.sort, plannedValues, (row) => [...plannedValues(row), ...(sup(row.p.supplierId)?.aliases ?? []), row.pc ? `${row.i + 1}/${row.n}` : "", row.pc ? fmtBRL(row.pc.amount) : "", fmtDate(row.it?.date ?? row.pc?.date ?? null), fmtDate(row.it?.extensionDate ?? null), row.r.health !== "ok" ? "conciliação pendente" : ""]);
   const committedValues = (row: (typeof committedSource)[number]) => {
     const t = row.t === "committed" ? row.c : row.e;
     const ts = titleStatus(t.value, t.status, paymentsFor(d, row.t, t.id));
     const due = row.t === "committed" ? row.c.dueDate : row.e.termDays != null ? addDays(row.e.baseDate, row.e.termDays) : null;
     return [kindL(t.categoryId, row.t === "expense" ? "despesa" : "compra"), catOf(t.categoryId)?.name, (sup(t.supplierId)?.name ?? t.sourceSupplier), row.t === "committed" ? row.c.purchaseCode : null, t.document, t.notes, parcelValue(labels.get(t.id) ?? "1/1"), t.value, dateValue(due), dateValue(t.extensionDate), t.status === "cancelado" ? "Cancelado" : row.t === "committed" && row.c.origin === "efetivacao" ? "Efetivado (previsão)" : row.t === "committed" && row.c.origin === "legado" ? "Efetivado (legado)" : "Efetivado", ts.state === "Parcial" ? "Parcialmente pago" : ts.state, ts.paid, Math.max(0, ts.open)];
   };
-  const efetivados = queryReport(committedSource, committedReport.query, committedReport.sort, committedValues, (row) => {
+  const efetivados = queryReport(committedSource.filter((r) => columnTest(committedCF.f, COMMITTED_COLS, committedValues(r))), committedReport.query, committedReport.sort, committedValues, (row) => {
     const t = row.t === "committed" ? row.c : row.e;
     const v = committedValues(row);
     return [...v, ...(sup(t.supplierId)?.aliases ?? []), labels.get(t.id) ?? "1/1", ...[7, 12, 13].map((i) => fmtBRL(Number(v[i]))), ...[8, 9].map((i) => typeof v[i] === "number" ? fmtDate(new Date(v[i]).toISOString().slice(0, 10)) : ""), paymentsFor(d, row.t, t.id).some((p) => p.method === "cartao") ? "Quitado com cartão parte no cartão" : ""];
@@ -120,11 +131,14 @@ function Page() {
     const t = p.titleKind === "committed" ? d.committed.find((c) => c.id === p.titleId) : d.expenses.find((e) => e.id === p.titleId);
     return [dateValue(p.date), `${(sup(t?.supplierId ?? "")?.name ?? t?.sourceSupplier) ?? ""} · ${t?.document || "sem documento"}${labels.get(p.titleId) ? ` · parcela ${labels.get(p.titleId)}` : ""}`, p.method === "cartao" ? "Quitado com cartão" : p.accountId ? accountName(d, p.accountId) : NO_ACCOUNT, p.amount, p.note, p.reversedAt ? `estornado ${fmtDate(p.reversedAt.slice(0, 10))}: ${p.reversalNote}` : "ativo"];
   };
-  const paymentRows = queryReport(d.payments, paymentsReport.query, paymentsReport.sort, paymentValues, (p) => {
+  const paymentRows = queryReport(d.payments.filter((r) => columnTest(paymentsCF.f, PAYMENT_COLS, paymentValues(r))), paymentsReport.query, paymentsReport.sort, paymentValues, (p) => {
     const t = p.titleKind === "committed" ? d.committed.find((c) => c.id === p.titleId) : d.expenses.find((e) => e.id === p.titleId);
     return [...paymentValues(p), ...(sup(t?.supplierId ?? "")?.aliases ?? []), t?.notes, t?.categoryId ? catOf(t.categoryId)?.name : "", fmtDate(p.date), fmtBRL(p.amount)];
   });
 
+  const plannedPager = usePager(plannedRows.length, plannedRows.length + plannedReport.query + JSON.stringify(plannedReport.sort) + fKind + plannedCF.key);
+  const committedPager = usePager(efetivados.length, efetivados.length + committedReport.query + JSON.stringify(committedReport.sort) + fKind + committedCF.key);
+  const paymentsPager = usePager(paymentRows.length, paymentRows.length + paymentsReport.query + JSON.stringify(paymentsReport.sort) + paymentsCF.key);
   const noteInit = (o: { categoryId: string; supplierId: string; purchaseCode?: string; document: string; notes: string }, fb: CategoryKind): NoteFields => ({ kind: kindOfCat(o.categoryId) || fb, categoryId: o.categoryId, supplierId: o.supplierId, purchaseCode: o.purchaseCode ?? "", document: o.document, notes: o.notes });
 
   return (
@@ -140,19 +154,19 @@ function Page() {
           <select className="inp" value={fKind} onChange={(e) => setFKind(e.target.value as "" | CategoryKind)}><option value="">Todas</option><option value="compra">Compra</option><option value="despesa">Despesa</option></select>
         </div>
       )}
-      {tab !== "consultas" && <div className="mb-2 flex flex-wrap items-end gap-2"><ReportSearch value={report.query} onChange={report.setQuery} count={tab === "planned" ? plannedRows.length : tab === "committed" ? efetivados.length : paymentRows.length} /><Button variant="outline" size="sm" onClick={() => { report.setQuery(""); setFKind(""); }}>Limpar filtros</Button></div>}
+      {tab !== "consultas" && <div className="mb-2 flex flex-wrap items-end gap-2"><ReportSearch value={report.query} onChange={report.setQuery} count={tab === "planned" ? plannedRows.length : tab === "committed" ? efetivados.length : paymentRows.length} /><ColumnFilter key={tab} cols={tab === "planned" ? PLANNED_COLS : tab === "committed" ? COMMITTED_COLS : PAYMENT_COLS} filter={cf} suggest={tab === "planned" ? suggestFrom(plannedSource, plannedValues) : tab === "committed" ? suggestFrom(committedSource, committedValues) : suggestFrom(d.payments, paymentValues)} /><Button variant="outline" size="sm" onClick={() => { report.setQuery(""); setFKind(""); cf.clear(); }}>Limpar filtros</Button></div>}
       <div hidden={tab !== "consultas"}><Consultas d={d} /></div>
       {tab === "consultas" ? null : <div className="card overflow-auto">
         {tab === "planned" && (
           <table className="tbl"><thead><tr><SortHead label="Categoria" column={0} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Subgrupo" column={1} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Fornecedor" column={2} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Código do pedido" column={3} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Documento" column={4} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Descrição" column={5} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Parcela" column={6} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Valor da parcela" column={7} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={true} /><SortHead label="Vencimento" column={8} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Prorrogar para" column={9} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Situação do lançamento" column={10} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><th>Ações</th></tr></thead>
-            <tbody>{plannedRows.flatMap(({ p, r, pc, i, n, it, idx }) => {
+            <tbody>{plannedPager.slice(plannedRows).flatMap(({ p, r, pc, i, n, it, idx }) => {
               const label = `${(sup(p.supplierId)?.name ?? p.sourceSupplier) ?? "—"} · ${p.document || p.purchaseCode || "sem documento"} · parcela ${i + 1}/${n}`;
               const baseAmt = it?.amount ?? distributePlanned(p, sup(p.supplierId), d.committed, d.params.profile, []).parcels[idx]?.amount ?? 0;
               const effs = d.effectivations.filter((e) => e.plannedId === p.id);
               const sit = p.status === "encerrado" ? "Encerrada" : p.status === "cancelado" ? "Cancelada" : r.effectivated > 0 ? "Efetivada parcialmente" : "Prevista";
               const out = [
                 <tr key={p.id + i} id={i === 0 ? `pending-${p.id}` : undefined} tabIndex={-1} className={target.focus === p.id ? "bg-warning-soft" : ""}>
-                  <td>{kindL(p.categoryId)}</td><td>{catOf(p.categoryId)?.name ?? "—"}</td><td>{(sup(p.supplierId)?.name ?? p.sourceSupplier) ?? "—"}</td><td>{p.purchaseCode || "—"}</td><td>{p.document || "—"}</td><td className="max-w-48 truncate" title={p.notes}>{p.notes || "—"}</td>
+                  <td>{kindL(p.categoryId)}</td><Txt v={catOf(p.categoryId)?.name} /><Txt v={sup(p.supplierId)?.name ?? p.sourceSupplier} /><Txt v={p.purchaseCode} /><Txt v={p.document} /><Txt v={p.notes} />
                   <td>{pc ? `${i + 1}/${n}` : "—"}</td><td className="num">{pc ? fmtBRL(pc.amount) : "—"}</td>
                   <td>{pc ? fmtDate(it ? it.date : pc.date) : "—"}</td><td>{it?.extensionDate ? <span className="tag tag-warn">{fmtDate(it.extensionDate)}</span> : "—"}</td>
                   <td><span className={`tag ${r.health === "ok" ? "" : "tag-err"}`}>{sit}{r.health !== "ok" ? " · conciliação pendente" : ""}</span></td>
@@ -160,7 +174,7 @@ function Page() {
                     {p.status === "ativo" && <button className="btn btn-primary" disabled={r.health !== "ok" || !pc} onClick={() => { const k = currentParcels(d, p.id)[i]?.key; if (k) setPanel({ t: "eff", id: p.id, mode: "parcela", sel: [k] }); }}>Efetivar esta parcela</button>}
                     {p.status === "ativo" && <button className="btn" disabled={r.health !== "ok" || !pc} onClick={() => setPanel({ t: "eff", id: p.id, mode: "documento", sel: [] })}>Efetivar documento</button>}
                     {p.status === "ativo" && pc && <button className="btn" disabled={r.health !== "ok"} onClick={() => setPanel({ t: "eff", id: p.id, mode: "ajustar", sel: [] })}>Ajustar planejamento</button>}
-                    {pc && p.status === "ativo" && <button className="btn" onClick={() => setPanel({ t: "parcela", label, amount: baseAmt, date: it ? it.date : pc.date, save: (x, amount, date) => editPlannedParcel(x, p.id, idx, { amount, date }) })}>Editar esta parcela</button>}
+                    {pc && p.status === "ativo" && <button className="btn" onClick={() => setPanel({ t: "parcela", label, amount: baseAmt, date: it ? it.date : pc.date, save: (x, amount, date) => editPlannedParcel(x, p.id, idx, { amount, date }), log: (x) => x.planned.find((y) => y.id === p.id) })}>Editar esta parcela</button>}
                     <button className="btn" onClick={() => setPanel({ t: "nota", init: noteInit(p, "compra"), siblings: n, save: (x, f) => { const t = x.planned.find((y) => y.id === p.id); if (t) Object.assign(t, { categoryId: f.categoryId, supplierId: f.supplierId, purchaseCode: f.purchaseCode, document: f.document, notes: f.notes }); } })}>Editar dados da nota</button>
                     {pc && p.status === "ativo" && <button className="btn" onClick={() => setPanel({ t: "prorrogar", label, current: it?.extensionDate ?? null, original: it ? it.date : pc.date, history: it?.extensionHistory ?? [], save: (x, to, note) => extendPlannedParcel(x, p.id, idx, to, note, now()) })}>Prorrogar parcela</button>}
                     <button className="btn" onClick={() => toggle("tl", p.id + ":" + idx)}>Detalhes ({effs.length})</button>
@@ -175,7 +189,7 @@ function Page() {
         )}
         {tab === "committed" && (
           <table className="tbl"><thead><tr><SortHead label="Categoria" column={0} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Subgrupo" column={1} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Fornecedor" column={2} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Código do pedido" column={3} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Documento" column={4} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Descrição" column={5} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Parcela" column={6} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Valor da parcela" column={7} sort={committedReport.sort} onSort={committedReport.toggle} numeric={true} /><SortHead label="Vencimento" column={8} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Prorrogar para" column={9} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Situação do lançamento" column={10} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Situação do pagamento" column={11} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Pago" column={12} sort={committedReport.sort} onSort={committedReport.toggle} numeric={true} /><SortHead label="Saldo em aberto" column={13} sort={committedReport.sort} onSort={committedReport.toggle} numeric={true} /><th>Ações</th></tr></thead>
-            <tbody>{efetivados.flatMap((r) => {
+            <tbody>{committedPager.slice(efetivados).flatMap((r) => {
               if (r.t === "committed") {
                 const c = r.c;
                 const ts = titleStatus(c.value, c.status, paymentsFor(d, "committed", c.id));
@@ -185,14 +199,14 @@ function Page() {
                 const pl = c.plannedId ? d.planned.find((p) => p.id === c.plannedId) : null;
                 return [
                   <tr key={c.id} id={`pending-${c.id}`} tabIndex={-1} className={target.focus === c.id ? "bg-warning-soft" : ""}>
-                    <td>{kindL(c.categoryId)}</td><td>{catOf(c.categoryId)?.name ?? "—"}</td><td>{(sup(c.supplierId)?.name ?? c.sourceSupplier) ?? "—"}</td><td>{c.purchaseCode || "—"}</td><td>{c.document || "—"}</td><td className="max-w-48 truncate" title={c.notes}>{c.notes || "—"}</td>
+                    <td>{kindL(c.categoryId)}</td><Txt v={catOf(c.categoryId)?.name} /><Txt v={sup(c.supplierId)?.name ?? c.sourceSupplier} /><Txt v={c.purchaseCode} /><Txt v={c.document} /><Txt v={c.notes} />
                     <td>{lb}</td><td className="num">{fmtBRL(c.value)}</td><td>{fmtDate(c.dueDate)}</td><td>{c.extensionDate ? <span className="tag tag-warn">{fmtDate(c.extensionDate)}</span> : "—"}</td>
                     <td>{c.status === "cancelado" ? "Cancelado" : c.origin === "efetivacao" ? "Efetivado (previsão)" : c.origin === "legado" ? "Efetivado (legado)" : "Efetivado"}</td>
                     <td><span className={`tag ${ts.state === "Pago" ? "tag-ok" : ts.state === "Parcial" ? "tag-warn" : ""}`}>{ts.state === "Parcial" ? "Parcialmente pago" : ts.state}</span>{ts.payments.some((p) => p.method === "cartao") && <span className="tag tag-ok ml-1">{ts.payments.every((p) => p.method === "cartao") && ts.open <= 0 ? "Quitado com cartão" : "parte no cartão"}</span>}</td>
                     <td className="num">{fmtBRL(ts.paid)}</td><td className="num">{fmtBRL(Math.max(0, ts.open))}</td>
                     <td><Acoes>
                       {c.status === "ativo" && ts.open > 0 && <button className="btn btn-primary" disabled={!active.isBase} title={active.isBase ? "" : "Simulação não registra pagamentos"} onClick={() => setPanel({ t: "pay", kind: "committed", id: c.id, label })}>Registrar pagamento</button>}
-                      <button className="btn" onClick={() => setPanel({ t: "parcela", label, amount: c.value, date: c.dueDate, save: (x, amount, date) => { const t = x.committed.find((y) => y.id === c.id); if (t) Object.assign(t, { value: amount, dueDate: date }); } })}>Editar esta parcela</button>
+                      <button className="btn" onClick={() => setPanel({ t: "parcela", label, amount: c.value, date: c.dueDate, save: (x, amount, date) => { const t = x.committed.find((y) => y.id === c.id); if (t) Object.assign(t, { value: amount, dueDate: date }); }, log: (x) => x.committed.find((y) => y.id === c.id) })}>Editar esta parcela</button>
                       <button className="btn" onClick={() => setPanel({ t: "nota", init: noteInit(c, "compra"), siblings: sibs, save: (x, f) => editCommittedNote(x, c.id, { categoryId: f.categoryId, supplierId: f.supplierId, purchaseCode: f.purchaseCode, document: f.document, notes: f.notes }) })}>Editar dados da nota</button>
                       <button className="btn" onClick={() => setPanel({ t: "prorrogar", label, current: c.extensionDate, original: c.dueDate, history: c.extensionHistory, save: (x, to, note) => confirmExtension(x, "committed", c.id, to, note, now()) })}>Prorrogar parcela</button>
                       <button className="btn" onClick={() => toggle("det", c.id)}>Detalhes</button>
@@ -216,14 +230,14 @@ function Page() {
               const label = `${(sup(e.supplierId)?.name ?? e.sourceSupplier) ?? "—"} · ${e.document || "sem documento"}`;
               return [
                 <tr key={e.id} id={`pending-${e.id}`} tabIndex={-1} className={target.focus === e.id ? "bg-warning-soft" : ""}>
-                  <td>{kindL(e.categoryId, "despesa")}</td><td>{catOf(e.categoryId)?.name ?? "—"}</td><td>{(sup(e.supplierId)?.name ?? e.sourceSupplier) ?? "—"}</td><td>—</td><td>{e.document || "—"}</td><td className="max-w-48 truncate" title={e.notes}>{e.notes || "—"}</td>
+                  <td>{kindL(e.categoryId, "despesa")}</td><Txt v={catOf(e.categoryId)?.name} /><Txt v={sup(e.supplierId)?.name ?? e.sourceSupplier} /><td>—</td><Txt v={e.document} /><Txt v={e.notes} />
                   <td>1/1</td><td className="num">{fmtBRL(e.value)}</td><td>{orig ? fmtDate(orig) : <span className="tag tag-warn">não distribuída</span>}</td><td>{e.extensionDate ? <span className="tag tag-warn">{fmtDate(e.extensionDate)}</span> : "—"}</td>
                   <td>{e.status === "cancelado" ? "Cancelado" : "Efetivado"}</td>
                   <td><span className={`tag ${ts.state === "Pago" ? "tag-ok" : ts.state === "Parcial" ? "tag-warn" : ""}`}>{ts.state === "Parcial" ? "Parcialmente pago" : ts.state}</span>{ts.payments.some((p) => p.method === "cartao") && <span className="tag tag-ok ml-1">{ts.payments.every((p) => p.method === "cartao") && ts.open <= 0 ? "Quitado com cartão" : "parte no cartão"}</span>}</td>
                   <td className="num">{fmtBRL(ts.paid)}</td><td className="num">{fmtBRL(Math.max(0, ts.open))}</td>
                   <td><Acoes>
                     {e.status === "ativo" && ts.open > 0 && expenseDate(e) && <button className="btn btn-primary" disabled={!active.isBase} onClick={() => setPanel({ t: "pay", kind: "expense", id: e.id, label })}>Registrar pagamento</button>}
-                    <button className="btn" onClick={() => setPanel({ t: "parcela", label, amount: e.value, date: orig ?? e.baseDate, save: (x, amount, date) => { const t = x.expenses.find((y) => y.id === e.id); if (t) Object.assign(t, { value: amount, termDays: daysBetween(t.baseDate, date) }); } })}>Editar esta parcela</button>
+                    <button className="btn" onClick={() => setPanel({ t: "parcela", label, amount: e.value, date: orig ?? e.baseDate, save: (x, amount, date) => { const t = x.expenses.find((y) => y.id === e.id); if (t) Object.assign(t, { value: amount, termDays: daysBetween(t.baseDate, date) }); }, log: (x) => x.expenses.find((y) => y.id === e.id) })}>Editar esta parcela</button>
                     <button className="btn" onClick={() => setPanel({ t: "nota", init: noteInit(e, "despesa"), siblings: 1, save: (x, f) => { const t = x.expenses.find((y) => y.id === e.id); if (t) Object.assign(t, { categoryId: f.categoryId, supplierId: f.supplierId, document: f.document, notes: f.notes }); } })}>Editar dados da nota</button>
                     <button className="btn" onClick={() => setPanel({ t: "prorrogar", label, current: e.extensionDate, original: orig, history: e.extensionHistory, save: (x, to, note) => confirmExtension(x, "expense", e.id, to, note, now()) })}>Prorrogar parcela</button>
                     <button className="btn" onClick={() => toggle("det", e.id)}>Detalhes e baixas</button>
@@ -237,19 +251,20 @@ function Page() {
         )}
         {tab === "payments" && (
           <table className="tbl"><thead><tr><SortHead label="Data" column={0} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><SortHead label="Título" column={1} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><SortHead label="Conta" column={2} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><SortHead label="Valor" column={3} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={true} /><SortHead label="Obs." column={4} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><SortHead label="Situação" column={5} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><th>Ações</th></tr></thead>
-            <tbody>{paymentRows.map((p) => {
+            <tbody>{paymentsPager.slice(paymentRows).map((p) => {
               const t = p.titleKind === "committed" ? d.committed.find((c) => c.id === p.titleId) : d.expenses.find((e) => e.id === p.titleId);
-              return <tr key={p.id}><td>{fmtDate(p.date)}</td><td>{(sup(t?.supplierId ?? "")?.name ?? t?.sourceSupplier)} · {t?.document || "sem documento"}{p.titleKind === "committed" && labels.get(p.titleId) ? ` · parcela ${labels.get(p.titleId)}` : ""}</td><td>{p.method === "cartao" ? <span className="tag tag-ok">Quitado com cartão</span> : p.accountId ? accountName(d, p.accountId) : <span className="tag tag-warn">{NO_ACCOUNT}</span>}</td><td className="num">{fmtBRL(p.amount)}</td><td>{p.note}</td>
+              return <tr key={p.id}><td>{fmtDate(p.date)}</td><td>{(sup(t?.supplierId ?? "")?.name ?? t?.sourceSupplier)} · {t?.document || "sem documento"}{p.titleKind === "committed" && labels.get(p.titleId) ? ` · parcela ${labels.get(p.titleId)}` : ""}</td><td>{p.method === "cartao" ? <span className="tag tag-ok">Quitado com cartão</span> : p.accountId ? accountName(d, p.accountId) : <span className="tag tag-warn">{NO_ACCOUNT}</span>}</td><td className="num">{fmtBRL(p.amount)}</td><Txt v={p.note} />
                 <td>{p.reversedAt ? <span className="tag tag-err">estornado {fmtDate(p.reversedAt.slice(0, 10))}: {p.reversalNote}</span> : <span className="tag tag-ok">ativo</span>}</td>
                 <td>{!p.reversedAt && p.method !== "cartao" && <button className="btn" disabled={!active.isBase} onClick={async () => { const n = await askText("Motivo do estorno (auditado):"); if (n) act((x) => reversePayment(x, p.id, n, now())); }}>Estornar</button>}</td></tr>;
             })}{!paymentRows.length && <tr><td colSpan={7} className="text-center text-muted-foreground">Nenhum resultado para os filtros informados</td></tr>}</tbody></table>
         )}
       </div>}
+      {tab === "planned" && <Pager pager={plannedPager} />}{tab === "committed" && <Pager pager={committedPager} />}{tab === "payments" && <Pager pager={paymentsPager} />}
       <p className="mt-2 text-[11px] text-muted-foreground">Registrar pagamento é o registro de uma baixa já realizada (Pix, TED, DOC ou Boleto) — não executa transferência bancária. Boleto pago com cartão não debita conta: passa para a fatura.</p>
 
       {panel?.t === "pay" && <PagamentoPanel d={d} kind={panel.kind} titleId={panel.id} label={panel.label} onCancel={() => setPanel(null)} onConfirm={(r) => { const ok = act((x) => r.origin === "conta" ? registerPaymentBatch(x, { batchId: uid(), titleKind: panel.kind, titleId: panel.id, lines: r.lines, note: r.note, form: r.form }) : coverTitleWithCard(x, { id: uid(), at: now(), by: user?.email ?? "", titleKind: panel.kind, titleId: panel.id, cardId: r.cardId, date: r.date, amount: r.amount, fee: r.fee, installments: r.installments, form: "boleto" })); if (ok) setPanel(null); return ok; }} />}
       {panel?.t === "new" && <NovaNota d={d} isBase={active.isBase} onCancel={() => setPanel(null)} onConfirm={(n, sv) => { const ok = act((x) => { if (sv) saveSupplierCondition(x, n.supplierId, sv.terms, now(), sv.name, user?.email ?? ""); applyNote(x, n, { id: uid, at: now() }); }); if (ok) setPanel(null); return ok; }} />}
-      {panel?.t === "parcela" && <ParcelaPanel label={panel.label} amount={panel.amount} date={panel.date} onCancel={() => setPanel(null)} onSave={(a, dt) => doPanel((x) => panel.save(x, a, dt))} />}
+      {panel?.t === "parcela" && <ParcelaPanel label={panel.label} amount={panel.amount} date={panel.date} onCancel={() => setPanel(null)} onSave={(a, dt, note) => doPanel((x) => { panel.save(x, a, dt); const r = panel.log(x); if (r) (r.editLog ??= []).push({ at: now(), by: user?.email ?? "", note, parcel: panel.label, before: { amount: panel.amount, date: panel.date }, after: { amount: a, date: dt } }); })} />}
       {panel?.t === "nota" && <DadosNotaPanel d={d} init={panel.init} siblings={panel.siblings} onCancel={() => setPanel(null)} onSave={(f) => doPanel((x) => panel.save(x, f))} />}
       {panel?.t === "prorrogar" && <ProrrogarPanel label={panel.label} current={panel.current} original={panel.original} history={panel.history} isBase={active.isBase} onCancel={() => setPanel(null)} onSave={(to, note) => doPanel((x) => panel.save(x, to, note))} />}
       {panel?.t === "eff" && (() => { const p = d.planned.find((x) => x.id === panel.id); return p ? <EfetivarPanel key={panel.mode + panel.sel.join()} data={d} planned={p} mode={panel.mode} preselect={panel.sel} onCancel={() => setPanel(null)} onDone={(fn) => { if (actAlone(fn, panel.mode === "ajustar" ? "o ajuste" : "a efetivação")) setPanel(null); }} /> : null; })()}

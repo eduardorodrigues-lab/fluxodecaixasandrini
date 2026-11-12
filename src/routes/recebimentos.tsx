@@ -85,7 +85,7 @@ function Page() {
         <span className="text-muted-foreground">{dated.length} dia(s) · clique no título da coluna para ordenar</span>
       </div>
       <div className="card max-h-[75vh] overflow-auto">
-        <table className="tbl">
+        <table className="tbl tbl-stick1">
           <thead><tr>{sh("date", "Data", false)}{cols.map((p) => <th key={p.id} className="num" >{p.name}{p.end && <div className="text-[10px] font-normal">inativa desde {fmtDate(p.end)}</div>}</th>)}<th className="num">Geral</th>{sh("sum", "Soma (P)")}{sh("est", "Estimativa (Q)")}{sh("diff", "Diferença (R=P−Q)")}<th>Uso no fluxo</th><th>Contas</th><th>Realizado</th><th>Obs.</th><th /></tr></thead>
           <tbody>{list.length === 0 ? <tr><td colSpan={cols.length + 10} className="text-muted-foreground">Nenhum recebimento no período.</td></tr> : list.map((r) => {
             const { inf } = calc(r);
@@ -108,7 +108,7 @@ function Page() {
                 <td>{inf.doubleCount && <span className="tag tag-warn mr-1">possível dupla contagem</span>}{inf.present ? <span className="tag tag-ok">{inf.confirmedZero ? "zero confirmado" : "informado"}</span> : <span className="tag tag-warn">não informado → estimativa</span>}{issues.filter((i) => i.severity !== "info").map((i, k) => <div key={k} className="tag tag-err" title={i.message}>{i.code === "PLAT_FORA_VIGENCIA" ? "fora de vigência" : "plataforma desconhecida"}</div>)}</td>
                 <td>{inf.present ? <button className="btn" onClick={() => setAccFor(r.id)}>{receiptAccountsLabel(d, r)}</button> : ""}</td>
                 <td className="text-center"><input type="checkbox" aria-label="Creditado em conta" checked={!!r.realized} disabled={!inf.present} onChange={(e) => set(r.id, (x) => { x.realized = e.target.checked; })} /></td>
-                <td><input className="inp w-32" defaultValue={r.notes} onBlur={(e) => set(r.id, (x) => { x.notes = e.target.value; })} /></td>
+                <td><input className="inp w-32" key={r.notes} defaultValue={r.notes} onBlur={(e) => set(r.id, (x) => { x.notes = e.target.value; })} /></td>
                 <td><button className="btn btn-danger" onClick={async () => await askConfirm(`O recebimento de ${fmtDate(r.date) || "data não informada"} será excluído do cenário atual. O histórico será preservado.`, { title: "Excluir recebimento?", action: "Excluir recebimento", destructive: true }) && act((x) => { x.receipts = x.receipts.filter((i) => i.id !== r.id); })}>Excluir</button></td>
               </tr>
             );

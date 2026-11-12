@@ -156,6 +156,9 @@
   .tbl td { vertical-align: middle; }
   .tbl tfoot td { @apply border-t-2 border-border bg-secondary font-semibold; }
   .tbl td.num .inp, .tbl td.num input { @apply text-right; }
+  .tbl td.txt { max-width: 14rem; overflow: hidden; text-overflow: ellipsis; cursor: help; }
+  .tbl-stick1 th:first-child { position: sticky; left: 0; z-index: 20; }
+  .tbl-stick1 td:first-child { position: sticky; left: 0; z-index: 5; background: var(--card); box-shadow: 1px 0 0 var(--border); }
   /* Colunas fixas da visão CEO: largura travada para os offsets left-* baterem. */
   .col-fix { @apply overflow-hidden text-ellipsis whitespace-nowrap; }
   .neg { @apply text-negative; }

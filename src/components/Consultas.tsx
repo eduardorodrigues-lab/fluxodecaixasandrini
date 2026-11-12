@@ -1,4 +1,4 @@
-import { DetailReport, ReportSearch, SortHead, useReportState } from "@/components/ReportControls";
+import { ColumnFilter, columnTest, DetailReport, Pager, ReportSearch, SortHead, suggestFrom, useColumnFilter, usePager, useReportState, type FilterCol } from "@/components/ReportControls";
 import { dateValue, parcelValue, queryReport, reportCSV } from "@/lib/reportTable";
 import { PagamentosDia } from "@/components/PagamentosDia";
 import { useMemo, useState } from "react";
@@ -93,13 +93,19 @@ export function Consultas({ d }: { d: ScenarioData }) {
     <div hidden={rep !== "dia"}><PagamentosDia /></div><div hidden={rep !== "boletos"}><ConsultaBoletos d={d} /></div>
   </div>;
 }
+const cT = (label: string, type: FilterCol["type"] = "text"): FilterCol => ({ label, type });
+const C_COLS = [cT("Fornecedor"), cT("Documento"), cT("Parcela"), cT("Categoria"), cT("Subgrupo"), cT("Valor", "money"), cT("Vencimento", "date"), cT("Prorrogado para", "date"), cT("Pago", "money"), cT("Saldo", "money"), cT("Situação"), cT("Última baixa", "date")];
+const cVals = (r: ConsultaRow) => [r.supplier, r.document, r.parcel, r.category, r.sub, r.value, dateValue(r.due), dateValue(r.extended), r.paid, r.open, r.state, dateValue(r.lastPay)];
 function ConsultaBoletos({ d }: { d: ScenarioData }) {
   const all = useMemo(() => buildConsulta(d), [d]);
   const [f, setF] = useState<ConsultaFilter>(EMPTY_FILTER);
   const [sel, setSel] = useState<ConsultaRow | null>(null);
   const [byDoc, setByDoc] = useState(false);
   const report = useReportState();
-  const rows = useMemo(() => consultaReport(all, f, byDoc, report.query, report.sort), [all, f, byDoc, report.query, report.sort]);
+  const cf = useColumnFilter();
+  const allF = useMemo(() => all.filter((r) => columnTest(cf.f, C_COLS, cVals(r))), [all, cf.f]);
+  const rows = useMemo(() => consultaReport(allF, f, byDoc, report.query, report.sort), [allF, f, byDoc, report.query, report.sort]);
+  const pager = usePager(rows.length, rows);
   const tot = rows.reduce((a, r) => ({ v: a.v + r.value, p: a.p + r.paid, o: a.o + r.open }), { v: 0, p: 0, o: 0 });
   const up = (p: Partial<ConsultaFilter>) => setF({ ...f, ...p });
 
@@ -131,11 +137,11 @@ function ConsultaBoletos({ d }: { d: ScenarioData }) {
         <label><span className="lbl block">Pagamento</span><select className="inp" value={f.pay} onChange={(e) => up({ pay: e.target.value as ConsultaFilter["pay"] })}><option value="">Todos</option><option>Em aberto</option><option>Parcialmente pago</option><option>Pago</option></select></label>
         <label><span className="lbl block">Prorrogação</span><select className="inp" value={f.ext} onChange={(e) => up({ ext: e.target.value as ConsultaFilter["ext"] })}><option value="">Todos</option><option value="sim">Prorrogados</option><option value="nao">Não prorrogados</option></select></label>
         <label><span className="lbl block">Agrupar por</span><select className="inp" value={byDoc ? "doc" : "parc"} onChange={(e) => setByDoc(e.target.value === "doc")}><option value="parc">Parcela</option><option value="doc">Documento</option></select></label>
-        <button className="btn" onClick={() => { setF(EMPTY_FILTER); report.setQuery(""); }}>Limpar filtros</button>
+        <button className="btn" onClick={() => { setF(EMPTY_FILTER); report.setQuery(""); cf.clear(); }}>Limpar filtros</button>
         <button className="btn" onClick={print}>Imprimir</button>
         <button className="btn" onClick={exportXls}>Exportar para Excel</button>
       </div>
-      <div className="mb-2"><ReportSearch value={report.query} onChange={report.setQuery} count={rows.length} /></div>
+      <div className="mb-2 flex flex-wrap items-end gap-2"><ReportSearch value={report.query} onChange={report.setQuery} count={rows.length} /><ColumnFilter cols={C_COLS} filter={cf} suggest={suggestFrom(all, cVals)} /></div>
       <div className="mb-2 flex gap-4 text-xs">
         <span>Valor dos títulos <b className="tabular-nums">{fmtBRL(tot.v)}</b></span>
         <span>Valor pago <b className="tabular-nums">{fmtBRL(tot.p)}</b></span>
@@ -144,8 +150,8 @@ function ConsultaBoletos({ d }: { d: ScenarioData }) {
       </div>
       <div className="card overflow-auto">
         <table className="tbl"><thead><tr>{HEAD.map((h, i) => <SortHead key={h} label={h} column={i} sort={report.sort} onSort={report.toggle} numeric={[5, 8, 9].includes(i)} />)}</tr></thead>
-          <tbody>{rows.map((r) => <tr key={r.key} className="cursor-pointer hover:bg-muted" onClick={() => setSel(r)}>{consultaCells(r).map((c, i) => <td key={i} className={[5, 8, 9].includes(i) ? "num" : ""}>{c}</td>)}</tr>)}
-            {!rows.length && <tr><td colSpan={HEAD.length} className="text-center text-muted-foreground">Nenhum resultado para os filtros informados</td></tr>}</tbody></table>
+          <tbody>{pager.slice(rows).map((r) => <tr key={r.key} className="cursor-pointer hover:bg-muted" onClick={() => setSel(r)}>{consultaCells(r).map((c, i) => <td key={i} className={[5, 8, 9].includes(i) ? "num" : ""}>{c}</td>)}</tr>)}
+            {!rows.length && <tr><td colSpan={HEAD.length} className="text-center text-muted-foreground">Nenhum resultado para os filtros informados</td></tr>}</tbody></table><Pager pager={pager} />
       </div>
       {sel && (
         <div className="fixed inset-0 z-50 flex justify-end bg-foreground/20">

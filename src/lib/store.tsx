@@ -1,14 +1,19 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { produce, setAutoFreeze } from "immer";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
-import { diffData, type Change } from "./diff";
+import { applyOps, diffData, mergeOps, opKey, type Change, type Conflict } from "./diff";
+import { clearDraftLocal, loadDraft, saveDraftLocal } from "./draftStore";
 import { normalizeData } from "./engine/actions";
 import type { ScenarioData } from "./engine/types";
-import { commitOfficial, getOfficial, listAudit } from "./official.functions";
+import { commitOps, getOfficial, listAudit } from "./official.functions";
 import { listMyOrgs } from "./team.functions";
 import { pickOrg } from "./team";
-import { baseMovedSince, editSession, migrateSims, purgeUser, scopeKey, visibleDraft, type DraftSession, type SimStore } from "./session";
+import { migrateSims, purgeUser, scopeKey, type SimStore } from "./session";
+setAutoFreeze(false);
+// Rascunho do fluxo real = lista de alterações (antes/depois por registro); a tela aplica sobre a base atual.
+interface OpsSession { scope: string; baseVersion: number; requestId: string; ops: Change[] }
 
 // UMA base operacional por organização (login obrigatório, gravação só via servidor com auditoria).
 // Sem dados demonstrativos e sem fallback: sem login/erro não há dados financeiros.
@@ -18,7 +23,7 @@ export interface Sim { id: string; name: string; createdAt: string; data: Scenar
 export interface AuditEntry { id: string; at: string; user_email: string | null; version_from: number; version_to: number; summary: string; changes: Change[] }
 interface LocalState { v: 4; activeId: string; sims: SimStore }
 export interface UiState { view: "vertical" | "horizontal"; start: string; end: string; supplierId: string; group: string; flowMode: "consolidada" | "etapa" }
-export type SaveState = "idle" | "saving" | "saved" | "conflict" | "error";
+export type SaveState = "idle" | "dirty" | "saving" | "saved" | "conflict" | "error";
 export interface Scenario { id: string; name: string; isBase: boolean; data: ScenarioData }
 
 const KEY = "fluxo-sandrini:v2"; // mesma chave; conteúdo migrado para v3 (simulações por usuário+org)
@@ -45,6 +50,7 @@ interface Ctx {
   update: (fn: (d: ScenarioData) => void) => string | null;
   draft: ScenarioData | null; draftBaseVersion: number | null; baseMoved: boolean; changes: Change[]; discardDraft: () => void; commitDraft: () => Promise<void>;
   saveState: SaveState; saveMsg: string; reloadOfficial: () => void;
+  conflicts: Conflict[]; resolveConflict: (c: Conflict, keep: "mine" | "server") => void; protectErr: string;
   createSim: (name: string) => void; discardSim: (id: string) => void; deleteSim: (id: string) => void;
   audit: AuditEntry[];
 }
@@ -55,14 +61,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [user, setUser] = useState<Ctx["user"]>(null);
-  const [session, setSession] = useState<DraftSession | null>(null);
+  const [session, setSession] = useState<OpsSession | null>(null);
+  const [conflicts, setConflicts] = useState<Conflict[]>([]);
+  const [protectErr, setProtectErr] = useState("");
+  const inflight = useRef(false);
+  const restored = useRef(new Set<string>());
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveMsg, setSaveMsg] = useState("");
   const [ui, setUiS] = useState<UiState>({ view: "horizontal", start: "2026-10-01", end: "2026-11-30", supplierId: "", group: "", flowMode: "consolidada" });
   const qc = useQueryClient();
   const fetchOfficial = useServerFn(getOfficial);
   const fetchAudit = useServerFn(listAudit);
-  const commitFn = useServerFn(commitOfficial);
+  const commitFn = useServerFn(commitOps);
   const fetchOrgs = useServerFn(listMyOrgs);
   const [orgId, setOrgIdS] = useState<string | null>(null);
 
@@ -113,14 +123,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const scope = scopeKey(user?.id, offQ.data?.orgId ?? null);
   const allSims = (scope ? local.sims[scope] ?? [] : []) as Sim[];
   const sims = allSims.filter((s) => !s.deletedAt);
-  const cur = visibleDraft(session, scope);
-  const draft = cur?.data ?? null;
+  const cur = session && scope && session.scope === scope ? session : null;
+  const draft = useMemo(() => (cur?.ops.length && baseData ? applyOps(baseData, cur.ops, false).data : null), [cur, baseData]);
   const sim = sims.find((s) => s.id === local.activeId) ?? null;
   const emptyBase = useMemo(() => normalizeData({}), []);
   const base: Scenario = { id: "base", name: official.orgName || "Real", isBase: true, data: baseData ?? emptyBase };
   const active: Scenario = sim ? { id: sim.id, name: sim.name, isBase: false, data: sim.data ?? base.data } : { ...base, data: draft ?? base.data };
   const canEdit = !!sim || (official.status === "ready" && official.role !== "viewer");
-  const changes = useMemo(() => (draft && baseData ? diffData(baseData, draft) : []), [draft, baseData]);
+  const changes = cur?.ops ?? [];
 
   const mutLocal = useCallback((fn: (s: LocalState) => void) => setLocal((s) => { const n = clone(s); fn(n); return n; }), []);
 
@@ -133,44 +143,67 @@ export function AppProvider({ children }: { children: ReactNode }) {
         mutLocal((s) => { const x = scope ? s.sims[scope]?.find((i) => i.id === sim.id) as Sim | undefined : null; if (x) { x.data = next; if (ch.length) (x.history ??= []).unshift({ at: new Date().toISOString(), user: user?.email ?? "", changes: ch }); } });
       } else {
         if (!baseData || !scope) return "Base ainda não carregada.";
-        setSession(editSession(cur, scope, baseData, baseVersion, fn, uuid)); setSaveState("idle"); setSaveMsg("");
+        const from = draft ?? baseData;
+        const next = produce(from, (x) => { fn(x); }); // copia só o que a edição tocou
+        const delta = diffData(from, next);
+        if (!delta.length) return null;
+        const ops = mergeOps(cur?.ops ?? [], delta);
+        setSession(ops.length ? { scope, baseVersion: cur?.baseVersion ?? baseVersion, requestId: uuid(), ops } : null);
+        setSaveState(ops.length ? "dirty" : "idle"); setSaveMsg("");
       }
       return null;
     } catch (e) { return (e as Error).message; }
   };
 
-  const discardDraft = () => { setSession(null); setSaveState("idle"); setSaveMsg("Rascunho descartado — nada foi gravado."); };
+  const discardDraft = () => { setSession(null); setConflicts([]); setSaveState("idle"); setSaveMsg("Alterações descartadas — nada foi gravado."); };
+
+  // Proteção do preenchimento: grava as alterações pendentes no navegador (IndexedDB) por usuário+organização.
+  useEffect(() => {
+    if (!scope || !restored.current.has(scope)) return;
+    const key = "draft:" + scope;
+    const t = setTimeout(() => {
+      (cur ? saveDraftLocal(key, cur) : clearDraftLocal(key)).then(() => setProtectErr("")).catch((e: Error) => setProtectErr(`O rascunho não pôde ser protegido neste navegador (${e.message}). Salve antes de fechar ou recarregar.`));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [cur, scope]);
+  // Recupera rascunho após falha/recarga, aplicando-o sobre a base atual.
+  useEffect(() => {
+    if (!scope || !baseData || restored.current.has(scope)) return;
+    loadDraft<OpsSession>("draft:" + scope).then((v) => {
+      restored.current.add(scope);
+      if (v?.ops?.length) { setSession((s) => s ?? { ...v, scope }); setSaveState("dirty"); setSaveMsg("Rascunho recuperado — ainda não salvo."); }
+    }).catch((e: Error) => { restored.current.add(scope); setProtectErr(`Não foi possível ler o rascunho protegido (${e.message}).`); });
+  }, [scope, baseData]);
 
   const commitDraft = async () => {
-    if (!draft || !baseData || saveState === "saving") return;
+    if (!cur || !draft || inflight.current) return; // trava: um envio por vez desta gravação
     const semData = draft.receipts.filter((r) => !r.date && (r.general != null || Object.values(r.platforms).some((v) => v != null)));
-    if (semData.length) { setSaveState("error"); setSaveMsg(`${semData.length} recebimento(s) com valor e sem data. Informe a data antes de gravar.`); return; }
-    const toSave = { ...draft, receipts: draft.receipts.filter((r) => r.date) };
-    const sent = draft;
-    setSaveState("saving"); setSaveMsg("");
+    if (semData.length) { setSaveState("error"); setSaveMsg(`${semData.length} recebimento(s) com valor e sem data. Informe a data antes de salvar.`); return; }
+    const sent = cur.ops.filter((o) => !(o.entity === "Recebimento" && o.after && !(o.after as { date?: string }).date));
+    if (!sent.length) return;
+    inflight.current = true; setSaveState("saving"); setSaveMsg("");
     try {
-      // expectedVersion = versão SNAPSHOT do início do rascunho (não a versão recarregada).
-      const r = await commitFn({ data: { orgId: selOrg, expectedVersion: cur!.baseVersion, requestId: cur!.requestId, dataJson: JSON.stringify(toSave) } });
+      let r = await commitFn({ data: { orgId: selOrg, requestId: cur.requestId, opsJson: JSON.stringify(sent) } });
+      for (let i = 0; r.status === "retry" && i < 3; i++) r = await commitFn({ data: { orgId: selOrg, requestId: cur.requestId, opsJson: JSON.stringify(sent) } });
       if (r.status === "ok" || r.status === "duplicate" || r.status === "noop") {
-        // Edições feitas durante a gravação continuam como nova alteração sobre a versão gravada.
-        setSession((s) => (!s || s.data === sent ? null : { ...s, baseVersion: r.version, requestId: uuid() }));
+        const sentAfter = new Map(sent.map((o) => [opKey(o), JSON.stringify(o.after)]));
+        setSession((s) => { if (!s) return s; const rest = s.ops.filter((o) => sent.some((x) => opKey(x) === opKey(o)) || o.entity !== "Recebimento").filter((o) => sentAfter.get(opKey(o)) !== JSON.stringify(o.after)); return rest.length ? { ...s, ops: rest, baseVersion: r.version, requestId: uuid() } : null; });
+        setConflicts([]);
         await qc.invalidateQueries({ queryKey: ["official"] });
-        setSaveState("saved");
-        setSaveMsg(r.status === "noop" ? "" : `Salvo às ${new Date().toLocaleTimeString("pt-BR")}.`);
+        setSaveState("saved"); setSaveMsg(`Salvo às ${new Date().toLocaleTimeString("pt-BR")}.`);
       } else if (r.status === "conflict") {
-        setSaveState("conflict");
-        setSaveMsg(`Conflito: os dados foram alterados por outra pessoa (agora versão ${r.version}; seu rascunho partiu da ${cur!.baseVersion}). Nada foi sobrescrito. Seu rascunho continua aqui; recarregue a base e refaça as alterações.`);
+        setConflicts(JSON.parse(r.conflictsJson) as Conflict[]);
+        setSaveState("conflict"); setSaveMsg("Outra pessoa alterou a mesma informação. Escolha o que manter; suas demais alterações continuam preservadas.");
+        void qc.invalidateQueries({ queryKey: ["official"] });
       } else { setSaveState("error"); setSaveMsg("Sem permissão para gravar."); }
-    } catch (e) { setSaveState("error"); setSaveMsg(`Falha ao gravar (nada confirmado): ${(e as Error).message}. Tente novamente — o envio é idempotente.`); }
+    } catch (e) { setSaveState("error"); setSaveMsg(`Falha ao salvar: ${(e as Error).message}. Seu preenchimento está preservado; ao tentar de novo, o sistema confere se já foi gravado.`); }
+    finally { inflight.current = false; }
   };
-
-  // Editor: toda alteração passa a valer sozinha (gravação automática com auditoria, sem revisão manual).
-  const pendingSemData = !!draft?.receipts.some((r) => !r.date && (r.general != null || Object.values(r.platforms).some((v) => v != null)));
-  useEffect(() => {
-    if (!draft || saveState === "saving" || saveState === "conflict" || saveState === "error" || pendingSemData) return;
-    const t = setTimeout(() => { void commitDraft(); }, 800);
-    return () => clearTimeout(t);
-  }, [draft, saveState, pendingSemData]); // eslint-disable-line react-hooks/exhaustive-deps
+  const resolveConflict = (c: Conflict, keep: "mine" | "server") => {
+    const k = opKey(c.change);
+    setSession((s) => { if (!s) return s; const ops = keep === "mine" ? s.ops.map((o) => (opKey(o) === k ? { ...o, before: c.server } : o)) : s.ops.filter((o) => opKey(o) !== k); return ops.length ? { ...s, ops, requestId: uuid() } : null; });
+    setConflicts((l) => { const n = l.filter((x) => opKey(x.change) !== k); if (!n.length) { setSaveState("dirty"); setSaveMsg("Conflitos resolvidos — clique em Salvar."); } return n; });
+  };
 
   const value: Ctx = {
     authReady,
@@ -179,8 +212,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     base, active, sims, allSims, ui, canEdit,
     setUi: (p) => setUiS((u) => ({ ...u, ...p })),
     setActive: (id) => mutLocal((s) => { s.activeId = id; }),
-    update, draft, draftBaseVersion: cur?.baseVersion ?? null, baseMoved: baseMovedSince(cur, official.version), changes, discardDraft, commitDraft, saveState, saveMsg,
-    reloadOfficial: () => { setSession(null); setSaveState("idle"); setSaveMsg(""); qc.invalidateQueries({ queryKey: ["official"] }); },
+    update, draft, draftBaseVersion: cur?.baseVersion ?? null, baseMoved: !!cur && cur.baseVersion !== official.version, changes, discardDraft, commitDraft, saveState, saveMsg, conflicts, resolveConflict, protectErr,
+    reloadOfficial: () => { qc.invalidateQueries({ queryKey: ["official"] }); },
     createSim: (name) => { if (!baseData) return; const id = uid(); if (!scope) return; mutLocal((s) => { (s.sims[scope] ??= []).push({ id, name, createdAt: new Date().toISOString(), createdBy: user?.email ?? "", data: clone(baseData), baseVersion }); s.activeId = id; }); },
     discardSim: (id) => { if (!baseData) return; mutLocal((s) => { const x = scope ? s.sims[scope]?.find((i) => i.id === id) : null; if (x) { x.data = clone(baseData); x.baseVersion = baseVersion; } }); },
     deleteSim: (id) => mutLocal((s) => { const x = scope ? s.sims[scope]?.find((i) => i.id === id) : null; if (x) { x.deletedAt = new Date().toISOString(); x.deletedBy = user?.email ?? ""; } if (s.activeId === id) s.activeId = "base"; }),
