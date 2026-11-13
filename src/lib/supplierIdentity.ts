@@ -32,6 +32,7 @@ export function resolveSupplierLinks(source: ScenarioData) {
   const data = structuredClone(source);
   const names = new Map<string, Set<string>>();
   for (const s of data.suppliers) for (const name of [s.name, ...(s.aliases ?? [])]) {
+    if (["OUTROS", "MOCHILA ESCOLAR", "MOCHILA NOTEBOOK", "TESTE DE COMPRA JEAN", "COMPRA TESTE RENAN"].includes(identityName(s.name))) continue;
     const key = identityName(name); const ids = names.get(key) ?? new Set<string>(); ids.add(s.id); names.set(key, ids);
   }
   const counts = { planned: 0, committed: 0, expenses: 0 };

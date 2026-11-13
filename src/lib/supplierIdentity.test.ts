@@ -14,6 +14,9 @@ describe("supplier identity without financial relinking", () => {
     const r = resolveSupplierLinks(d);
     expect(r.counts.committed).toBe(2); expect(r.data.committed.map((c) => c.supplierId)).toEqual(["s", "s", ""]);
     expect(d.committed.every((c) => !c.supplierId)).toBe(true);
+    d.suppliers.push({ id: "generic", name: "OUTROS", group: "", terms: [] });
+    d.committed.push({ ...d.committed[0], id: "generic-title", supplierId: "", sourceSupplier: "OUTROS" } as never);
+    expect(resolveSupplierLinks(d).data.committed.at(-1)?.supplierId).toBe("");
   });
   it("keeps pending names distinct through ranking, filters, grouping and export with unchanged global totals", () => {
     const d = emptyData(); d.params.startDate = "2026-11-13";
