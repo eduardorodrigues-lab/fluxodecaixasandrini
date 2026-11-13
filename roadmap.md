@@ -1,5 +1,10 @@
 # Roadmap
 
+## Modernização visual (2026-11-13)
+- [x] Atualizar estilos compartilhados, menu, títulos, filtros, formulários e tabelas sem mudar lógica
+- [x] Melhorar legibilidade dos 15 indicadores e gráficos preservando expansão/relatório/observações
+- [x] 12 testes focados; 11 páginas autenticadas, expansão e formulário; desktop 1366×768/mobile 390×844; sem gravação real/publicação
+
 ## Busca e ordenação em Lançamentos (2026-11-11)
 - [x] Planejada, Efetivado, baixas e subvisões/detalhes de Consultas: busca, cabeçalhos e estado independente
 - [x] Totais, impressão/exportação filtrados e ordenados; 190 testes e navegador desktop 1280×1800 com dados interceptados; sem escrita real/publicação

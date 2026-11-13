@@ -129,7 +129,7 @@ function ConsultaBoletos({ d }: { d: ScenarioData }) {
 
   return (
     <div>
-      <div className="mb-2 flex flex-wrap items-end gap-2 text-xs">
+      <div className="filter-bar text-xs">
         <label><span className="lbl block">De</span><DateInput allowEmpty value={f.from} maxDate={f.to} onChange={(v) => up({ from: v })} /></label>
         <label><span className="lbl block">Até</span><DateInput allowEmpty value={f.to} minDate={f.from} onChange={(v) => up({ to: v })} /></label>
         <label><span className="lbl block">Filtrar data por</span><select className="inp" value={f.by} onChange={(e) => up({ by: e.target.value as ConsultaFilter["by"] })}><option value="venc">Vencimento</option><option value="pag">Data do pagamento</option></select></label>
@@ -141,7 +141,7 @@ function ConsultaBoletos({ d }: { d: ScenarioData }) {
         <button className="btn" onClick={print}>Imprimir</button>
         <button className="btn" onClick={exportXls}>Exportar para Excel</button>
       </div>
-      <div className="mb-2 flex flex-wrap items-end gap-2"><ReportSearch value={report.query} onChange={report.setQuery} count={rows.length} /><ColumnFilter cols={C_COLS} filter={cf} suggest={suggestFrom(all, cVals)} /></div>
+      <div className="filter-bar"><ReportSearch value={report.query} onChange={report.setQuery} count={rows.length} /><ColumnFilter cols={C_COLS} filter={cf} suggest={suggestFrom(all, cVals)} /></div>
       <div className="mb-2 flex gap-4 text-xs">
         <span>Valor dos títulos <b className="tabular-nums">{fmtBRL(tot.v)}</b></span>
         <span>Valor pago <b className="tabular-nums">{fmtBRL(tot.p)}</b></span>

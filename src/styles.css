@@ -71,7 +71,7 @@
 
 :root {
   --radius: 0.375rem;
-  --background: oklch(0.985 0.004 120);
+  --background: oklch(0.977 0.002 160);
   --foreground: oklch(0.22 0.02 160);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.22 0.02 160);
@@ -90,7 +90,7 @@
   --warning: oklch(0.8 0.14 80);
   --warning-soft: oklch(0.96 0.05 85);
   --warning-foreground: oklch(0.4 0.09 70);
-  --positive: oklch(0.5 0.12 155);
+  --positive: oklch(0.49 0.16 250);
   --negative: oklch(0.52 0.19 27);
   --financial-positive: oklch(0.49 0.16 250);
   --supplier-0: oklch(0.49 0.16 250);
@@ -137,19 +137,20 @@
 }
 
 @layer base {
-  body { font-family: var(--font-sans); font-size: 13px; }
+  body { font-family: var(--font-sans); font-size: 14px; letter-spacing: 0; }
 }
 @layer components {
-  .btn { @apply inline-flex items-center gap-1 rounded-md border border-input bg-card px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50; }
+  .btn { @apply inline-flex min-h-9 items-center gap-1.5 rounded-md border border-input bg-card px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50; }
   .btn-primary { @apply border-primary bg-primary text-primary-foreground hover:bg-primary/90; }
   .btn-danger { @apply border-destructive/40 text-destructive hover:bg-destructive/10; }
-  .inp { @apply h-7 rounded border border-input bg-card px-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring; }
+  .inp { @apply min-h-9 rounded border border-input bg-card px-2.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/30; }
   .card { @apply rounded-md border border-border bg-card; }
-  .lbl { @apply text-[11px] font-medium uppercase tracking-wide text-muted-foreground; }
-  .tbl { @apply w-full border-collapse text-xs; }
-  .tbl th { @apply sticky top-0 z-10 border-b border-border bg-secondary px-2 py-1 text-left font-semibold text-secondary-foreground whitespace-nowrap; }
-  .tbl td { @apply border-b border-border px-2 py-1 whitespace-nowrap; }
-  .num { @apply text-right tabular-nums; font-family: var(--font-mono); }
+  .lbl { @apply text-xs font-medium text-muted-foreground; letter-spacing: 0; }
+  .tbl { @apply w-full border-collapse text-sm; }
+  .tbl th { @apply sticky top-0 z-10 border-b border-border bg-secondary px-3 py-2.5 text-left font-semibold text-secondary-foreground whitespace-nowrap; }
+  .tbl td { @apply border-b border-border px-3 py-2 whitespace-nowrap; }
+  .tbl tbody tr:hover td { background-color: var(--accent); }
+  .num { @apply text-right tabular-nums; font-family: var(--font-sans); }
   /* Alinhamento header/body: colunas monetárias à direita também no cabeçalho (vence .tbl th text-left). */
   .tbl th.num, .tbl td.num { @apply text-right; }
   .tbl th { vertical-align: bottom; }
@@ -162,15 +163,28 @@
   /* Colunas fixas da visão CEO: largura travada para os offsets left-* baterem. */
   .col-fix { @apply overflow-hidden text-ellipsis whitespace-nowrap; }
   .neg { @apply text-negative; }
-  .tag { @apply inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide; }
+  .tag { @apply inline-flex items-center rounded px-2 py-1 text-xs font-medium; letter-spacing: 0; }
   .tag-warn { @apply bg-warning-soft text-warning-foreground; }
   .tag-ok { @apply bg-accent text-accent-foreground; }
   .tag-err { @apply bg-destructive/10 text-destructive; }
-  .tab { @apply border-b-2 border-transparent px-3 py-1.5 text-xs font-medium text-muted-foreground; }
+  .tab { @apply border-b-2 border-transparent px-4 py-2.5 text-sm font-medium text-muted-foreground; }
   .tab-on { @apply border-primary text-primary; }
 }
 
 .hist-cmp td, .hist-cmp th { white-space: normal; }
+
+/* Shared presentation only: financial values, filters and source references stay unchanged. */
+.app-workspace main .text-xs { font-size: 13px; line-height: 1.4; }
+.app-workspace main h1 { font-size: 24px; line-height: 1.25; }
+.app-workspace main h2 { font-size: 17px; line-height: 1.35; }
+.app-workspace .app-navigation { width: 232px; }
+.app-navigation .nav-item { font-size: 14px; line-height: 1.3; border-left: 3px solid transparent; }
+.app-navigation .nav-selected { border-left-color: var(--sidebar-primary); }
+.app-navigation p { overflow-wrap: anywhere; }
+.filter-bar { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+.filter-active { display: inline-flex; align-items: center; gap: 6px; color: var(--primary); background: var(--accent); border-radius: 4px; padding: 4px 8px; font-size: 13px; }
+.page-header>div:last-child { max-width: 100%; }
+@media(max-width:600px) { .page-header { grid-template-columns: minmax(0,1fr); } .page-header>div:last-child { flex-wrap: wrap; } }
 
 .supplier-0{--supplier-color:var(--supplier-0)}.supplier-1{--supplier-color:var(--supplier-1)}.supplier-2{--supplier-color:var(--supplier-2)}.supplier-3{--supplier-color:var(--supplier-3)}.supplier-4{--supplier-color:var(--supplier-4)}.supplier-5{--supplier-color:var(--supplier-5)}.supplier-6{--supplier-color:var(--supplier-6)}.supplier-7{--supplier-color:var(--supplier-7)}.supplier-8{--supplier-color:var(--supplier-8)}.supplier-9{--supplier-color:var(--supplier-9)}.supplier-10{--supplier-color:var(--supplier-10)}.supplier-11{--supplier-color:var(--supplier-11)}
 .supplier-fill{fill:var(--supplier-color)}.supplier-swatch{display:inline-block;width:8px;height:8px;background:var(--supplier-color);margin-right:5px;flex-shrink:0}.dashboard-legend>div{display:flex;align-items:center;gap:3px;margin:4px 0}
@@ -191,3 +205,38 @@
 @media(max-width:600px){.dashboard-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-kpi{height:85px!important}.dashboard-kpi strong{font-size:15px}.dashboard-header>div{max-width:100%}}
 
 @media(max-width:900px){body:has(.dashboard-page) main,body:has(.metas-page) main{padding:12px}body:has(.dashboard-page) .app-navigation,body:has(.metas-page) .app-navigation{position:fixed;inset:0 auto 0 0;z-index:60;width:208px}body:has(.dashboard-page) .dashboard-primary>.dashboard-plot,body:has(.metas-page) .dashboard-primary>.dashboard-plot{flex:0 0 170px}.metas-page>header button{white-space:normal;height:auto;min-height:32px;max-width:100%}.metas-page>header>div{max-width:100%}}
+
+/* Keep the approved inline dashboard organization while improving hierarchy. */
+.dashboard-kpi { height: 88px!important; gap: 4px!important; padding: 10px 12px!important; font-size: 13px!important; line-height: 1.25!important; border-top: 2px solid var(--border); }
+.dashboard-kpi>span { color: var(--muted-foreground); font-weight: 500; width: 100%; }
+.dashboard-kpi strong { font-size: 20px; line-height: 1.2; }
+.dashboard-kpi small { font-size: 12px; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-kpi:has(.text-financial-positive) { border-top-color: var(--financial-positive); }
+.dashboard-kpi:has(.text-negative) { border-top-color: var(--negative); }
+.dashboard-kpi[aria-pressed=true] { border-color: var(--primary); }
+
+
+.dashboard-chart-section { padding: 12px 14px; }
+.dashboard-chart-section h2 { font-size: 16px; }
+.dashboard-plot text { font-size: 13px; }
+.dashboard-source th,.dashboard-source td { font-size: 13px; padding: 7px 6px; }
+.dashboard-info { font-size: 13px; }
+.metas-table th,.metas-table td { font-size: 13px; padding: 9px 6px; }
+.finance-panel { font-size: 14px; }
+.finance-panel .text-xs { font-size: 13px; }
+.finance-panel h3 { font-size: 16px; }
+.finance-panel .lbl { font-size: 13px; }
+[aria-label="Indicadores do fluxo"] .num { font-size: 17px; }
+@media(max-width:900px) { .app-workspace .app-navigation { position: fixed; inset: 0 auto 0 0; z-index: 60; width: 232px; } .dashboard-page { height: auto; } .dashboard-kpi { height: 96px!important; } .dashboard-chart-section { min-height: 230px; } .dashboard-kpi strong { font-size: 18px; } }
+@media(min-width:1600px) { .dashboard-kpi { height: 96px!important; } .dashboard-kpi strong { font-size: 22px; } }
+@media(prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior: auto!important; transition: none!important; animation: none!important; } }
+
+.dashboard-kpi strong { white-space: nowrap; overflow-wrap: normal; font-size: 18px; }
+.dashboard-source { min-width: 1050px; }
+.dashboard-source td.num { white-space: nowrap; overflow-wrap: normal; }
+.dashboard-table-wrap { overflow-x: auto; }
+@media(min-width:1600px) { .dashboard-kpi strong { font-size: 22px; } }
+@media(max-width:600px) { .dashboard-kpis { grid-template-columns: minmax(0,1fr); } .dashboard-kpi { height: 94px!important; } .dashboard-kpi strong { font-size: 22px; } }
+
+.dashboard-kpi { height: 96px!important; }
+.dashboard-kpi small { flex-shrink: 0; }

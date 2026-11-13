@@ -3,21 +3,21 @@ import { DecisionWindow } from "@/components/DecisionDialog";
 import { Link, useRouterState } from "@tanstack/react-router";
 import type { ScenarioData } from "@/lib/engine/types";
 import { useEffect, useState, type ReactNode } from "react";
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, Activity, LayoutDashboard, FileText, Receipt, ArrowDownToLine, Landmark, Target, ContactRound, FlaskConical, History, UsersRound } from "lucide-react";
 import { useApp } from "@/lib/store";
 
 const NAV = [
-  { to: "/", label: "Fluxo" },
-  { to: "/dashboard", label: "Dashboard" },
-  { to: "/lancamentos", label: "Lançamentos" },
-  { to: "/despesas", label: "Relatório de despesas" },
-  { to: "/recebimentos", label: "Recebimentos" },
-  { to: "/bancos", label: "Bancos" },
-  { to: "/metas", label: "Meta de Faturamento" },
-  { to: "/referencias", label: "Cadastros" },
-  { to: "/simulacoes", label: "Simulações" },
-  { to: "/historico", label: "Histórico / Auditoria" },
-  { to: "/equipe", label: "Equipe e acesso" },
+  { to: "/", label: "Fluxo", icon: Activity },
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/lancamentos", label: "Lançamentos", icon: FileText },
+  { to: "/despesas", label: "Relatório de despesas", icon: Receipt },
+  { to: "/recebimentos", label: "Recebimentos", icon: ArrowDownToLine },
+  { to: "/bancos", label: "Bancos", icon: Landmark },
+  { to: "/metas", label: "Meta de Faturamento", icon: Target },
+  { to: "/referencias", label: "Cadastros", icon: ContactRound },
+  { to: "/simulacoes", label: "Simulações", icon: FlaskConical },
+  { to: "/historico", label: "Histórico / Auditoria", icon: History },
+  { to: "/equipe", label: "Equipe e acesso", icon: UsersRound },
 ] as const;
 
 const NAV_KEY = "fluxo.nav.hidden";
@@ -41,7 +41,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (!user) return <Gate>{!authReady ? <p className="text-xs text-muted-foreground">Verificando acesso…</p> : publicPage ? children : <Entry />}</Gate>;
   if (official.status !== "ready" && !publicPage) return <Gate><div className="card w-full max-w-md p-4 text-sm"><p className="mb-2">{official.status === "error" ? `Não foi possível abrir os dados da organização: ${official.error}` : "Carregando dados da organização…"}</p><p className="mb-3 text-xs text-muted-foreground">Conectado como {user.email}. Nenhum dado é exibido até a organização carregar.</p>{orgs.length > 1 && <select aria-label="Organização" className="mb-2 w-full rounded border border-border px-1.5 py-1 text-xs" value={official.orgId} onChange={(e) => setOrgId(e.target.value)}><option value="">— selecione a organização —</option>{orgs.map((o) => <option key={o.orgId} value={o.orgId}>{o.name}</option>)}</select>}<button className="btn" onClick={() => signOut()}>Sair</button></div></Gate>;
   return (
-    <div className="flex min-h-screen">
+    <div className="app-workspace flex min-h-screen">
       {navHidden ? (
         <div className={`sticky top-0 flex h-screen w-8 shrink-0 flex-col items-center border-r border-sidebar-border py-2 ${simMode ? "bg-destructive" : "bg-sidebar"}`}>
           <button className="rounded p-1 text-sidebar-foreground hover:bg-sidebar-accent" title="Mostrar menu" aria-label="Mostrar menu" onClick={toggleNav}>
@@ -62,7 +62,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
         <nav className="flex-1 space-y-0.5 overflow-auto p-2">
           {NAV.map((n) => (
-            <Link key={n.to} to={n.to} activeOptions={{ exact: n.to === "/" }} className="block rounded px-3 py-1.5 text-xs hover:bg-sidebar-accent" activeProps={{ className: "bg-sidebar-accent text-sidebar-accent-foreground font-semibold" }}>{n.label}</Link>
+            <Link key={n.to} to={n.to} activeOptions={{ exact: n.to === "/" }} className="nav-item flex min-w-0 items-center gap-2.5 rounded px-3 py-2.5 hover:bg-sidebar-accent" activeProps={{ className: "nav-selected bg-sidebar-accent text-sidebar-accent-foreground font-semibold" }}><n.icon aria-hidden className="size-4 shrink-0 opacity-80" /><span className="min-w-0">{n.label}</span></Link>
           ))}
         </nav>
         <div className="space-y-2 border-t border-sidebar-border p-3 text-[11px]">
@@ -86,7 +86,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         {official.status === "ready" && isEmpty(base.data) && active.isBase && <div className="border-b border-border bg-muted px-4 py-2 text-xs">Nenhum dado cadastrado em {official.orgName}. Comece pelo cadastro inicial em <Link to="/referencias" className="underline">Cadastros</Link> (fornecedores e categorias; saldos em Bancos).</div>}
         {!active.isBase && <div className="sticky top-0 z-30 border-b-2 border-destructive bg-destructive px-4 py-1.5 text-xs font-semibold text-destructive-foreground">SIMULAÇÃO "{active.name}" — exclusivamente visual, local a este navegador. Nada aqui é gravado nos dados reais, marca pagamentos ou é promovido.</div>}
         {active.isBase && canEdit && (draft || saveMsg || protectErr) && (
-          <div className={`sticky top-0 z-30 flex flex-wrap items-center gap-2 px-4 py-1 text-xs ${saveState === "error" || saveState === "conflict" ? "bg-destructive text-destructive-foreground" : saveState === "saved" ? "bg-muted" : "bg-warning-soft"}`} role="status">
+          <div className={`sticky top-0 z-30 flex flex-wrap items-center gap-2 border-b px-4 py-2 text-xs ${saveState === "error" || saveState === "conflict" ? "border-destructive/30 bg-card text-destructive" : saveState === "saved" ? "border-border bg-muted" : "border-warning/30 bg-warning-soft"}`} role="status">
             <b>{saveState === "saving" ? "Salvando…" : saveState === "error" ? "Falha ao salvar" : saveState === "conflict" ? "Conflito" : draft ? "Alterações não salvas" : saveState === "saved" ? "Salvo" : ""}</b>
             <span>{draft && saveState === "dirty" && !saveMsg ? `${changes.length} registro(s) alterado(s).` : saveMsg}</span>
             {protectErr && <span className="font-semibold">{protectErr}</span>}

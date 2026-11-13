@@ -13,10 +13,10 @@ export function IntInput({ value, onChange, className = "w-12" }: { value: numbe
 }
 export function PageHeader({ title, sub, children }: { title: string; sub?: string; children?: ReactNode }) {
   return (
-    <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-      <div><h1 className="text-lg font-semibold text-foreground">{title}</h1>{sub && <p className="text-xs text-muted-foreground">{sub}</p>}</div>
-      <div className="flex flex-wrap items-center gap-2">{children}</div>
-    </div>
+    <header className="page-header mb-4 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 sm:flex sm:justify-between">
+      <div className="min-w-0"><h1 className="text-2xl font-semibold text-foreground">{title}</h1>{sub && <p className="mt-1 text-sm text-muted-foreground">{sub}</p>}</div>
+      <div className="flex shrink-0 flex-wrap items-center gap-2">{children}</div>
+    </header>
   );
 }
 export function WarningList({ items, max = 50 }: { items: Warning[]; max?: number }) {

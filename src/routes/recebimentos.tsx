@@ -78,7 +78,7 @@ function Page() {
       {targetOutside && <p className="text-xs text-warning-foreground">O recebimento selecionado foi destacado fora dos filtros atuais. Os filtros foram mantidos.</p>}
       <div className="rounded border border-warning bg-warning-soft p-2 text-xs text-warning-foreground">A regra original SOMA(D:O) inclui geral e plataformas. Se ambos estiverem preenchidos, o valor é somado e marcado como possível dupla contagem — nada é corrigido automaticamente.</div>
       {unknown.length > 0 && <div className="rounded border border-destructive p-2 text-xs text-destructive">Recebimentos com plataforma não cadastrada (ID {unknown.join(", ")}): valores mantidos; cadastre a plataforma com esse código para conciliar.</div>}
-      <div className="flex flex-wrap items-end gap-3 text-xs">
+      <div className="filter-bar text-xs">
         <label>De<br /><DateInput allowEmpty value={pStart} maxDate={pEnd} onChange={setPStart} /></label>
         <label>Até<br /><DateInput allowEmpty value={pEnd} minDate={pStart} onChange={setPEnd} /></label>
         <label>Mostrar<br /><select className="inp" value={dir} onChange={(e) => setDir(e.target.value as typeof dir)}><option value="todos">Todos os dias</option><option value="acima">Recebido acima do previsto</option><option value="abaixo">Recebido abaixo do previsto</option></select></label>

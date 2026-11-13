@@ -69,11 +69,13 @@ export function ColumnFilter({ cols, filter, suggest }: { cols: FilterCol[]; fil
   const c = cols[f.col];
   const listId = useId();
   const opts = useMemo(() => (c?.type === "text" ? suggest(f.col) : []), [c, f.col]); // eslint-disable-line react-hooks/exhaustive-deps
-  return <div className="flex flex-wrap items-end gap-2 text-xs">
+  const active = c && (f.text.trim() || f.from || f.to || f.min != null || f.max != null);
+  return <div className="flex min-w-0 flex-wrap items-end gap-2 text-xs">
     <label><span className="lbl block">Filtrar por</span><select className="inp h-8" value={f.col} onChange={(e) => setF({ ...EMPTY_CF, col: Number(e.target.value) })}><option value={-1}>—</option>{cols.map((x, i) => <option key={x.label} value={i}>{x.label}</option>)}</select></label>
     {c?.type === "text" && <label><span className="lbl block">Pesquisar em {c.label}</span><input className="inp h-8 w-56" list={listId} value={f.text} onChange={(e) => setF({ ...f, text: e.target.value })} /><datalist id={listId}>{opts.map((o) => <option key={o} value={o} />)}</datalist></label>}
     {c?.type === "date" && <><label><span className="lbl block">De</span><DateInput allowEmpty value={f.from} maxDate={f.to} onChange={(v) => setF({ ...f, from: v })} /></label><label><span className="lbl block">Até</span><DateInput allowEmpty value={f.to} minDate={f.from} onChange={(v) => setF({ ...f, to: v })} /></label></>}
     {c?.type === "money" && <><label><span className="lbl block">Valor mínimo</span><MoneyInput value={f.min} onChange={(v) => setF({ ...f, min: v })} /></label><label><span className="lbl block">Valor máximo</span><MoneyInput value={f.max} onChange={(v) => setF({ ...f, max: v })} /></label></>}
+    {active && <span className="filter-active">{c.label}<Button variant="ghost" size="icon" className="h-6 w-6" aria-label={`Limpar filtro ${c.label}`} onClick={filter.clear}>×</Button></span>}
   </div>;
 }
 export const suggestFrom = <T,>(rows: T[], values: (r: T) => ReportValue[]) => (col: number) => {

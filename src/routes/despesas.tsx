@@ -63,7 +63,7 @@ function Page() {
     <div>
       <PageHeader title="Relatório de despesas" sub="Mesmos lançamentos do fluxo (planejado restante + efetuado, sem duplicar previsão efetivada). Filtros alteram só a apresentação.">
       </PageHeader>
-      <div className="card mb-3 flex flex-wrap items-end gap-3 p-2">
+      <div className="filter-bar">
         <div><div className="lbl">De</div><DateInput value={start} maxDate={end} onChange={(v) => v && setStart(v)} /></div>
         <div><div className="lbl">Até</div><DateInput value={end} minDate={start} onChange={(v) => v && setEnd(v)} /></div>
         <div><div className="lbl">Subgrupo</div><select className="inp" value={sub} onChange={(e) => setSub(e.target.value)}><option value="">Todos</option>{allSubs.map((s) => <option key={s}>{s}</option>)}</select></div>

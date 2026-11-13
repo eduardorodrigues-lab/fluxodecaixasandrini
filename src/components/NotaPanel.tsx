@@ -3,6 +3,7 @@ import { DecisionWindow } from "@/components/DecisionDialog";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { TermsEditor } from "@/components/TermsEditor";
+import { Button } from "@/components/ui/button";
 import { DateInput, MoneyInput } from "@/components/kit";
 import type { CategoryKind, ScenarioData } from "@/lib/engine/types";
 import { fmtDate } from "@/lib/dates";
@@ -25,10 +26,10 @@ export function SidePanel({ title, sub, onClose, footer, children, wide, dirty, 
   if (centered) return <DecisionWindow title={title} description={sub} footer={footer} wide={wide}>{children}</DecisionWindow>;
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-foreground/30">
-      <div role="dialog" aria-label={title} className={`flex h-full w-full flex-col bg-background shadow-2xl ${wide ? "sm:w-[min(880px,94vw)]" : "sm:w-[min(520px,94vw)]"}`}>
-        <div className="flex items-start justify-between border-b border-border bg-primary px-5 py-3 text-primary-foreground">
+      <div role="dialog" aria-label={title} className={`finance-panel flex h-full w-full flex-col bg-background shadow-2xl ${wide ? "sm:w-[min(880px,94vw)]" : "sm:w-[min(520px,94vw)]"}`}>
+        <div className="flex items-start justify-between border-b border-border bg-card px-5 py-4 text-foreground">
           <div><div className="text-base font-semibold">{title}</div>{sub && <div className="text-xs opacity-80">{sub}</div>}</div>
-          <button className="rounded px-2 text-lg leading-none hover:bg-primary-foreground/10" aria-label="Fechar" onClick={requestClose}>×</button>
+          <Button variant="ghost" size="icon" aria-label="Fechar" onClick={requestClose}>×</Button>
         </div>
         <div className="flex-1 space-y-5 overflow-auto px-5 py-4 text-xs">{children}</div>
         {footer && <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border bg-card px-5 py-3">{footer}</div>}
