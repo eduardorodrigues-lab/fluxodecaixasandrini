@@ -204,6 +204,8 @@ Script de reprodução local: `bun scripts/validate-ceo-xlsm.ts <arquivo> /tmp/r
 
 
 ## Fornecedores: edição, apelidos e situação
+- Relatórios e filtros usam o ID cadastrado quando válido; sem vínculo, usam nome histórico normalizado em chave distinta, com indicação de vínculo pendente. Nome realmente ausente mantém “Sem fornecedor”. Não inferir marca/razão social, não usar chave de apresentação para prazos ou abatimentos. Documento vazio permanece obrigação independente nos agrupamentos.
+- Recuperação de descrições importadas usa a identidade da condição e a linha original, nunca posição na tela ou igualdade de prazos; nomes personalizados, vigências, períodos e cancelamentos ficam intactos. Observação da condição é informativa e separada do nome.
 - Datas de preenchimento: calendário em português com seleção de mês/ano, máscara dd/mm/aaaa e colagem; datas inexistentes e períodos invertidos são rejeitados junto ao campo. O armazenamento permanece em dia civil ISO, sem converter seleção do calendário para UTC nem alterar cálculos financeiros.
 - O identificador do fornecedor nunca muda ao editar nome principal, apelidos ou observação; condições, lançamentos, pagamentos, relatórios e histórico continuam vinculados.
 - Busca reconhece nome principal ou apelido e mostra o cadastro principal. Colisão com nome/apelido de outro fornecedor bloqueia a gravação; cadastros nunca são unidos automaticamente.

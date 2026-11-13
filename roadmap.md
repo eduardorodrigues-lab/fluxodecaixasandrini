@@ -1,9 +1,10 @@
 # Roadmap
 
 ## Condições e identidade completa (2026-11-13)
-- [ ] Backup atual; recuperar nomes por ID/origem e vincular apenas equivalências comprovadas
-- [ ] Identidade histórica consistente nos relatórios/filtros e busca em Cadastros
-- [ ] Validar ZERO financeiro, commit autenticado, releitura e testes focados; não publicar
+- [x] Backup v158; 95 nomes recuperados por ID e linha original; 33 planejadas/2 efetivados vinculados sem inferência
+- [x] Identidade histórica consistente nos relatórios/filtros e busca em Cadastros
+- [x] ZERO financeiro em 2.191 dias e totais; commit autenticado v159/releitura/auditoria; 13 testes e navegador real desktop; não publicado
+- [ ] Confirmar identidades sem equivalência comprovada: 12.675 registros/2.211 nomes normalizados; decisão de Eduardo necessária, sem criar cadastros
 
 ## Vínculo real de fornecedores (2026-11-13)
 - [x] Backup v157, 24 pares inequívocos; 95 condições preservadas; 797 planejadas/92 compras/1 despesa vinculadas
