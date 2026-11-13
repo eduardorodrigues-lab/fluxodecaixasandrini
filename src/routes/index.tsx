@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { DateInput, MoneyInput, PageHeader } from "@/components/kit";
+import { DateInput, MoneyInput } from "@/components/kit";
+import { SlidersHorizontal } from "lucide-react";
 import { PendenciasFluxo } from "@/components/PendenciasFluxo";
 import { SaldoAdjustments } from "@/components/SaldoAdjustments";
 import { Button } from "@/components/ui/button";
@@ -39,22 +40,25 @@ function FluxoPage() {
   return (
     <div>
       {adjustmentsOpen && <SaldoAdjustments onClose={() => setAdjustmentsOpen(false)} />}
-      <PageHeader title="Fluxo de caixa" sub="Ambas as visões usam o mesmo motor, cenário, período e filtros. Base: atualiza após confirmação; rascunho e simulação aparecem imediatamente.">
-        <div className="flex rounded border border-input">
-          {(["vertical", "horizontal"] as const).map((v) => <button key={v} className={`px-2.5 py-1 text-xs ${ui.view === v ? "bg-primary text-primary-foreground" : ""}`} onClick={() => setUi({ view: v })}>{v === "vertical" ? "Vertical (equipe)" : "Visão CEO horizontal"}</button>)}
+      <header className="mb-2 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:flex sm:justify-between">
+        <h1 className="min-w-0 text-base font-semibold">Fluxo de caixa</h1>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button variant="outline" size="icon" className="h-7 w-7" title="Ajustes manuais de saldo" aria-label="Ajustes manuais de saldo" onClick={() => setAdjustmentsOpen(true)}><SlidersHorizontal className="size-4" /></Button>
+          <div className="flex rounded border border-input">
+            {(["vertical", "horizontal"] as const).map((v) => <Button key={v} variant={ui.view === v ? "default" : "ghost"} className="h-7 rounded-none px-2 text-xs" aria-pressed={ui.view === v} onClick={() => setUi({ view: v })}>{v === "vertical" ? "Vertical (equipe)" : "Visão CEO horizontal"}</Button>)}
+          </div>
         </div>
-      </PageHeader>
-      <div className="mb-2"><Button variant="outline" onClick={() => setAdjustmentsOpen(true)}>Ajustes manuais de saldo</Button></div>
-      <div className="card mb-3 flex flex-wrap items-end gap-3 p-2">
+      </header>
+      <div aria-label="Filtros do fluxo" className="grid grid-cols-2 items-end gap-x-2 gap-y-1.5 lg:grid-cols-[9rem_9rem_minmax(10rem,1fr)_8rem_minmax(13rem,1fr)]">
         <div><div className="lbl">De</div><DateInput value={ui.start} maxDate={ui.end} onChange={(v) => v && setUi({ start: v })} /></div>
         <div><div className="lbl">Até</div><DateInput value={ui.end} minDate={ui.start} onChange={(v) => v && setUi({ end: v })} /></div>
-        <div><div className="lbl">Fornecedor</div><select className="inp" value={ui.supplierId} onChange={(e) => setUi({ supplierId: e.target.value })}><option value="">Todos</option>{data.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
-        <div><div className="lbl">Grupo</div><select className="inp" value={ui.group} onChange={(e) => setUi({ group: e.target.value })}><option value="">Todos</option>{groups.map((g) => <option key={g}>{g}</option>)}</select></div>
-        <div><div className="lbl">Apresentação das saídas</div><select className="inp" value={ui.flowMode} onChange={(e) => setUi({ flowMode: e.target.value as "consolidada" | "etapa" })}><option value="consolidada">Consolidada por subgrupo</option><option value="etapa">Separada por etapa (planejada/efetuada)</option></select></div>
-        {res.filtered && <span className="tag tag-warn">Filtro ativo: saldos consideram só as saídas filtradas</span>}
-        {ui.start < data.params.startDate && <span className="tag tag-warn">Fluxo começa em {fmtDate(data.params.startDate)}</span>}
+        <div className="min-w-0"><div className="lbl">Fornecedor</div><select className="inp w-full" value={ui.supplierId} onChange={(e) => setUi({ supplierId: e.target.value })}><option value="">Todos</option>{data.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+        <div className="min-w-0"><div className="lbl">Grupo</div><select className="inp w-full" value={ui.group} onChange={(e) => setUi({ group: e.target.value })}><option value="">Todos</option>{groups.map((g) => <option key={g}>{g}</option>)}</select></div>
+        <div className="col-span-2 min-w-0 lg:col-span-1"><div className="lbl">Apresentação das saídas</div><select className="inp w-full" value={ui.flowMode} onChange={(e) => setUi({ flowMode: e.target.value as "consolidada" | "etapa" })}><option value="consolidada">Consolidada por subgrupo</option><option value="etapa">Separada por etapa (planejada/efetuada)</option></select></div>
+        {res.filtered && <span className="col-span-2 text-xs text-warning-foreground lg:col-span-5">Filtro ativo: saldos consideram só as saídas filtradas</span>}
+        {ui.start < data.params.startDate && <span className="col-span-2 text-xs text-warning-foreground lg:col-span-5">Fluxo começa em {fmtDate(data.params.startDate)}</span>}
       </div>
-      <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+      <div aria-label="Indicadores do fluxo" className="mb-2 mt-2 grid grid-cols-2 gap-x-4 gap-y-1 border-y border-border py-1.5 md:grid-cols-4">
         <Kpi label="Saldo final do período" v={k.saldoFinal} />
         <Kpi label={`Menor saldo · ${fmtDate(k.menorSaldoData)}`} v={k.menorSaldo} />
         <Kpi label="Entradas (sem saldo inicial)" v={k.entradasSemSaldo} />
@@ -109,7 +113,7 @@ function FluxoPage() {
 }
 
 function Kpi({ label, v }: { label: string; v: number }) {
-  return <div className="card p-2"><div className="lbl">{label}</div><div className={`num text-base font-semibold ${v < 0 ? "neg" : ""}`}>{fmtBRL(v)}</div></div>;
+  return <div className="min-w-0"><div className="text-[11px] leading-tight text-muted-foreground">{label}</div><div className={`num text-sm font-semibold ${v < 0 ? "neg" : ""}`}>{fmtBRL(v)}</div></div>;
 }
 
 type VProps = { rows: Row[]; res: ReturnType<typeof computeFlow>; onPick: (r: Row, i: number) => void; update: ReturnType<typeof useApp>["update"]; receipts: ReturnType<typeof useApp>["active"]["data"]["receipts"]; adjustments: ReturnType<typeof useApp>["active"]["data"]["adjustments"] };
