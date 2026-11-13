@@ -1,3 +1,4 @@
+import { supplierIdentity } from "@/lib/supplierIdentity";
 import { askConfirm, askText } from "@/lib/decisions";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
@@ -197,7 +198,7 @@ const prevDay = (s: string) => new Date(Date.parse(s + "T00:00:00Z") - 86400000)
 
 function Cartoes({ d, onReverse, onCancelInvoice }: { d: ScenarioData; onReverse: (id: string, note: string) => void; onCancelInvoice: (id: string, note: string) => void }) {
   if (!d.cards.length) return <p className="text-xs text-muted-foreground">Nenhum cartão. Cadastre em Contas → “+ Cartão”.</p>;
-  const sup = (id: string) => d.suppliers.find((s) => s.id === id)?.name ?? "—";
+  const sup = (row: ScenarioData["committed"][number] | ScenarioData["expenses"][number]) => supplierIdentity(d, row).name;
   return <div className="space-y-3">{d.cards.map((c) => {
     const ops = d.cardOps.filter((o) => o.cardId === c.id);
     const invs = d.expenses.filter((e) => e.invoiceOf?.cardId === c.id);
@@ -207,7 +208,7 @@ function Cartoes({ d, onReverse, onCancelInvoice }: { d: ScenarioData; onReverse
           const t = o.titleId ? (o.titleKind === "committed" ? d.committed.find((x) => x.id === o.titleId) : d.expenses.find((x) => x.id === o.titleId)) : null;
           const ps = d.expenses.filter((e) => o.expenseIds.includes(e.id));
           return <tr key={o.id}><td>{fmtDate(o.date)}</td><td>{o.kind === "cobertura" ? "Pagamento de lançamento existente" : "Nova compra"}</td>
-            <td>{t ? `${sup(t.supplierId)} · ${t.document || "sem documento"}` : ps[0] ? sup(ps[0].supplierId) : "—"}</td><td className="num">{fmtBRL(o.amount)}</td>
+            <td>{t ? `${sup(t)} · ${t.document || "sem documento"}` : ps[0] ? sup(ps[0]) : "—"}</td><td className="num">{fmtBRL(o.amount)}</td>
             <td>{ps.map((e) => { const inv = e.invoiceId ? d.expenses.find((x) => x.id === e.invoiceId) : null; return <div key={e.id}>{fmtBRL(e.value)} · fatura {fmtMonth(invoiceMonthFor(c, e.baseDate))} {inv ? (inv.status === "cancelado" ? "" : "· fechada") : "· projetada"}</div>; })}</td>
             <td>{o.reversedAt ? <span className="tag tag-err" title={o.reversalNote}>Estornada</span> : o.kind === "cobertura" ? <span className="tag tag-ok">Quitado com cartão</span> : <span className="tag tag-ok">Ativa</span>}</td>
             <td>{!o.reversedAt && <button className="btn" onClick={async () => { const n = await askText("Motivo do estorno da operação no cartão:"); if (n) onReverse(o.id, n); }}>Estornar</button>}</td></tr>;
@@ -228,10 +229,10 @@ function CardInstPreview({ d, cardId, date, amount, n }: { d: ScenarioData; card
 }
 
 function CoberturaPanel({ d, onCancel, onSave }: { d: ScenarioData; onCancel: () => void; onSave: (e: { cardId: string; titleKind: "committed" | "expense"; titleId: string; date: string; amount: number; installments: number }) => void }) {
-  const sup = (id: string) => d.suppliers.find((s) => s.id === id)?.name ?? "—";
+  const sup = (row: ScenarioData["committed"][number] | ScenarioData["expenses"][number]) => supplierIdentity(d, row).name;
   const opts = [
-    ...d.committed.filter((c) => c.status === "ativo").map((c) => ({ kind: "committed" as const, t: c, due: c.extensionDate ?? c.dueDate, label: `${sup(c.supplierId)} · ${c.purchaseCode || ""} ${c.document || ""}${c.parcelNo ? ` · parcela ${c.parcelNo}/${c.parcelCount}` : ""}` })),
-    ...d.expenses.filter((e) => e.status === "ativo" && !e.cardId && !e.invoiceOf).map((e) => ({ kind: "expense" as const, t: e, due: e.extensionDate ?? e.baseDate, label: `${sup(e.supplierId)} · ${e.document || "despesa"}` })),
+    ...d.committed.filter((c) => c.status === "ativo").map((c) => ({ kind: "committed" as const, t: c, due: c.extensionDate ?? c.dueDate, label: `${sup(c)} · ${c.purchaseCode || ""} ${c.document || ""}${c.parcelNo ? ` · parcela ${c.parcelNo}/${c.parcelCount}` : ""}` })),
+    ...d.expenses.filter((e) => e.status === "ativo" && !e.cardId && !e.invoiceOf).map((e) => ({ kind: "expense" as const, t: e, due: e.extensionDate ?? e.baseDate, label: `${sup(e)} · ${e.document || "despesa"}` })),
   ].map((o) => ({ ...o, open: titleOpen(d, o.kind, o.t.id).open })).filter((o) => o.open > 0).map((o) => ({ ...o, text: `${o.label.trim()} · venc. ${fmtDate(o.due)} · em aberto ${fmtBRL(o.open)}` }));
   const [q, setQ] = useState(""); const sel = opts.find((o) => o.text === q);
   const [cardId, setCard] = useState(d.cards.find((c) => c.active)?.id ?? "");
@@ -250,7 +251,7 @@ function CoberturaPanel({ d, onCancel, onSave }: { d: ScenarioData; onCancel: ()
       <p className="mt-1 text-muted-foreground">Previsões (Planejada) precisam ser efetivadas antes, com revisão, em Lançamentos.</p>
     </Section>}
     {sel && <div className="grid grid-cols-2 gap-2 rounded-md bg-muted p-3 md:grid-cols-4">
-      <div><div className="lbl">Fornecedor</div>{sup(sel.t.supplierId)}</div><div><div className="lbl">Categoria / subgrupo</div>{cat ? `${cat.kind === "compra" ? "Compra" : "Despesa"} · ${cat.name}` : "—"}</div>
+      <div><div className="lbl">Fornecedor</div>{sup(sel.t)}</div><div><div className="lbl">Categoria / subgrupo</div>{cat ? `${cat.kind === "compra" ? "Compra" : "Despesa"} · ${cat.name}` : "—"}</div>
       <div><div className="lbl">Vencimento</div>{fmtDate(sel.due)}</div><div><div className="lbl">Em aberto</div>{fmtBRL(sel.open)}</div></div>}
     {!review && <Section n={2} title="Cartão e condição"><div className="grid grid-cols-1 gap-3 md:grid-cols-4">
       <Field l="Cartão"><select className="inp h-8" value={cardId} onChange={(e) => setCard(e.target.value)}>{d.cards.filter((c) => c.active).map((c) => <option key={c.id} value={c.id}>{c.name} ••{c.last4}</option>)}</select></Field>

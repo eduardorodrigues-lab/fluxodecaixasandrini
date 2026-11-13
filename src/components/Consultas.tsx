@@ -1,3 +1,4 @@
+import { supplierIdentity } from "@/lib/supplierIdentity";
 import { ColumnFilter, columnTest, DetailReport, Pager, ReportSearch, SortHead, suggestFrom, useColumnFilter, usePager, useReportState, type FilterCol } from "@/components/ReportControls";
 import { dateValue, parcelValue, queryReport, reportCSV } from "@/lib/reportTable";
 import { PagamentosDia } from "@/components/PagamentosDia";
@@ -17,14 +18,15 @@ export interface ConsultaRow {
 
 /** Uma linha por título (parcela/boleto) a partir dos lançamentos existentes — sem duplicar dados. */
 export function buildConsulta(d: ScenarioData): ConsultaRow[] {
-  const sup = (id: string) => d.suppliers.find((s) => s.id === id)?.name ?? "—";
   const cat = (id: string) => d.categories.find((c) => c.id === id);
   const rows: ConsultaRow[] = [];
   const push = (kind: "committed" | "expense", id: string, supplierId: string, document: string, groupKey: string, value: number, status: string, due: string | null, ext: string | null, categoryId: string, history: ExtensionEvent[], srcName?: string) => {
     const ts = titleStatus(value, status, paymentsFor(d, kind, id));
     const c = cat(categoryId);
     const pays = [...ts.payments].sort((a, b) => a.date.localeCompare(b.date));
-    rows.push({ key: `${kind}:${id}|${groupKey}`, supplierId, supplier: supplierId || !srcName ? sup(supplierId) : srcName, document, parcel: "", category: c ? (c.kind === "compra" ? "Compra" : "Despesa") : "—", sub: c?.name ?? "—", value, due, extended: ext, effective: ext || due, paid: ts.paid, open: Math.max(0, ts.open), state: ts.state === "Parcial" ? "Parcialmente pago" : ts.state, lastPay: pays.at(-1)?.date ?? null, payments: pays, history });
+    const source = kind === "committed" ? d.committed.find((r) => r.id === id) : d.expenses.find((r) => r.id === id);
+    const identity = supplierIdentity(d, source);
+    rows.push({ key: `${kind}:${id}|${groupKey}`, supplierId: identity.key, supplier: identity.name, document, parcel: "", category: c ? (c.kind === "compra" ? "Compra" : "Despesa") : "—", sub: c?.name ?? "—", value, due, extended: ext, effective: ext || due, paid: ts.paid, open: Math.max(0, ts.open), state: ts.state === "Parcial" ? "Parcialmente pago" : ts.state, lastPay: pays.at(-1)?.date ?? null, payments: pays, history });
   };
   // Importados sem vínculo cadastral: agrupa pelo nome da fonte; documento vazio = título independente.
   for (const c of d.committed) push("committed", c.id, c.supplierId, c.document, c.supplierId || c.document ? `${c.supplierId || c.sourceSupplier}|${c.purchaseCode}|${c.document}` : c.id, c.value, c.status, c.dueDate, c.extensionDate, c.categoryId, c.extensionHistory ?? [], c.sourceSupplier);
@@ -76,7 +78,7 @@ export function consultaReport(all: ConsultaRow[], f: ConsultaFilter, byDoc: boo
 /** Agrupa por documento (fornecedor+documento): soma valores, pago e aberto das parcelas. */
 export function groupByDocument(rows: ConsultaRow[]): ConsultaRow[] {
   const m = new Map<string, ConsultaRow[]>();
-  for (const r of rows) { const k = `${r.supplierId}|${r.document}`; m.set(k, [...(m.get(k) ?? []), r]); }
+  for (const r of rows) { const k = r.document ? `${r.supplierId}|${r.document}` : r.key; m.set(k, [...(m.get(k) ?? []), r]); }
   return [...m.entries()].map(([k, g]) => {
     const paid = g.reduce((a, r) => a + r.paid, 0), open = g.reduce((a, r) => a + r.open, 0), value = g.reduce((a, r) => a + r.value, 0);
     const first = [...g].sort((a, b) => (a.effective ?? "").localeCompare(b.effective ?? ""))[0];
@@ -133,7 +135,7 @@ function ConsultaBoletos({ d }: { d: ScenarioData }) {
         <label><span className="lbl block">De</span><DateInput allowEmpty value={f.from} maxDate={f.to} onChange={(v) => up({ from: v })} /></label>
         <label><span className="lbl block">Até</span><DateInput allowEmpty value={f.to} minDate={f.from} onChange={(v) => up({ to: v })} /></label>
         <label><span className="lbl block">Filtrar data por</span><select className="inp" value={f.by} onChange={(e) => up({ by: e.target.value as ConsultaFilter["by"] })}><option value="venc">Vencimento</option><option value="pag">Data do pagamento</option></select></label>
-        <label><span className="lbl block">Fornecedor</span><span className="block w-56"><SupplierSearch d={d} value={f.supplier} onChange={(v) => up({ supplier: v })} existing allowAll placeholder="Todos" /></span></label>
+        <label><span className="lbl block">Fornecedor</span><span className="block w-56"><SupplierSearch d={d} value={f.supplier} onChange={(v) => up({ supplier: v })} existing historical allowAll placeholder="Todos" /></span></label>
         <label><span className="lbl block">Pagamento</span><select className="inp" value={f.pay} onChange={(e) => up({ pay: e.target.value as ConsultaFilter["pay"] })}><option value="">Todos</option><option>Em aberto</option><option>Parcialmente pago</option><option>Pago</option></select></label>
         <label><span className="lbl block">Prorrogação</span><select className="inp" value={f.ext} onChange={(e) => up({ ext: e.target.value as ConsultaFilter["ext"] })}><option value="">Todos</option><option value="sim">Prorrogados</option><option value="nao">Não prorrogados</option></select></label>
         <label><span className="lbl block">Agrupar por</span><select className="inp" value={byDoc ? "doc" : "parc"} onChange={(e) => setByDoc(e.target.value === "doc")}><option value="parc">Parcela</option><option value="doc">Documento</option></select></label>
@@ -156,7 +158,7 @@ function ConsultaBoletos({ d }: { d: ScenarioData }) {
       {sel && (
         <div className="fixed inset-0 z-50 flex justify-end bg-foreground/20">
           <div className="h-full w-[min(560px,95vw)] overflow-auto bg-background p-4 shadow-xl">
-            <div className="mb-3 flex items-start justify-between"><div><div className="text-sm font-semibold">{sel.supplier} — {sel.document || "sem documento"}</div><div className="text-xs text-muted-foreground">Parcela {sel.parcel} · {sel.category} / {sel.sub}</div></div><button className="btn" onClick={() => setSel(null)}>Fechar</button></div>
+            <div className="mb-3 flex items-start justify-between"><div><div className="text-sm font-semibold">{sel.supplier} — {sel.document || "sem documento"}</div><div className="text-xs text-muted-foreground">Parcela {sel.parcel} · {sel.category} / {sel.sub}{sel.supplierId.startsWith("pending:") && " · vínculo pendente"}</div></div><button className="btn" onClick={() => setSel(null)}>Fechar</button></div>
             <table className="tbl mb-3"><tbody>
               {[["Valor da parcela", fmtBRL(sel.value)], ["Vencimento", sel.due ? fmtDate(sel.due) : "—"], ["Prorrogado para", sel.extended ? fmtDate(sel.extended) : "—"], ["Valor pago", fmtBRL(sel.paid)], ["Saldo em aberto", fmtBRL(sel.open)], ["Situação", sel.state]].map(([k, v]) => <tr key={k}><td className="lbl">{k}</td><td className="num">{v}</td></tr>)}
             </tbody></table>

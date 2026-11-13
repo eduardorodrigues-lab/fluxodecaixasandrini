@@ -1,6 +1,7 @@
 // Controle bancário: contas, cartões, conta padrão por plataforma (vigência), baixas multicontas, transferências e saldos.
 // Funções puras sobre o rascunho (mesmo padrão de actions.ts). NÃO importa engine.ts (engine usa consolidatedOpening).
 import type { BankAccount, Card, CardOperation, Committed, Expense, Payment, Platform, Receipt, ScenarioData, Transfer } from "./types";
+import { supplierIdentity } from "../supplierIdentity";
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 export const NO_ACCOUNT = "Conta não informada";
@@ -179,7 +180,7 @@ export function movements(d: ScenarioData): Movement[] {
   }
   for (const p of d.payments) if (!p.reversedAt && p.method !== "cartao") {
     const t = p.titleKind === "committed" ? d.committed.find((c) => c.id === p.titleId) : d.expenses.find((e) => e.id === p.titleId);
-    const sup = d.suppliers.find((s) => s.id === t?.supplierId)?.name ?? "";
+    const sup = supplierIdentity(d, t).name;
     out.push({ date: p.date, accountId: p.accountId ?? null, kind: "pagamento", desc: `Pagamento ${sup} ${t?.document ?? ""}`.trim(), amount: -p.amount, realized: true, refId: p.id });
   }
   for (const t of d.transfers) if (!t.reversedAt) {

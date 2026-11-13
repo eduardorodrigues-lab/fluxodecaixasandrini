@@ -1,3 +1,4 @@
+import { matchesSupplier, supplierIdentity } from "../supplierIdentity";
 import { flowOpening, invoiceDueDate, invoiceMonthFor } from "./banco";
 import { addDays, dateRange, daysInMonth, ym } from "../dates";
 import { macroCurrency, roundCents } from "../money";
@@ -213,8 +214,8 @@ export function computeFlow(data: ScenarioData, opt: FlowOptions): FlowResult {
   const supMap = new Map(data.suppliers.map((s) => [s.id, s]));
   const f = opt.filter ?? {};
   const filtered = !!(f.supplierId || f.group);
-  const pass = (supplierId: string) => {
-    if (f.supplierId && supplierId !== f.supplierId) return false;
+  const pass = (supplierId: string, row?: ScenarioData["planned"][number] | ScenarioData["committed"][number] | ScenarioData["expenses"][number]) => {
+    if (f.supplierId && (!row || !matchesSupplier(data, row, f.supplierId))) return false;
     if (f.group && supMap.get(supplierId)?.group !== f.group) return false;
     return true;
   };
@@ -223,21 +224,22 @@ export function computeFlow(data: ScenarioData, opt: FlowOptions): FlowResult {
     if (!byDate.has(d)) byDate.set(d, []);
     byDate.get(d)!.push(it);
   };
-  const supName = (id: string, src?: string) => supMap.get(id)?.name ?? (src || "(sem fornecedor)");
+  const supName = (row: ScenarioData["planned"][number] | ScenarioData["committed"][number] | ScenarioData["expenses"][number]) => supplierIdentity(data, row).name;
   let prePaid = 0;
 
   for (const pl of data.planned) {
     if (pl.status === "cancelado") continue;
     const dist = distributePlanned(pl, supMap.get(pl.supplierId), data.committed, p.profile, data.effectivations);
     warnings.push(...dist.warnings);
-    if (!pass(pl.supplierId)) continue;
+    if (!pass(pl.supplierId, pl)) continue;
     for (const pc of dist.parcels)
-      push(pc.date, { source: "planejada", refId: pl.id, categoryId: pl.categoryId, amount: pc.amount, label: `Previsão · ${supName(pl.supplierId, pl.sourceSupplier)} · ${pl.purchaseCode}`, note: `${pc.term !== null ? `prazo ${pc.term}d` : pl.installments?.length && !pl.remainingOverride ? "parcela" : "restante confirmado"}${dist.health !== "ok" ? " · " + dist.health : ""}` });
+      push(pc.date, { source: "planejada", refId: pl.id, categoryId: pl.categoryId, amount: pc.amount, label: `Previsão · ${supName(pl)} · ${pl.purchaseCode}`, note: `${pc.term !== null ? `prazo ${pc.term}d` : pl.installments?.length && !pl.remainingOverride ? "parcela" : "restante confirmado"}${dist.health !== "ok" ? " · " + dist.health : ""}` });
   }
   // Títulos efetivados e despesas: pagamentos na data real + somente o restante no vencimento.
   const title = (kind: Payment["titleKind"], id: string, value: number, status: string, due: string, source: "comprometida" | "despesa", base: Omit<Item, "amount" | "source">, supplierId: string) => {
     const ts = titleStatus(value, status, paymentsFor(data, kind, id));
-    const show = pass(supplierId);
+    const record = kind === "committed" ? data.committed.find((r) => r.id === id) : data.expenses.find((r) => r.id === id);
+    const show = pass(supplierId, record);
     for (const pg of ts.payments) {
       if (pg.method === "cartao") continue; // liquidado no cartão: a saída de caixa vem das parcelas/fatura do cartão
       if (pg.date < p.startDate) { prePaid += pg.amount; continue; }
@@ -251,7 +253,7 @@ export function computeFlow(data: ScenarioData, opt: FlowOptions): FlowResult {
       if (paymentsFor(data, "committed", c.id).some((x) => !x.reversedAt)) warnings.push({ code: "PAG_CANCELADO", severity: "alerta", refId: c.id, message: `Efetivado ${c.document}: cancelado com pagamento ativo — estornar ou conciliar.` });
       continue;
     }
-    title("committed", c.id, c.value, c.status, committedDate(c), "comprometida", { refId: c.id, categoryId: c.categoryId, label: `${supName(c.supplierId, c.sourceSupplier)} · ${c.purchaseCode} · ${c.document}` }, c.supplierId);
+    title("committed", c.id, c.value, c.status, committedDate(c), "comprometida", { refId: c.id, categoryId: c.categoryId, label: `${supName(c)} · ${c.purchaseCode} · ${c.document}` }, c.supplierId);
   }
   for (const e of data.expenses) {
     if (e.status === "cancelado") continue;
@@ -260,7 +262,7 @@ export function computeFlow(data: ScenarioData, opt: FlowOptions): FlowResult {
       if (e.invoiceId) continue;
       const card = (data.cards ?? []).find((c) => c.id === e.cardId);
       if (!card) { warnings.push({ code: "CARTAO_INEXISTENTE", severity: "alerta", refId: e.id, message: `Compra no cartão ${e.document}: cartão não encontrado.` }); continue; }
-      if (pass(e.supplierId)) push(invoiceDueDate(card, invoiceMonthFor(card, e.baseDate)), { source: "despesa", refId: e.id, categoryId: e.categoryId, amount: e.value, label: `Projeção de fatura ${card.name} · ${supName(e.supplierId)} · ${e.document}`, note: "compra no cartão ainda não faturada" });
+      if (pass(e.supplierId, e)) push(invoiceDueDate(card, invoiceMonthFor(card, e.baseDate)), { source: "despesa", refId: e.id, categoryId: e.categoryId, amount: e.value, label: `Projeção de fatura ${card.name} · ${supName(e)} · ${e.document}`, note: "compra no cartão ainda não faturada" });
       continue;
     }
     const d = expenseDate(e);
@@ -268,7 +270,7 @@ export function computeFlow(data: ScenarioData, opt: FlowOptions): FlowResult {
       warnings.push({ code: "DESP_SEM_PRAZO", severity: "alerta", refId: e.id, message: `Despesa ${e.document}: prazo (G) vazio — não distribuída.` });
       continue;
     }
-    title("expense", e.id, e.value, e.status, d, "despesa", { refId: e.id, categoryId: e.categoryId, label: `${supName(e.supplierId, e.sourceSupplier)} · ${e.document}` }, e.supplierId);
+    title("expense", e.id, e.value, e.status, d, "despesa", { refId: e.id, categoryId: e.categoryId, label: `${supName(e)} · ${e.document}` }, e.supplierId);
   }
   if (prePaid) warnings.push({ code: "PAG_ANTES_INICIO", severity: "info", message: `Pagamentos anteriores ao início do fluxo (${prePaid} centavos) reduzem o saldo em aberto mas não entram como saída: devem estar refletidos no saldo inicial.` });
 

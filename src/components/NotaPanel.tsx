@@ -1,3 +1,4 @@
+import { supplierIdentity, supplierIdentityOptions } from "@/lib/supplierIdentity";
 import { askConfirm } from "@/lib/decisions";
 import { DecisionWindow } from "@/components/DecisionDialog";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
@@ -47,10 +48,10 @@ export const Field = ({ l, full, children }: { l: string; full?: boolean; childr
 /** Fornecedor com busca: clique abre a lista; digitar filtra por nome e apelidos (sem diferenciar
  *  maiúsculas/acentos). Só a seleção (clique ou Enter) vincula o cadastro — texto digitado não vale.
  *  A lista abre em portal acima do painel, sem cortá-lo nem fechá-lo. */
-export function SupplierSearch({ d, value, onChange, existing = false, allowAll = false, placeholder, allowCreate = false }: { d: ScenarioData; value: string; onChange: (id: string) => void; existing?: boolean; allowAll?: boolean; placeholder?: string; allowCreate?: boolean }) {
+export function SupplierSearch({ d, value, onChange, existing = false, allowAll = false, placeholder, allowCreate = false, historical = false }: { historical?: boolean; d: ScenarioData; value: string; onChange: (id: string) => void; existing?: boolean; allowAll?: boolean; placeholder?: string; allowCreate?: boolean }) {
   const { update } = useApp();
   const [creating, setCreating] = useState<{ name: string; aliases: string; note: string; err: string } | null>(null);
-  const cur = d.suppliers.find((s) => s.id === value)?.name ?? "";
+  const cur = (historical ? supplierIdentityOptions(d).find((s) => s.key === value)?.name : d.suppliers.find((s) => s.id === value)?.name) ?? "";
   const [t, setT] = useState(cur);
   const [open, setOpen] = useState(false);
   const [hi, setHi] = useState(0);
@@ -67,13 +68,14 @@ export function SupplierSearch({ d, value, onChange, existing = false, allowAll 
     document.addEventListener("mousedown", down);
     return () => document.removeEventListener("mousedown", down);
   }, [show]);
-  const pick = (id: string) => { if (id === "__new") { setCreating({ name: t.trim(), aliases: "", note: "", err: "" }); setOpen(false); return; } onChange(id); setT(id ? d.suppliers.find((s) => s.id === id)?.name ?? "" : ""); setOpen(false); };
+  const pick = (id: string) => { if (id === "__new") { setCreating({ name: t.trim(), aliases: "", note: "", err: "" }); setOpen(false); return; } onChange(id); setT(id ? (historical ? supplierIdentityOptions(d).find((s) => s.key === id)?.name : d.suppliers.find((s) => s.id === id)?.name) ?? "" : ""); setOpen(false); };
   const items: { id: string; label: ReactNode }[] = [
     ...(allowAll ? [{ id: "", label: <span className="font-medium">Todos</span> }] : []),
     ...opts.map((s) => ({
       id: s.id,
       label: <span>{s.name}{!supplierActive(s, todaySP()) && <span className="tag tag-warn ml-1">inativo</span>}{s.aliases?.length ? <span className="block text-[11px] text-muted-foreground">Apelidos: {s.aliases.join(", ")}</span> : null}</span>,
     })),
+    ...(historical ? supplierIdentityOptions(d).filter((s) => !d.suppliers.some((x) => x.id === s.key) && s.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().includes(t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase())).map((s) => ({ id: s.key, label: <span>{s.name}{s.pending && <small className="block text-muted-foreground">Vínculo pendente</small>}</span> })) : []),
     ...(allowCreate && t.trim() && !opts.some((s) => s.name.trim().toLocaleLowerCase("pt-BR") === t.trim().toLocaleLowerCase("pt-BR")) ? [{ id: "__new", label: <span className="font-medium text-primary">+ Cadastrar fornecedor “{t.trim()}”</span> }] : []),
   ];
   const total = items.length;
@@ -114,7 +116,7 @@ export function SupplierSearch({ d, value, onChange, existing = false, allowAll 
         </ul>,
         document.body,
       )}
-      {value && <span className="text-muted-foreground">Cadastro: {cur}</span>}
+      {value && <span className="text-muted-foreground">{value.startsWith("pending:") ? "Vínculo pendente" : "Cadastro"}: {cur}</span>}
       {creating && <DecisionWindow title="Cadastrar fornecedor" description="O lançamento em preenchimento é preservado; o fornecedor fica selecionado após confirmar." footer={<><button className="btn" onClick={() => setCreating(null)}>Cancelar</button><button className="btn btn-primary" disabled={!creating.name.trim()} onClick={create}>Cadastrar e selecionar</button></>}>
         <Field l="Nome"><input className="inp h-8" autoFocus value={creating.name} onChange={(e) => setCreating({ ...creating, name: e.target.value, err: "" })} /></Field>
         <Field l="Apelidos (separados por vírgula, opcional)"><input className="inp h-8" value={creating.aliases} onChange={(e) => setCreating({ ...creating, aliases: e.target.value, err: "" })} /></Field>
@@ -199,7 +201,7 @@ export function NovaNota({ d, isBase, onCancel, onConfirm }: { d: ScenarioData; 
         {stage === "committed" && (
           <Section title="Vínculo com previsão">
             <div className="grid grid-cols-1 gap-3 rounded-lg border border-border bg-card p-3 md:grid-cols-2">
-              <Field l="Previsão" full><select className="inp h-8" value={n.plannedId ?? ""} onChange={(e) => linkTo(e.target.value)}><option value="">Cadastrar sem previsão</option>{prevs.map(({ p, rem }) => <option key={p.id} value={p.id}>{d.suppliers.find((s) => s.id === p.supplierId)?.name ?? "—"} · {p.purchaseCode || p.document || "sem código"} · pendente {fmtBRL(rem)}</option>)}</select></Field>
+              <Field l="Previsão" full><select className="inp h-8" value={n.plannedId ?? ""} onChange={(e) => linkTo(e.target.value)}><option value="">Cadastrar sem previsão</option>{prevs.map(({ p, rem }) => <option key={p.id} value={p.id}>{supplierIdentity(d, p).name} · {p.purchaseCode || p.document || "sem código"} · pendente {fmtBRL(rem)}</option>)}</select></Field>
               {link && <div className="md:col-span-2 space-y-1">
                 <div>Pendente na previsão: <b>{fmtBRL(link.rem)}</b> · substituído por este lançamento: <b>{fmtBRL(Math.min(link.rem, n.total ?? 0))}</b> · restante: <b>{fmtBRL(rest)}</b></div>
                 {rest > 0 && <div className="flex flex-wrap gap-4"><label className="flex items-center gap-1"><input type="radio" checked={!n.closeRest} onChange={() => up({ closeRest: false })} /> Restante continua planejado</label><label className="flex items-center gap-1"><input type="radio" checked={!!n.closeRest} onChange={() => up({ closeRest: true })} /> Encerrar o restante</label></div>}
@@ -352,7 +354,7 @@ export function ConditionPicker({ d, supplierId, hint, disabled, disabledHint, o
       {hint && <p className="font-medium">{hint}</p>}
       <div className="flex flex-wrap items-end gap-3">
         <Field l="Condição"><select aria-label="Condição" className="inp h-8 min-w-56" value={sel} onChange={(e) => { setSel(e.target.value); setTouched(true); setSave(false); }}>
-          {list.map((c) => <option key={c.id} value={c.id}>{c.name} · {termsTxt(c.terms)} dias{c.id === cur?.id ? " (vigente na data base)" : ""}</option>)}
+          {list.map((c) => <option key={c.id} value={c.id}>{c.name}{c.note ? ` · ${c.note}` : ""} · {termsTxt(c.terms)} dias{c.id === cur?.id ? " (vigente na data base)" : ""}</option>)}
           <option value="__esp">Informar condição específica…</option></select></Field>
         {!isEsp && <span className="text-muted-foreground">{termsTxt(chosen.terms)} dias · {chosen.terms.filter((t) => t !== null).length} parcela(s)</span>}
       </div>

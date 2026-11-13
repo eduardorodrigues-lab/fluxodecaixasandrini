@@ -1,9 +1,43 @@
 import { describe, expect, it } from "vitest";
 import { emptyData } from "./engine/actions";
 import { computeFlow } from "./engine/engine";
-import { linkSupplierIdentities } from "./supplierIdentity";
+import { linkSupplierIdentities, resolveSupplierLinks, supplierIdentity, supplierIdentityOptions } from "./supplierIdentity";
+import { computeDashboard, openTitles } from "./engine/dashboard";
+import { titlesReport } from "./dashboardReport";
+import { buildConsulta, filterConsulta, groupByDocument, EMPTY_FILTER, consultaCells } from "../components/Consultas";
+import { reportCSV } from "./reportTable";
 
 describe("supplier identity without financial relinking", () => {
+  it("links only exact aliases and numeric-prefixed evidence, not brand/legal-name similarity", () => {
+    const d = emptyData(); d.suppliers = [{ id: "s", name: "Marca", aliases: ["Empresa Ltda"], group: "", terms: [30] }];
+    d.committed = ["123 - Empresa Ltda", "émpresa ltda", "Marca Brasil Ltda"].map((sourceSupplier, i) => ({ id: `${i}`, supplierId: "", sourceSupplier, value: 100, status: "ativo", dueDate: "2026-11-13", document: "" } as never));
+    const r = resolveSupplierLinks(d);
+    expect(r.counts.committed).toBe(2); expect(r.data.committed.map((c) => c.supplierId)).toEqual(["s", "s", ""]);
+    expect(d.committed.every((c) => !c.supplierId)).toBe(true);
+  });
+  it("keeps pending names distinct through ranking, filters, grouping and export with unchanged global totals", () => {
+    const d = emptyData(); d.params.startDate = "2026-11-13";
+    d.committed = ["Álfa Ltda", "Beta Ltda", ""].map((sourceSupplier, i) => ({ id: `${i}`, supplierId: "", sourceSupplier, value: [200, 100, 50][i], status: "ativo", dueDate: "2026-11-13", document: "", categoryId: "", purchaseCode: "" } as never));
+    const flow = computeFlow(d, { start: "2026-11-13", end: "2026-11-13" });
+    const dashboard = computeDashboard(d, flow, "2026-11-13", { start: "2026-11-13", end: "2026-11-13" });
+    expect(dashboard.ranking.map((r) => r.supplier)).toEqual(["Álfa Ltda", "Beta Ltda", "Sem fornecedor"]);
+    expect(dashboard.cards.find((c) => c.key === "top")?.value).toBe(200);
+    expect(dashboard.cards.find((c) => c.key === "total")?.value).toBe(350);
+    const report = titlesReport(d, openTitles(d)); expect(report.groups).toHaveLength(3); expect(report.total).toBe(350);
+    const key = supplierIdentity(d, d.committed[0]).key;
+    expect(openTitles(d, { supplierId: key })).toHaveLength(1);
+    expect(computeFlow(d, { start: "2026-11-13", end: "2026-11-13", filter: { supplierId: key } }).days[0]?.comprometida).toBe(200);
+    const rows = buildConsulta(d); expect(groupByDocument(rows)).toHaveLength(3);
+    expect(filterConsulta(rows, { ...EMPTY_FILTER, supplier: key }).map((r) => r.supplier)).toEqual(["Álfa Ltda"]);
+    expect(reportCSV(["Fornecedor"], rows.map((r) => [consultaCells(r)[0] ?? ""]))).toContain("Álfa Ltda");
+    expect(supplierIdentityOptions(d).map((r) => r.key)).toContain(key);
+  });
+  it("reads the original supplier column only for known source layouts and groups linked aliases by real ID", () => {
+    const d = emptyData(); d.suppliers = [{ id: "s", name: "Principal", group: "", terms: [] }];
+    expect(supplierIdentity(d, { supplierId: "s", sourceSupplier: "Apelido" })).toEqual({ key: "s", name: "Principal", pending: false });
+    expect(supplierIdentity(d, { importOrigin: { sheet: "Lançamentos", raw: ["", "", "", "Histórico"] } }).name).toBe("Histórico");
+    expect(supplierIdentity(d, { importOrigin: { sheet: "desconhecida", raw: ["não é fornecedor"] } }).name).toBe("Sem fornecedor");
+  });
   it("preserves both confirmed POLO GO conditions and the original source name", () => {
     const d = emptyData();
     d.suppliers = [{ id: "p", name: "POLO GO", group: "", terms: [102, 132, 162], conditions: [{ id: "c1", name: "original", terms: [102, 132, 162], from: null, at: "", by: "" }] }, { id: "q", name: "POLO GO A PARTIR DE 02/2026 CONT.2026", group: "", terms: [120, 150, 180], conditions: [{ id: "c2", name: "nova", terms: [120, 150, 180], from: null, at: "", by: "" }] }];

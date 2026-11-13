@@ -1,3 +1,4 @@
+import { normalizeSupplierName } from "@/lib/fornecedores";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { PageHeader } from "@/components/kit";
@@ -31,8 +32,10 @@ function Page() {
   const [condOf, setCondOf] = useState<string | null>(null);
   const [newSup, setNewSup] = useState(false);
   const [statusFilter, setStatusFilter] = useState("ativos");
+  const [search, setSearch] = useState("");
   const today = todaySP();
   const [tab, setTab] = useState("fornecedores");
+  const visibleSuppliers = d.suppliers.filter((s) => (statusFilter === "todos" || supplierActive(s, today) === (statusFilter === "ativos")) && [s.name, ...(s.aliases ?? [])].some((name) => normalizeSupplierName(name).includes(normalizeSupplierName(search))));
   return (
     <div className="space-y-3">
       {newSup && <FornecedorPanel onCancel={() => setNewSup(false)} onSave={(f) => { const id = uid(); const e = update((x) => addSupplier(x, { id, ...f })); if (!e) { setNewSup(false); setCondOf(id); } return e; }} />}
@@ -46,16 +49,17 @@ function Page() {
       <section className="min-w-0 p-3">
         <div className="mb-2 flex justify-between"><span className="lbl">Fornecedores</span><Button variant="outline" size="sm" onClick={() => setNewSup(true)}>+ Fornecedor</Button></div>
         {d.suppliers.some((s) => invalidSupplierName(s.name)) && <p className="mb-2 text-destructive">{d.suppliers.filter((s) => invalidSupplierName(s.name)).length} fornecedor(es) sem nome válido ("Novo fornecedor" ou vazio) — abra para corrigir. Nada é excluído automaticamente.</p>}
+        <label className="mb-2 flex items-center gap-2 text-xs">Buscar fornecedor<input aria-label="Buscar fornecedor" className="inp" value={search} onChange={(e) => setSearch(e.target.value)} /></label>
         <label className="mb-2 flex items-center gap-2 text-xs">Situação<select className="inp" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option value="ativos">Ativos</option><option value="inativos">Inativos</option><option value="todos">Todos</option></select></label>
         <table className="tbl table-fixed [&_td]:whitespace-normal [&_td]:break-words [&_th]:whitespace-normal"><thead><tr><th className="w-[30%]">Fornecedor</th><th className="w-[16%]">Situação</th><th>Condição vigente</th><th className="w-24">Ações</th></tr></thead>
-          <tbody>{d.suppliers.filter((s) => statusFilter === "todos" || supplierActive(s, today) === (statusFilter === "ativos")).map((s) => { const c = currentCondition(s, today); const active = supplierActive(s, today); return (
+          <tbody>{visibleSuppliers.map((s) => { const c = currentCondition(s, today); const active = supplierActive(s, today); return (
             <tr key={s.id}>
               <td>{invalidSupplierName(s.name) ? "Corrigir nome" : s.name}{!!s.aliases?.length && <div className="text-muted-foreground">{s.aliases.join("; ")}</div>}</td>
               <td>{active ? "Ativo" : "Inativo"}</td>
               <td>{c ? `${c.name} · ${termsLabel(c.terms).replaceAll("/", " / ")} dias` : "Sem condição padrão"}<div className="text-muted-foreground">{supplierConditions(s).length} condição(ões)</div></td>
               <td><Button variant="outline" size="sm" onClick={() => setCondOf(s.id)}>Gerenciar</Button></td>
             </tr>); })}
-            {!d.suppliers.some((s) => statusFilter === "todos" || supplierActive(s, today) === (statusFilter === "ativos")) && <tr><td colSpan={4} className="text-center text-muted-foreground">Nenhum fornecedor nesta situação.</td></tr>}</tbody></table>
+            {!visibleSuppliers.length && <tr><td colSpan={4} className="text-center text-muted-foreground">Nenhum fornecedor nesta situação.</td></tr>}</tbody></table>
       </section>
 
       )}

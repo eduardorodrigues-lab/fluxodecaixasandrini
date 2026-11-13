@@ -10,6 +10,7 @@
 <!-- LOVABLE:END -->
 
 ## Project rules
+- Supplier report names and filter/group keys use `supplierIdentity.ts`, never financial links or fallback terms.
 - Launch/report search and sorting use `reportTable.ts` on presentation rows with source references intact; exports and totals consume the same full result — avoids changing financial data or disconnecting parcel actions.
 - Dashboard reports adapt source records from unchanged KPI/flow outputs; pagination and available-space measurement stay presentation-only — preserves financial scopes while fitting the application shell.
 - Monthly inline drafts use `monthReport.ts`, apply atomically through the existing store, and resolve affected dates through `dailyEstimate`; name-only edits preserve source calculations — avoids premature autosave, silent base changes and guessed lag intervals.

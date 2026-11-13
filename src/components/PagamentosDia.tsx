@@ -1,3 +1,4 @@
+import { supplierIdentity } from "@/lib/supplierIdentity";
 import { ReportSearch, SortHead, useReportState } from "@/components/ReportControls";
 import { dateValue, parcelValue, queryReport, reportCSV, type ReportSort } from "@/lib/reportTable";
 import { Button } from "@/components/ui/button";
@@ -27,7 +28,7 @@ export function dayPayments(d: ScenarioData, date: string) {
     const isCard = p.method === "cartao";
     const op = isCard ? d.cardOps.find((o) => o.id === p.cardOpId) : undefined;
     const card = d.cards.find((k) => k.id === op?.cardId);
-    const supplier = e?.invoiceOf ? `Fatura ${d.cards.find((k) => k.id === e.invoiceOf!.cardId)?.name ?? "cartão"}` : d.suppliers.find((s) => s.id === t?.supplierId)?.name ?? t?.sourceSupplier ?? "—";
+    const supplier = e?.invoiceOf ? `Fatura ${d.cards.find((k) => k.id === e.invoiceOf!.cardId)?.name ?? "cartão"}` : supplierIdentity(d, t).name;
     return {
       id: p.id, search: [...(d.suppliers.find((s) => s.id === t?.supplierId)?.aliases ?? []), t?.notes ?? "", c?.purchaseCode ?? "", fmtDate(p.date), p.reversedAt ? "Estornado" : "Ativo"], supplier, document: t?.document || (c?.purchaseCode ?? "") || "—", parcel: c ? labels.get(c.id) ?? "—" : "1/1",
       due: c ? committedDate(c) : e ? expenseDate(e) : null, form: p.form ? FORM[p.form]! : "Não informada",

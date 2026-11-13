@@ -1,6 +1,7 @@
 import { addDays } from "../dates";
 import { committedDate, distributePlanned, expenseDate, paymentsFor, titleStatus } from "./engine";
 import type { Day, FlowResult, ScenarioData } from "./types";
+import { matchesSupplier, supplierIdentity } from "../supplierIdentity";
 
 export interface OpenTitle { kind: "committed" | "expense"; id: string; supplierId: string; supplier: string; group: string; document: string; due: string | null; value: number; paid: number; open: number; state: string; unconfirmed: boolean }
 export interface DashScope { start: string; end: string; supplierId?: string; group?: string }
@@ -9,20 +10,20 @@ export interface DashScope { start: string; end: string; supplierId?: string; gr
 // Despesa sem vencimento (prazo G vazio) ENTRA no aberto com due=null (seção "sem vencimento"), nunca em janelas de datas.
 export function openTitles(d: ScenarioData, scope?: Pick<DashScope, "supplierId" | "group">): OpenTitle[] {
   const sup = (id: string) => d.suppliers.find((s) => s.id === id);
-  const pass = (id: string) => (!scope?.supplierId || id === scope.supplierId) && (!scope?.group || sup(id)?.group === scope.group);
+  const pass = (row: ScenarioData["committed"][number] | ScenarioData["expenses"][number]) => matchesSupplier(d, row, scope?.supplierId) && (!scope?.group || sup(row.supplierId)?.group === scope.group);
   const out: OpenTitle[] = [];
-  const base = (supplierId: string) => ({ supplierId, supplier: sup(supplierId)?.name ?? "(sem fornecedor)", group: sup(supplierId)?.group ?? "" });
+  const base = (row: ScenarioData["committed"][number] | ScenarioData["expenses"][number]) => { const identity = supplierIdentity(d, row); return { supplierId: identity.key, supplier: identity.name, group: sup(row.supplierId)?.group ?? "" }; };
   for (const c of d.committed) {
-    if (c.status === "cancelado" || !pass(c.supplierId)) continue;
+    if (c.status === "cancelado" || !pass(c)) continue;
     const t = titleStatus(c.value, c.status, paymentsFor(d, "committed", c.id));
     const u = !!c.paymentUnconfirmed && t.paid === 0;
-    if (t.open > 0) out.push({ kind: "committed", id: c.id, ...base(c.supplierId), document: c.document, due: committedDate(c), value: c.value, paid: t.paid, open: t.open, state: u ? "Situação a confirmar" : t.state, unconfirmed: u });
+    if (t.open > 0) out.push({ kind: "committed", id: c.id, ...base(c), document: c.document, due: committedDate(c), value: c.value, paid: t.paid, open: t.open, state: u ? "Situação a confirmar" : t.state, unconfirmed: u });
   }
   for (const e of d.expenses) {
-    if (e.status === "cancelado" || !pass(e.supplierId)) continue;
+    if (e.status === "cancelado" || !pass(e)) continue;
     const t = titleStatus(e.value, e.status, paymentsFor(d, "expense", e.id));
     const u = !!e.paymentUnconfirmed && t.paid === 0;
-    if (t.open > 0) out.push({ kind: "expense", id: e.id, ...base(e.supplierId), document: e.document, due: expenseDate(e), value: e.value, paid: t.paid, open: t.open, state: u ? "Situação a confirmar" : t.state, unconfirmed: u });
+    if (t.open > 0) out.push({ kind: "expense", id: e.id, ...base(e), document: e.document, due: expenseDate(e), value: e.value, paid: t.paid, open: t.open, state: u ? "Situação a confirmar" : t.state, unconfirmed: u });
   }
   return out.sort((a, b) => (a.due ?? "9999").localeCompare(b.due ?? "9999"));
 }
@@ -54,14 +55,13 @@ export function computeDashboard(d: ScenarioData, flow: FlowResult, today: strin
   const ranking = [...bySup.values()].sort((a, b) => b.open - a.open);
   const within = (n: number) => dated.filter((t) => t.due! >= today && t.due! <= addDays(today, n));
   const inPeriod = dated.filter((t) => t.due! >= scope.start && t.due! <= scope.end);
-  const supName = (id: string) => d.suppliers.find((s) => s.id === id)?.name ?? "(sem fornecedor)";
   const parcels: PlannedParcel[] = [];
   for (const pl of d.planned) {
     if (pl.status !== "ativo") continue;
-    if (scope.supplierId && pl.supplierId !== scope.supplierId) continue;
+    if (!matchesSupplier(d, pl, scope.supplierId)) continue;
     if (scope.group && d.suppliers.find((s) => s.id === pl.supplierId)?.group !== scope.group) continue;
     for (const p of distributePlanned(pl, d.suppliers.find((s) => s.id === pl.supplierId), d.committed, d.params.profile, d.effectivations).parcels)
-      if (p.date >= scope.start && p.date <= scope.end) parcels.push({ plannedId: pl.id, supplier: supName(pl.supplierId), code: pl.purchaseCode, date: p.date, amount: p.amount });
+      if (p.date >= scope.start && p.date <= scope.end) parcels.push({ plannedId: pl.id, supplier: supplierIdentity(d, pl).name, code: pl.purchaseCode, date: p.date, amount: p.amount });
   }
   parcels.sort((a, b) => a.date.localeCompare(b.date));
   const days = flow.days;

@@ -1,5 +1,10 @@
 # Roadmap
 
+## Condições e identidade completa (2026-11-13)
+- [ ] Backup atual; recuperar nomes por ID/origem e vincular apenas equivalências comprovadas
+- [ ] Identidade histórica consistente nos relatórios/filtros e busca em Cadastros
+- [ ] Validar ZERO financeiro, commit autenticado, releitura e testes focados; não publicar
+
 ## Vínculo real de fornecedores (2026-11-13)
 - [x] Backup v157, 24 pares inequívocos; 95 condições preservadas; 797 planejadas/92 compras/1 despesa vinculadas
 - [x] Commit único autenticado v157→158 e releitura exata; 2.191 dias e avisos iguais; 3 testes focados; nomes ambíguos/ausentes reportados, sem alteração financeira

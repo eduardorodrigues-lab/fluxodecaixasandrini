@@ -1,3 +1,4 @@
+import { supplierIdentityOptions } from "@/lib/supplierIdentity";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { DateInput, MoneyInput } from "@/components/kit";
@@ -52,7 +53,7 @@ function FluxoPage() {
       <div aria-label="Filtros do fluxo" className="grid grid-cols-2 items-end gap-x-2 gap-y-1.5 lg:grid-cols-[9rem_9rem_minmax(10rem,1fr)_8rem_minmax(13rem,1fr)]">
         <div><div className="lbl">De</div><DateInput value={ui.start} maxDate={ui.end} onChange={(v) => v && setUi({ start: v })} /></div>
         <div><div className="lbl">Até</div><DateInput value={ui.end} minDate={ui.start} onChange={(v) => v && setUi({ end: v })} /></div>
-        <div className="min-w-0"><div className="lbl">Fornecedor</div><select className="inp w-full" value={ui.supplierId} onChange={(e) => setUi({ supplierId: e.target.value })}><option value="">Todos</option>{data.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+        <div className="min-w-0"><div className="lbl">Fornecedor</div><select className="inp w-full" value={ui.supplierId} onChange={(e) => setUi({ supplierId: e.target.value })}><option value="">Todos</option>{supplierIdentityOptions(data).map((s) => <option key={s.key} value={s.key}>{s.name}{s.pending ? " · vínculo pendente" : ""}</option>)}</select></div>
         <div className="min-w-0"><div className="lbl">Grupo</div><select className="inp w-full" value={ui.group} onChange={(e) => setUi({ group: e.target.value })}><option value="">Todos</option>{groups.map((g) => <option key={g}>{g}</option>)}</select></div>
         <div className="col-span-2 min-w-0 lg:col-span-1"><div className="lbl">Apresentação das saídas</div><select className="inp w-full" value={ui.flowMode} onChange={(e) => setUi({ flowMode: e.target.value as "consolidada" | "etapa" })}><option value="consolidada">Consolidada por subgrupo</option><option value="etapa">Separada por etapa (planejada/efetuada)</option></select></div>
         {res.filtered && <span className="col-span-2 text-xs text-warning-foreground lg:col-span-5">Filtro ativo: saldos consideram só as saídas filtradas</span>}

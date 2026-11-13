@@ -3,6 +3,7 @@ import { fmtBRL } from "./money";
 import { distributePlanned } from "./engine/engine";
 import type { Card, OpenTitle, PlannedParcel } from "./engine/dashboard";
 import type { Day, ScenarioData } from "./engine/types";
+import { supplierIdentity } from "./supplierIdentity";
 
 export const signedMoney = (value: number) => `${value < 0 ? "−" : value > 0 ? "+" : ""}${fmtBRL(Math.abs(value))}`;
 export const moneyTone = (value: number) => value < 0 ? "text-negative" : value > 0 ? "text-financial-positive" : "text-muted-foreground";
@@ -32,7 +33,7 @@ function groupsFor(rows: SourceRow[], mode: "supplier" | "date" | "subgroup", d:
   const grouped = new Map<string, ChartGroup>();
   for (const row of rows) {
     const key = row.group;
-    const label = mode === "supplier" ? d.suppliers.find((s) => s.id === key)?.name ?? "Sem fornecedor" : mode === "date" ? key === "sem-data" ? "Sem vencimento" : fmtDate(key) : key;
+    const label = mode === "supplier" ? row.label : mode === "date" ? key === "sem-data" ? "Sem vencimento" : fmtDate(key) : key;
     const g = grouped.get(key) ?? { key, label, value: 0, ...(mode === "supplier" ? { supplierId: key } : {}), ...(mode === "subgroup" ? { second: 0 } : {}) };
     if (row.stage === "planned" && mode === "subgroup") g.second = (g.second ?? 0) + row.value; else g.value += row.value;
     grouped.set(key, g);
@@ -58,7 +59,8 @@ export function plannedReport(d: ScenarioData, parcels: PlannedParcel[]): Dashbo
     const source = plan ? distributePlanned(plan, d.suppliers.find((s) => s.id === plan.supplierId), d.committed, d.params.profile, d.effectivations).parcels : [];
     const number = source.findIndex((x) => x.date === p.date && x.amount === p.amount) + 1;
     const subgroup = d.categories.find((c) => c.id === plan?.categoryId)?.name ?? "Sem subgrupo";
-    return { id: `${p.plannedId}-${i}`, group: plan?.supplierId ?? "sem-fornecedor", supplierId: plan?.supplierId, label: p.supplier, value: p.amount, stage: "planned", cells: [cell(p.supplier), cell(plan?.document || p.code || "—"), cell(`${number || 1}/${source.length || 1}`), cell(fmtDate(p.date)), money(p.amount), cell(subgroup), cell("Planejada")] };
+    const identity = supplierIdentity(d, plan);
+    return { id: `${p.plannedId}-${i}`, group: identity.key, supplierId: identity.key, label: identity.name, value: p.amount, stage: "planned", cells: [cell(identity.name), cell(plan?.document || p.code || "—"), cell(`${number || 1}/${source.length || 1}`), cell(fmtDate(p.date)), money(p.amount), cell(subgroup), cell("Planejada")] };
   });
   return { heads: ["Fornecedor", "Documento / pedido", "Parcela", "Vencimento", "Valor previsto", "Subgrupo", "Etapa"], rows, groups: groupsFor(rows, "supplier", d), type: "bars", total: rows.reduce((s, r) => s + r.value, 0), totalLabel: "Total previsto restante" };
 }
