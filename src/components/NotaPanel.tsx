@@ -23,18 +23,18 @@ export const guardClose = (dirty: boolean, close: () => void) => async () => {
 
 /** Painel lateral amplo e responsivo (tela cheia no celular).
  *  Fecha SOMENTE por X, Cancelar ou conclusão — nunca por clique no fundo ou mouse fora. */
-export function SidePanel({ title, sub, onClose, footer, children, wide, dirty, centered }: { title: string; sub?: string; onClose: () => void; footer?: ReactNode; children: ReactNode; wide?: boolean; dirty?: boolean; centered?: boolean }) {
+export function SidePanel({ title, sub, onClose, footer, children, wide, dirty, centered, expanded }: { title: string; sub?: string; onClose: () => void; footer?: ReactNode; children: ReactNode; wide?: boolean; dirty?: boolean; centered?: boolean; expanded?: boolean }) {
   const requestClose = guardClose(!!dirty, onClose);
-  if (centered) return <DecisionWindow title={title} description={sub} footer={footer} wide={wide}>{children}</DecisionWindow>;
+  if (centered && !expanded) return <DecisionWindow title={title} description={sub} footer={footer} wide={wide}>{children}</DecisionWindow>;
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-foreground/30">
-      <div role="dialog" aria-label={title} className={`finance-panel flex h-full w-full flex-col bg-background shadow-2xl ${wide ? "sm:w-[min(880px,94vw)]" : "sm:w-[min(520px,94vw)]"}`}>
-        <div className="flex items-start justify-between border-b border-border bg-card px-5 py-4 text-foreground">
+    <div className={`fixed inset-0 z-50 flex bg-foreground/30 ${expanded ? "items-center justify-center sm:p-4" : "justify-end"}`}>
+      <div role="dialog" aria-modal="true" aria-label={title} className={`finance-panel flex w-full flex-col bg-background shadow-2xl ${expanded ? "launch-manager h-full sm:h-[calc(100dvh-32px)]" : `h-full ${wide ? "sm:w-[min(880px,94vw)]" : "sm:w-[min(520px,94vw)]"}`}`}>
+        <div className="flex shrink-0 items-start justify-between border-b border-border bg-card px-5 py-4 text-foreground">
           <div><div className="text-base font-semibold">{title}</div>{sub && <div className="text-xs opacity-80">{sub}</div>}</div>
           <Button variant="ghost" size="icon" aria-label="Fechar" onClick={requestClose}>×</Button>
         </div>
-        <div className="flex-1 space-y-5 overflow-auto px-5 py-4 text-xs">{children}</div>
-        {footer && <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border bg-card px-5 py-3">{footer}</div>}
+        <div className={`min-h-0 flex-1 space-y-5 overflow-auto px-5 py-4 ${expanded ? "text-sm" : "text-xs"}`}>{children}</div>
+        {footer && <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border bg-card px-5 py-3">{footer}</div>}
       </div>
     </div>
   );

@@ -1,5 +1,12 @@
 # Roadmap
 
+## Correção focada do gerenciamento — 16/11/2026
+- [x] Painel amplo, resumo financeiro e prévia sem duplicar previsão/efetivado
+- [x] Seleção explícita elegível, efetivação segura e ações visíveis
+- [x] 43 testes; navegador isolado MANCHESTER 3×209 em 1366/1536/1920, seleção 1/2/3, revisão manual e releitura de uma efetivada; zero commits
+- [x] Mesmos motores/caminhos de persistência; base real v164 e hash idênticos; compilação OK
+- [ ] Conferência direta do pedido real não concluída: navegação autenticada não estabilizou no teste; celular não conferido nesta rodada
+
 ## Gerenciar lançamentos — autorizado 16/11/2026
 - [x] Agrupamento somente consulta; Lançamentos/Consultas/Dashboard integrados; UZ3 conferido autenticado
 - [x] Painel único, edição por escopo, cancelamento protegido, redistribuição selecionada e revisão por data
