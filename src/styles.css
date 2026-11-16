@@ -173,6 +173,23 @@
 
 .hist-cmp td, .hist-cmp th { white-space: normal; }
 
+/* Recebimentos only: explicit tracks keep long labels independent of column width. */
+.receipts-table { table-layout: fixed; width: 1px; min-width: 100%; border-collapse: separate; border-spacing: 0; }
+.receipts-table .receipts-date { width: 184px; }
+.receipts-table .receipts-money { width: 144px; }
+.receipts-table .receipts-calculated { width: 160px; }
+.receipts-table .receipts-flow { width: 280px; }
+.receipts-table .receipts-accounts { width: 200px; }
+.receipts-table .receipts-realized { width: 112px; }
+.receipts-table .receipts-notes { width: 160px; }
+.receipts-table .receipts-actions { width: 104px; }
+.receipts-table thead { position: sticky; top: 0; z-index: 10; }
+.receipts-table th { position: static; white-space: normal; overflow-wrap: normal; word-break: normal; text-align: center; vertical-align: middle; padding: 10px 12px; }
+.receipts-table th.num { text-align: center; }
+.receipts-table td.num > input { width: 100%; min-width: 0; }
+.receipts-table th:first-child { position: sticky; left: 0; z-index: 30; background: var(--secondary); box-shadow: 1px 0 0 var(--border); }
+.receipts-table td:first-child { background: var(--card); }
+
 /* Shared presentation only: financial values, filters and source references stay unchanged. */
 .app-workspace main .text-xs { font-size: 13px; line-height: 1.4; }
 .app-workspace main h1 { font-size: 24px; line-height: 1.25; }

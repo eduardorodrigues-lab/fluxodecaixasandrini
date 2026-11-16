@@ -86,7 +86,18 @@ function Page() {
         <span className="text-muted-foreground">{dated.length} dia(s) · clique no título da coluna para ordenar</span>
       </div>
       <div className="card max-h-[75vh] overflow-auto">
-        <table className="tbl tbl-stick1">
+        <table className="tbl tbl-stick1 receipts-table">
+          <colgroup>
+            <col className="receipts-date" />
+            {cols.map((p) => <col key={p.id} className="receipts-money" />)}
+            <col className="receipts-money" />
+            <col span={3} className="receipts-calculated" />
+            <col className="receipts-flow" />
+            <col className="receipts-accounts" />
+            <col className="receipts-realized" />
+            <col className="receipts-notes" />
+            <col className="receipts-actions" />
+          </colgroup>
           <thead><tr>{sh("date", "Data", false)}{cols.map((p) => <th key={p.id} className="num" >{p.name}{p.end && <div className="text-[10px] font-normal">inativa desde {fmtDate(p.end)}</div>}</th>)}<th className="num">Geral</th>{sh("sum", "Soma (P)")}{sh("est", "Estimativa (Q)")}{sh("diff", "Diferença (R=P−Q)")}<th>Uso no fluxo</th><th>Contas</th><th>Realizado</th><th>Obs.</th><th /></tr></thead>
           <tbody>{list.length === 0 ? <tr><td colSpan={cols.length + 10} className="text-muted-foreground">Nenhum recebimento no período.</td></tr> : list.map((r) => {
             const { inf } = calc(r);
