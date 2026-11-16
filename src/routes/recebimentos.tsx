@@ -77,7 +77,7 @@ function Page() {
       </PageHeader>
       {err && <div className="rounded border border-destructive p-2 text-xs text-destructive">{err}</div>}
       {targetOutside && <p className="text-xs text-warning-foreground">O recebimento selecionado foi destacado fora dos filtros atuais. Os filtros foram mantidos.</p>}
-      <div className="rounded border border-warning bg-warning-soft p-2 text-xs text-warning-foreground">A regra original SOMA(D:O) inclui geral e plataformas. Se ambos estiverem preenchidos, o valor é somado e marcado como possível dupla contagem — nada é corrigido automaticamente.</div>
+      <div className="rounded border border-warning bg-warning-soft p-2 text-xs text-warning-foreground">Valores das plataformas e do campo Geral são somados no total do dia. Quando ambos estão preenchidos na mesma data, o sistema exibe alerta de possível duplicidade; nada é corrigido automaticamente.</div>
       {unknown.length > 0 && <div className="rounded border border-destructive p-2 text-xs text-destructive">Recebimentos com plataforma não cadastrada (ID {unknown.join(", ")}): valores mantidos; cadastre a plataforma com esse código para conciliar.</div>}
       <div className="filter-bar text-xs">
         <label>De<br /><DateInput allowEmpty value={pStart} maxDate={pEnd} onChange={setPStart} /></label>

@@ -141,7 +141,7 @@ function ConsultaBoletos({ d }: { d: ScenarioData }) {
         <label><span className="lbl block">Agrupar por</span><select className="inp" value={byDoc ? "doc" : "parc"} onChange={(e) => setByDoc(e.target.value === "doc")}><option value="parc">Parcela</option><option value="doc">Documento</option></select></label>
         <button className="btn" onClick={() => { setF(EMPTY_FILTER); report.setQuery(""); cf.clear(); }}>Limpar filtros</button>
         <button className="btn" onClick={print}>Imprimir</button>
-        <button className="btn" onClick={exportXls}>Exportar para Excel</button>
+        <button className="btn" onClick={exportXls}>Exportar planilha</button>
       </div>
       <div className="filter-bar"><ReportSearch value={report.query} onChange={report.setQuery} count={rows.length} /><ColumnFilter cols={C_COLS} filter={cf} suggest={suggestFrom(all, cVals)} /></div>
       <div className="mb-2 flex gap-4 text-xs">

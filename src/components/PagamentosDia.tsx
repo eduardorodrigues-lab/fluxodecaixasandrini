@@ -116,7 +116,7 @@ ${showRev ? `<h4>Estornos (não compõem o total)</h4><table><thead><tr>${HEAD.m
         <ReportSearch value={report.query} onChange={report.setQuery} count={r?.rows.length ?? 0} />
         <Button variant="outline" size="sm" onClick={() => { report.setQuery(""); reversedReport.setQuery(""); setDate(todaySP()); setShowRev(false); }}>Limpar filtros</Button>
         <button className="btn" disabled={!r} onClick={print}>Imprimir / Salvar em PDF</button>
-        <Button variant="outline" size="sm" disabled={!r} onClick={exportXls}>Exportar para Excel</Button>
+        <Button variant="outline" size="sm" disabled={!r} onClick={exportXls}>Exportar planilha</Button>
         <label className="flex items-center gap-1"><input type="checkbox" checked={showRev} onChange={(e) => setShowRev(e.target.checked)} /> Consultar estornos ({r?.reversed.length ?? 0})</label>
         {!active.isBase && <span className="tag tag-warn">Relatório mostra apenas pagamentos reais; simulações não entram.</span>}
       </div>

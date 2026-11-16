@@ -23,7 +23,7 @@ const ABA: Record<string, string> = { "Recebimento": "Recebimentos", "Plataforma
 const ACAO: Record<string, string> = { "inclusão": "Inclusão", "alteração": "Alteração", "exclusão": "Remoção" };
 const txt = (v: unknown) => (v == null ? "" : String(v));
 const STATUS: R = { ativo: "Ativo", cancelado: "Cancelado", encerrado: "Encerrado" };
-const PARAMS: Record<string, string> = { profile: "Origem da regra de cálculo", legacyReducer: "Deflator da origem", webR1: "Deflator 1 da origem", webR2: "Deflator 2 da origem", divisorLegado: "Distribuição da origem (Excel)", divisorWeb: "Distribuição da origem (Web)", financialDefaults: "Configurações para novos meses", lagDays: "Defasagem (dias)", startDate: "Data inicial", saldoInicial: "Saldo inicial" };
+const PARAMS: Record<string, string> = { profile: "Regra de cálculo inicial", legacyReducer: "Deflator inicial", webR1: "Deflator 1 inicial", webR2: "Deflator 2 inicial", divisorLegado: "Distribuição diária inicial (30 dias ou dias reais)", divisorWeb: "Distribuição diária inicial (configuração alternativa)", financialDefaults: "Configurações para novos meses", lagDays: "Defasagem (dias)", startDate: "Data inicial", saldoInicial: "Saldo inicial" };
 
 function columns(entity: string, d: ScenarioData, sample: R): Col[] {
   const sup = (id: unknown) => d.suppliers.find((s) => s.id === id)?.name ?? (id ? "(fornecedor removido)" : "");
@@ -204,7 +204,7 @@ export function HistoryView({ entries, data, scope = "Fluxo real", onRestore }: 
       <label><div className="lbl">Até</div><DateInput allowEmpty value={to || null} minDate={from || null} onChange={(v) => setTo(v ?? "")} /></label>
       <label><div className="lbl">Usuário</div><select className="inp" value={who} onChange={(e) => setWho(e.target.value)}><option value="">Todos</option>{users.map((u) => <option key={u}>{u}</option>)}</select></label>
       {(from || to || who) && <button className="btn" onClick={() => { setFrom(""); setTo(""); setWho(""); }}>Limpar</button>}
-      <span className="ml-auto" /><button className="btn" onClick={exportCsv} disabled={!vis.length}>Exportar (Excel/CSV)</button>
+      <span className="ml-auto" /><button className="btn" onClick={exportCsv} disabled={!vis.length}>Exportar planilha</button>
       <button className="btn btn-primary" onClick={() => printDetail(".hist-list")} disabled={!vis.length}>Imprimir</button>
     </div>
   );

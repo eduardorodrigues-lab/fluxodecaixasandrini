@@ -318,7 +318,7 @@ function SaldoInicial({ d, isBase, canEdit, onSource, onConfirm, onRevert }: { d
   const [opening, setOpening] = useState<number | null>(d.params.saldoInicial);
   return <div className="card max-w-3xl space-y-3 p-4 text-xs">
     <div className="flex flex-wrap items-end gap-3"><Field l="Início do fluxo"><DateInput value={start} onChange={setStart} /></Field><Field l="Saldo inicial de origem"><MoneyInput value={opening} onChange={setOpening} /></Field><button className="btn btn-primary" disabled={!canEdit || !start || opening === null} onClick={async () => { if (start && opening !== null && await askConfirm(`Início do fluxo: ${fmtDate(d.params.startDate)} → ${fmtDate(start)}. Saldo de origem: ${fmtBRL(d.params.saldoInicial)} → ${fmtBRL(opening)}. ${mode === "contas" ? "O fluxo continua usando as contas; o saldo de origem não será somado." : "Os saldos do fluxo serão recalculados."}`, { title: "Salvar saldo de origem?", action: "Salvar configuração" })) onSource(start, opening); }}>Revisar e salvar</button></div>
-    <div>Regra em uso no fluxo: <b>{mode === "contas" ? "soma dos saldos das contas" : "saldo inicial de origem"}</b>. Nunca as duas ao mesmo tempo.</div>
+    <div>Regra em uso no fluxo: <b>{mode === "contas" ? "soma dos saldos das contas" : "saldo inicial consolidado"}</b>. Nunca as duas ao mesmo tempo.</div>
     <table className="tbl"><tbody>
       <tr><td>Saldo inicial de origem</td><td className="num">{fmtBRL(p.legacyValue)}</td></tr>
       <tr><td>Soma das contas ao fim de {fmtDate(p.refDate)} (véspera do início do fluxo)</td><td className="num">{fmtBRL(p.accountsValue)}</td></tr>
@@ -326,10 +326,10 @@ function SaldoInicial({ d, isBase, canEdit, onSource, onConfirm, onRevert }: { d
     </tbody></table>
     {p.pending.length > 0 && <ul className="text-destructive">{p.pending.map((x) => <li key={x}>{x}</li>)}</ul>}
     {p.unassigned > 0 && <p className="text-warning-foreground">{p.unassigned} movimento(s) realizados sem conta (“{NO_ACCOUNT}”) não entram na soma das contas.</p>}
-    {d.params.bankTransition && <p className="text-muted-foreground">Transição confirmada em {fmtDate(d.params.bankTransition.at.slice(0, 10))} por {d.params.bankTransition.by}: legado {fmtBRL(d.params.bankTransition.legacyValue)} → contas {fmtBRL(d.params.bankTransition.accountsValue)}. {d.params.bankTransition.note}</p>}
+    {d.params.bankTransition && <p className="text-muted-foreground">Transição confirmada em {fmtDate(d.params.bankTransition.at.slice(0, 10))} por {d.params.bankTransition.by}: saldo inicial consolidado {fmtBRL(d.params.bankTransition.legacyValue)} → contas {fmtBRL(d.params.bankTransition.accountsValue)}. {d.params.bankTransition.note}</p>}
     {mode === "legado" ? <div className="flex flex-wrap items-end gap-2">
       <label className="flex-1">Observação da transição<br /><input className="inp h-8 w-full" value={note} onChange={(e) => setNote(e.target.value)} /></label>
       <button className="btn btn-primary" disabled={!isBase || p.pending.length > 0 || !note.trim()} onClick={async () => await askConfirm(`Passar o saldo inicial do fluxo de ${fmtBRL(p.legacyValue)} para ${fmtBRL(p.accountsValue)}?`) && onConfirm(note)}>Confirmar transição</button>
-    </div> : <button className="btn" disabled={!isBase} onClick={onRevert}>Voltar à regra legado</button>}
+    </div> : <button className="btn" disabled={!isBase} onClick={onRevert}>Voltar ao saldo inicial consolidado</button>}
   </div>;
 }
