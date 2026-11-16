@@ -1,5 +1,11 @@
 # Fluxo de Caixa Sandrini — Regras, schema e critérios de aceite (NÃO homologado)
 
+## Consolidação autorizada de recebimentos — 16/11/2026
+- Migração explícita, sem reimportação: aliases confirmados consolidam IDs de plataforma; MELI SP/MG e AMAZON SP/MG permanecem separados, Menswear/Sports seguem o mapeamento autorizado. GERAL não é plataforma. TIKTOK é cadastro sem valores históricos.
+- A ordem operacional persistida é a ordem do array de plataformas; GERAL vem após plataformas e antes das colunas calculadas. Cadastros inesperados permanecem, sem exclusão por contagem alvo.
+- Valores mantêm precisão importada, zero/null/ausente e natureza realizado/previsto; IDs de recebimentos e todos os campos de origem ficam preservados. `consolidatedSources` guarda cadastros originais, incluindo vigências; `platformMigration.sources` registra componentes/IDs/contas/resíduos originais. Auditoria usa autoria/data reais do servidor.
+- Contas diferentes em uma categoria da mesma linha ou vigências bancárias incompatíveis bloqueiam a migração antes de gravar; não há escolha arbitrária nem compensação financeira. A validação real compara somas por dia/natureza, motor completo e coleções não autorizadas antes e após gravação versionada.
+
 ## Dashboard e relatório mensal aprovados — 11/11/2026
 - Dashboard mantém os 15 KPIs e seus escopos originais. Quatro gráficos iniciais: saldo diário, fornecedores em aberto, vencimentos no período e despesas por subgrupo. Expansão abaixo dos KPIs, relatório fonte paginado e card sequencial Dados/Observações/Legenda. Seleção gráfica filtra registros/total; minimizar preserva filtros compartilhados.
 - Metas: 13 colunas completas, edição multicélula local antes de `update`, revisão conjunta e confirmação atômica. Valores revisados usam D1=bruto×p1, D2=(bruto−D1)×p2. Base histórica de meses não editados fica preservada; renomear sozinho não altera cálculo, percentuais ou precisão. Nomes por mês auditados. Segundo deflator legado permanece 0% até alteração explícita.

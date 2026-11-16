@@ -1,5 +1,10 @@
 # Roadmap
 
+## Migração autorizada de recebimentos (2026-11-16)
+- [x] Base v160 lida e backup recuperável; 28→17 plataformas + Geral; 1.225 linhas e 913 componentes preservados
+- [x] Oito testes focados; ZERO diferenças por dia/natureza, bancos e 2.191 dias de fluxo 2025–2030 antes/após gravação
+- [x] Commit único autenticado v160→161, 102 recebimentos + plataformas auditados; releitura real e ordem das 18 colunas na tela; não publicado
+
 ## Condições e identidade completa (2026-11-13)
 - [x] Backup v158; 95 nomes recuperados por ID e linha original; 2 efetivados vinculados; nomes genéricos mantidos sem vínculo
 - [x] Identidade histórica consistente nos relatórios/filtros e busca em Cadastros

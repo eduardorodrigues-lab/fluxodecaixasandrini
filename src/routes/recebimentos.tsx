@@ -13,6 +13,7 @@ import { fmtNum } from "@/lib/money";
 import { uid, useApp } from "@/lib/store";
 import { pendingSearch } from "@/lib/pendencias";
 import { usePendingFocus } from "@/components/PendingFocus";
+import { receiptPlatformEntries } from "@/lib/receiptMigration";
 
 export const Route = createFileRoute("/recebimentos")({
   validateSearch: pendingSearch,
@@ -56,8 +57,8 @@ function Page() {
   if (targetOutside) list.unshift(targeted);
   const sh = (k: typeof sort.k, label: string, num = true) => <th className={`${num ? "num" : ""} cursor-pointer select-none`} onClick={() => setSort((s) => ({ k, asc: s.k === k ? !s.asc : k === "date" }))}>{label}{sort.k === k ? (sort.asc ? " ▲" : " ▼") : ""}</th>;
   const today = todaySP();
-  // Colunas dinâmicas: plataformas vigentes em algum dia do período OU com valores nos recebimentos listados (inclui inativas históricas).
-  const cols = d.platforms.filter((p) => (p.start <= fe && (!p.end || p.end >= fs)) || list.some((r) => r.platforms[p.id] != null));
+  // A ordem persistida das categorias é comum a todos os períodos; ausência não vira zero.
+  const cols = d.platforms;
   const unknown = [...new Set(list.flatMap((r) => Object.keys(r.platforms).filter((k) => r.platforms[k] != null && !d.platforms.some((p) => p.id === k))))];
   const set = (id: string, fn: (r: (typeof d.receipts)[number]) => void) => act((x) => { const r = x.receipts.find((i) => i.id === id); if (r) fn(r); });
   const setPf = async (rid: string, pid: string, v: number | null, date: string) => {
@@ -183,7 +184,7 @@ function ReceiptAccounts({ rid, act, onClose }: { rid: string; act: (fn: (x: Sce
   const d = active.data;
   const r = d.receipts.find((x) => x.id === rid);
   if (!r) return null;
-  const rows = [...Object.entries(r.platforms).filter(([, v]) => v != null).map(([pid, v]) => {
+  const rows = [...receiptPlatformEntries(d, r).filter(([, v]) => v != null).map(([pid, v]) => {
     const pf = d.platforms.find((p) => p.id === pid);
     return { key: pid, name: pf?.name ?? "Plataforma", value: v!, acc: r.accountByPlatform?.[pid]?.accountId ?? "", override: !!r.accountByPlatform?.[pid]?.override, sug: pf && r.date ? defaultAccountFor(pf, r.date) : null };
   }), ...(r.general != null ? [{ key: "general", name: "Geral (sem plataforma)", value: r.general, acc: r.generalAccountId ?? "", override: true, sug: null }] : [])];

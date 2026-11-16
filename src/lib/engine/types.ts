@@ -115,9 +115,10 @@ export interface Card { id: string; accountId: string; name: string; last4: stri
 export interface Transfer { id: string; fromAccountId: string; toAccountId: string; amount: number; date: string; note: string; at: string; by: string; reversedAt: string | null; reversalNote: string }
 // Plataforma: ID estável; nome editável; vigência [start, end]. Nunca excluída fisicamente se referenciada.
 export interface PlatformAccountPeriod { from: string; accountId: string; at: string; note: string }
-export interface Platform { id: string; name: string; start: string; end: string | null; importedCode: string | null; defaultAccounts?: PlatformAccountPeriod[]; history: { at: string; field: string; from: unknown; to: unknown; note: string }[] }
+export interface Platform { id: string; name: string; start: string; end: string | null; importedCode: string | null; defaultAccounts?: PlatformAccountPeriod[]; consolidatedSources?: Platform[]; history: { at: string; field: string; from: unknown; to: unknown; note: string }[] }
 // Recebimento: valores por ID de plataforma. residual[id] = repasse APÓS inativação, exceção explícita com nota.
 export interface Receipt { id: string; date: string; origin?: Origin | null; kind?: "realizado" | "previsto";
+  platformMigration?: { at: string; receiptId: string; sources: { id: string; name: string; value: number | null; account: { accountId: string; override: boolean } | null; residual: { note: string; at: string } | null }[] };
   legacyZeroEstimate?: boolean; // importado da fonte Excel: soma do dia = 0 aciona estimativa (regra IF(D6=0) da fonte)
   platforms: Record<string, number | null>; general: number | null; notes: string; residual?: Record<string, { note: string; at: string }>;
   accountByPlatform?: Record<string, { accountId: string; override: boolean }>; // conta gravada no registro (nunca recalculada pelo padrão)
