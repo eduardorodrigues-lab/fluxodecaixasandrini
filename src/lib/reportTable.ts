@@ -13,9 +13,9 @@ export const parcelValue = (s: string): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 /** Presentation only: retain source objects and stable ties; blanks stay last in both directions. */
-export function queryReport<T>(rows: T[], query: string, sort: ReportSort | null, values: (r: T) => ReportValue[], search: (r: T) => ReportValue[] = values): T[] {
+export function queryReport<T>(rows: T[], query: string, sort: ReportSort | null, values: (r: T) => ReportValue[], search: (r: T) => ReportValue[] = values, indexedSearch?: (r: T) => string): T[] {
   const q = normalizeSearch(query);
-  const filtered = rows.filter((r) => !q || normalizeSearch(search(r).map((v) => v ?? "").join(" ")).includes(q));
+  const filtered = rows.filter((r) => !q || (indexedSearch ? indexedSearch(r) : normalizeSearch(search(r).map((v) => v ?? "").join(" "))).includes(q));
   if (!sort) return filtered;
   return filtered.map((row, index) => ({ row, index })).sort((a, b) => {
     const x = values(a.row)[sort.column], y = values(b.row)[sort.column];
@@ -23,6 +23,14 @@ export function queryReport<T>(rows: T[], query: string, sort: ReportSort | null
     const c = typeof x === "number" && typeof y === "number" ? x - y : collator.compare(String(x), String(y));
     return (sort.direction === "asc" ? c : -c) || a.index - b.index;
   }).map(({ row }) => row);
+}
+export interface IndexedReportRow<T> { row: T; values: ReportValue[]; searchText: string }
+export function indexReport<T>(rows: T[], values: (r: T) => ReportValue[], search: (r: T) => ReportValue[] = values): IndexedReportRow<T>[] {
+  return rows.map(row => ({ row, values: values(row), searchText: normalizeSearch(search(row).map(v => v ?? "").join(" ")) }));
+}
+/** Same stable sorting and full-result semantics as queryReport; only preparation is cached. */
+export function queryIndexedReport<T>(rows: IndexedReportRow<T>[], query: string, sort: ReportSort | null) {
+  return queryReport(rows, query, sort, r => r.values, r => r.values, r => r.searchText);
 }
 export function reportCSV(head: string[], rows: string[][]): string {
   const escape = (s: string) => `"${s.replace(/"/g, '""')}"`;

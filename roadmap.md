@@ -1,5 +1,12 @@
 # Roadmap
 
+## Rapidez da busca de Lançamentos — autorizado 16/11/2026
+- [x] Baseline e comparação no mesmo navegador: amostra v160 (600 planejadas/2.000 títulos/1.700 baixas/78 fornecedores), 3 repetições; contagens atuais lidas
+- [x] Modelos lazy por snapshot, pagamentos tipo+ID, busca normalizada reutilizada, abas ocultas memoizadas; painel/motor/persistência preservados
+- [x] 58 testes: ordenação/filtros/totais/CSV sintéticos, invalidação por novos snapshots; 6 consultas com contagem e DOM idênticos; compilação OK
+- [x] Painel isolado com efetivação parcial relida, 0 commits; hashes oficiais v164/v41 idênticos antes/depois
+- [ ] Volume completo e consulta 361186A2 com resultados reais: baseline completo excedeu limite; consulta ausente na amostra. Paridade integral da cópia real/exportação e salvar/trocar org no navegador não verificadas nesta rodada
+
 ## Correção focada do gerenciamento — 16/11/2026
 - [x] Painel amplo, resumo financeiro e prévia sem duplicar previsão/efetivado
 - [x] Seleção explícita elegível, efetivação segura e ações visíveis

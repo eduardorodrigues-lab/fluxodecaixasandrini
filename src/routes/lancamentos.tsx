@@ -1,15 +1,15 @@
 import { ManageLaunchPanel } from "@/components/ManageLaunchPanel";
-import { documentGroups } from "@/lib/documentGroups";
+import { createLaunchPresentation } from "@/lib/launchPresentation";
 import type { LaunchRef } from "@/lib/manageLaunch";
 import { supplierIdentity } from "@/lib/supplierIdentity";
 import { ColumnFilter, columnTest, DetailReport, Pager, ReportSearch, SortHead, suggestFrom, useColumnFilter, usePager, useReportState, type FilterCol } from "@/components/ReportControls";
-import { dateValue, parcelValue, queryReport } from "@/lib/reportTable";
+import { dateValue, queryIndexedReport } from "@/lib/reportTable";
 import { Button } from "@/components/ui/button";
 import { askConfirm, askText, showMessage } from "@/lib/decisions";
 import { BaixasList, PagamentoPanel } from "@/components/BancoPanels";
 import { accountName, NO_ACCOUNT, registerPaymentBatch, coverTitleWithCard } from "@/lib/engine/banco";
 import { createFileRoute } from "@tanstack/react-router";
-import { Children, cloneElement, isValidElement, useState, type ReactElement, type ReactNode } from "react";
+import { Children, cloneElement, isValidElement, useMemo, memo, useState, type ReactElement, type ReactNode } from "react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { DateInput, MoneyInput, PageHeader } from "@/components/kit";
 import { ConditionPicker, DadosNotaPanel, Field, guardClose, NovaNota, ParcelaPanel, ProrrogarPanel, Section, SidePanel, type NoteFields } from "@/components/NotaPanel";
@@ -76,6 +76,15 @@ function Acoes({ children }: { children: ReactNode }) {
   );
 }
 
+const CachedConsultas = memo(Consultas);
+const EMPTY_ROWS: never[] = [];
+const EMPTY_GROUPS = { byId: new Map(), ambiguous: [] };
+const AmbiguousDocuments = memo(function AmbiguousDocuments({ d, groups, onManage }: { d: ScenarioData; groups: ReturnType<typeof createLaunchPresentation>["groups"]; onManage: (ref: LaunchRef) => void }) {
+  if (!groups.ambiguous.length) return null;
+  const titles = new Map(d.committed.map(c => [c.id, c]));
+  return <details className="mb-2 text-xs"><summary>Identificações para revisão ({groups.ambiguous.length}) — mantidas individualmente</summary><div className="max-h-52 overflow-auto"><table className="tbl"><thead><tr><th>Fornecedor</th><th>Identificação</th><th>Motivo</th><th /></tr></thead><tbody>{groups.ambiguous.map(a => <tr key={a.id}><td>{supplierIdentity(d, titles.get(a.id)).name}</td><td>{a.document}</td><td>{a.reason}</td><td><Button size="sm" variant="outline" onClick={() => onManage({ kind: "committed", id: a.id, parcel: a.id })}>Gerenciar lançamento</Button></td></tr>)}</tbody></table></div></details>;
+});
+
 function Page() {
   const target = Route.useSearch();
   const { active, update, changes, user } = useApp();
@@ -105,42 +114,18 @@ function Page() {
   const kindL = (id: string, fb: CategoryKind = "compra") => ((kindOfCat(id) || fb) === "compra" ? "Compra" : "Despesa");
   const isOpen = (kind: string, id: string) => open?.kind === kind && open.id === id;
   const toggle = (kind: string, id: string) => setOpen(isOpen(kind, id) ? null : { kind, id });
-  const groups = documentGroups(d);
-  const labels = new Map([...groups.byId].map(([id, group]) => [id, group.labels.get(id) ?? "1/1"]));
-
-  // ---- Planejada: uma linha por parcela ----
-  const plannedSource = d.planned.filter((p) => !fKind || (kindOfCat(p.categoryId) || "compra") === fKind).flatMap((p) => {
-    const r = distributePlanned(p, sup(p.supplierId), d.committed, d.params.profile, d.effectivations);
-    const inst = p.installments?.length && !p.remainingOverride ? p.installments : null;
-    const parts = r.parcels.length ? r.parcels : [null];
-    return parts.map((pc, i) => ({ p, r, pc, i, n: parts.length, it: inst && pc ? inst[pc.idx ?? i] ?? null : null, idx: pc?.idx ?? i }));
-  });
-  // ---- Efetivado: títulos (já são parcelas) ----
-  const committedSource = [...d.committed.map((c) => ({ t: "committed" as const, c, catId: c.categoryId })), ...d.expenses.map((e) => ({ t: "expense" as const, e, catId: e.categoryId }))]
-    .filter((r) => !fKind || kindOfCat(r.catId) === fKind || (!r.catId && fKind === "despesa" && r.t === "expense"));
-
-  const plannedValues = ({ p, r, pc, i, n, it }: (typeof plannedSource)[number]) => [kindL(p.categoryId), catOf(p.categoryId)?.name, (supplierIdentity(d, p).name), p.purchaseCode, p.document, p.notes, pc ? i + 1 : null, pc?.amount, dateValue(it?.date ?? pc?.date), dateValue(it?.extensionDate), p.status === "encerrado" ? "Encerrada" : p.status === "cancelado" ? "Cancelada" : r.effectivated > 0 ? "Efetivada parcialmente" : "Prevista"];
-  const plannedRows = queryReport(plannedSource.filter((r) => columnTest(plannedCF.f, PLANNED_COLS, plannedValues(r))), plannedReport.query, plannedReport.sort, plannedValues, (row) => [...plannedValues(row), ...(sup(row.p.supplierId)?.aliases ?? []), row.pc ? `${row.i + 1}/${row.n}` : "", row.pc ? fmtBRL(row.pc.amount) : "", fmtDate(row.it?.date ?? row.pc?.date ?? null), fmtDate(row.it?.extensionDate ?? null), row.r.health !== "ok" ? "conciliação pendente" : ""]);
-  const committedValues = (row: (typeof committedSource)[number]) => {
-    const t = row.t === "committed" ? row.c : row.e;
-    const ts = titleStatus(t.value, t.status, paymentsFor(d, row.t, t.id));
-    const due = row.t === "committed" ? row.c.dueDate : row.e.termDays != null ? addDays(row.e.baseDate, row.e.termDays) : null;
-    return [kindL(t.categoryId, row.t === "expense" ? "despesa" : "compra"), catOf(t.categoryId)?.name, (supplierIdentity(d, t).name), row.t === "committed" ? row.c.purchaseCode : null, row.t === "committed" ? groups.byId.get(t.id)?.document ?? t.document : t.document, t.notes, parcelValue(labels.get(t.id) ?? "1/1"), t.value, dateValue(due), dateValue(t.extensionDate), t.status === "cancelado" ? "Cancelado" : row.t === "committed" && row.c.origin === "efetivacao" ? "Efetivado (previsão)" : row.t === "committed" && row.c.origin === "legado" ? "Efetivado (histórico)" : "Efetivado", ts.state === "Parcial" ? "Parcialmente pago" : ts.state, ts.paid, Math.max(0, ts.open)];
-  };
-  const efetivados = queryReport(committedSource.filter((r) => columnTest(committedCF.f, COMMITTED_COLS, committedValues(r))), committedReport.query, committedReport.sort, committedValues, (row) => {
-    const t = row.t === "committed" ? row.c : row.e;
-    const v = committedValues(row);
-    return [...v, t.document, ...(sup(t.supplierId)?.aliases ?? []), labels.get(t.id) ?? "1/1", ...[7, 12, 13].map((i) => fmtBRL(Number(v[i]))), ...[8, 9].map((i) => typeof v[i] === "number" ? fmtDate(new Date(v[i]).toISOString().slice(0, 10)) : ""), paymentsFor(d, row.t, t.id).some((p) => p.method === "cartao") ? "Quitado com cartão parte no cartão" : ""];
-  });
-  const paymentValues = (p: ScenarioData["payments"][number]) => {
-    const t = p.titleKind === "committed" ? d.committed.find((c) => c.id === p.titleId) : d.expenses.find((e) => e.id === p.titleId);
-    return [dateValue(p.date), `${(supplierIdentity(d, t).name) ?? ""} · ${t?.document || "sem documento"}${labels.get(p.titleId) ? ` · parcela ${labels.get(p.titleId)}` : ""}`, p.method === "cartao" ? "Quitado com cartão" : p.accountId ? accountName(d, p.accountId) : NO_ACCOUNT, p.amount, p.note, p.reversedAt ? `estornado ${fmtDate(p.reversedAt.slice(0, 10))}: ${p.reversalNote}` : "ativo"];
-  };
-  const paymentRows = queryReport(d.payments.filter((r) => columnTest(paymentsCF.f, PAYMENT_COLS, paymentValues(r))), paymentsReport.query, paymentsReport.sort, paymentValues, (p) => {
-    const t = p.titleKind === "committed" ? d.committed.find((c) => c.id === p.titleId) : d.expenses.find((e) => e.id === p.titleId);
-    return [...paymentValues(p), ...(sup(t?.supplierId ?? "")?.aliases ?? []), t?.notes, t?.categoryId ? catOf(t.categoryId)?.name : "", fmtDate(p.date), fmtBRL(p.amount)];
-  });
-
+  const model = useMemo(() => createLaunchPresentation(d), [d]);
+  const plannedIndex = tab === "planned" ? model.planned : EMPTY_ROWS;
+  const committedIndex = tab === "committed" ? model.committed : EMPTY_ROWS;
+  const paymentIndex = tab === "payments" ? model.payments : EMPTY_ROWS;
+  const groups = tab === "committed" || tab === "payments" ? model.groups : EMPTY_GROUPS;
+  const labels = useMemo(() => new Map([...groups.byId].map(([id, group]) => [id, group.labels.get(id) ?? "1/1"])), [groups]);
+  const plannedSource = useMemo(() => plannedIndex.filter(({ row }) => !fKind || (kindOfCat(row.p.categoryId) || "compra") === fKind), [plannedIndex, fKind]);
+  const committedSource = useMemo(() => committedIndex.filter(({ row }) => !fKind || kindOfCat(row.catId) === fKind || (!row.catId && fKind === "despesa" && row.t === "expense")), [committedIndex, fKind]);
+  const plannedRows = useMemo(() => queryIndexedReport(plannedSource.filter(r => columnTest(plannedCF.f, PLANNED_COLS, r.values)), plannedReport.query, plannedReport.sort).map(r => r.row), [plannedSource, plannedCF.f, plannedReport.query, plannedReport.sort]);
+  const efetivados = useMemo(() => queryIndexedReport(committedSource.filter(r => columnTest(committedCF.f, COMMITTED_COLS, r.values)), committedReport.query, committedReport.sort).map(r => r.row), [committedSource, committedCF.f, committedReport.query, committedReport.sort]);
+  const paymentRows = useMemo(() => queryIndexedReport(paymentIndex.filter(r => columnTest(paymentsCF.f, PAYMENT_COLS, r.values)), paymentsReport.query, paymentsReport.sort).map(r => r.row), [paymentIndex, paymentsCF.f, paymentsReport.query, paymentsReport.sort]);
+  const suggestions = useMemo(() => tab === "planned" ? suggestFrom(plannedSource, r => r.values) : tab === "committed" ? suggestFrom(committedSource, r => r.values) : suggestFrom(paymentIndex, r => r.values), [tab, plannedSource, committedSource, paymentIndex]);
   const plannedPager = usePager(plannedRows.length, plannedRows.length + plannedReport.query + JSON.stringify(plannedReport.sort) + fKind + plannedCF.key);
   const committedPager = usePager(efetivados.length, efetivados.length + committedReport.query + JSON.stringify(committedReport.sort) + fKind + committedCF.key);
   const paymentsPager = usePager(paymentRows.length, paymentRows.length + paymentsReport.query + JSON.stringify(paymentsReport.sort) + paymentsCF.key);
@@ -159,16 +144,14 @@ function Page() {
           <select className="inp" value={fKind} onChange={(e) => setFKind(e.target.value as "" | CategoryKind)}><option value="">Todas</option><option value="compra">Compra</option><option value="despesa">Despesa</option></select>
         </div>
       )}
-      {tab !== "consultas" && <div className="filter-bar"><ReportSearch value={report.query} onChange={report.setQuery} count={tab === "planned" ? plannedRows.length : tab === "committed" ? efetivados.length : paymentRows.length} /><ColumnFilter key={tab} cols={tab === "planned" ? PLANNED_COLS : tab === "committed" ? COMMITTED_COLS : PAYMENT_COLS} filter={cf} suggest={tab === "planned" ? suggestFrom(plannedSource, plannedValues) : tab === "committed" ? suggestFrom(committedSource, committedValues) : suggestFrom(d.payments, paymentValues)} /><Button variant="outline" size="sm" onClick={() => { report.setQuery(""); setFKind(""); cf.clear(); }}>Limpar filtros</Button></div>}
-      <div hidden={tab !== "consultas"}><Consultas d={d} onManage={setManaged} /></div>
-      {tab === "committed" && groups.ambiguous.length > 0 && <details className="mb-2 text-xs"><summary>Identificações para revisão ({groups.ambiguous.length}) — mantidas individualmente</summary><div className="max-h-52 overflow-auto"><table className="tbl"><thead><tr><th>Fornecedor</th><th>Identificação</th><th>Motivo</th><th /></tr></thead><tbody>{groups.ambiguous.map((a) => <tr key={a.id}><td>{supplierIdentity(d, d.committed.find((c) => c.id === a.id)).name}</td><td>{a.document}</td><td>{a.reason}</td><td><Button size="sm" variant="outline" onClick={() => setManaged({ kind: "committed", id: a.id, parcel: a.id })}>Gerenciar lançamento</Button></td></tr>)}</tbody></table></div></details>}
+      {tab !== "consultas" && <div className="filter-bar"><ReportSearch value={report.query} onChange={report.setQuery} count={tab === "planned" ? plannedRows.length : tab === "committed" ? efetivados.length : paymentRows.length} /><ColumnFilter key={tab} cols={tab === "planned" ? PLANNED_COLS : tab === "committed" ? COMMITTED_COLS : PAYMENT_COLS} filter={cf} suggest={suggestions} /><Button variant="outline" size="sm" onClick={() => { report.setQuery(""); setFKind(""); cf.clear(); }}>Limpar filtros</Button></div>}
+      <div hidden={tab !== "consultas"}><CachedConsultas d={d} onManage={setManaged} /></div>
+      {tab === "committed" && <AmbiguousDocuments d={d} groups={model.groups} onManage={setManaged} />}
       {tab === "consultas" ? null : <div className="card overflow-auto">
         {tab === "planned" && (
           <table className="tbl"><thead><tr><SortHead label="Categoria" column={0} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Subgrupo" column={1} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Fornecedor" column={2} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Código do pedido" column={3} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Documento" column={4} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Descrição" column={5} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Parcela" column={6} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Valor da parcela" column={7} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={true} /><SortHead label="Vencimento" column={8} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Prorrogar para" column={9} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Situação do lançamento" column={10} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><th>Ações</th></tr></thead>
             <tbody>{plannedPager.slice(plannedRows).flatMap(({ p, r, pc, i, n, it, idx }) => {
               const label = `${(supplierIdentity(d, p).name) ?? "—"} · ${p.document || p.purchaseCode || "sem documento"} · parcela ${i + 1}/${n}`;
-              const baseAmt = it?.amount ?? distributePlanned(p, sup(p.supplierId), d.committed, d.params.profile, []).parcels[idx]?.amount ?? 0;
-              const effs = d.effectivations.filter((e) => e.plannedId === p.id);
               const sit = p.status === "encerrado" ? "Encerrada" : p.status === "cancelado" ? "Cancelada" : r.effectivated > 0 ? "Efetivada parcialmente" : "Prevista";
               const out = [
                 <tr key={p.id + i} id={i === 0 ? `pending-${p.id}` : undefined} tabIndex={0} onClick={(e) => { if (!(e.target as HTMLElement).closest("button, input")) setManaged({ kind: "planned", id: p.id, parcel: currentParcels(d, p.id)[i]?.key }); }} onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) setManaged({ kind: "planned", id: p.id, parcel: currentParcels(d, p.id)[i]?.key }); }} className={target.focus === p.id ? "bg-warning-soft" : ""}>
@@ -191,7 +174,7 @@ function Page() {
             <tbody>{committedPager.slice(efetivados).flatMap((r) => {
               if (r.t === "committed") {
                 const c = r.c;
-                const ts = titleStatus(c.value, c.status, paymentsFor(d, "committed", c.id));
+                const ts = titleStatus(c.value, c.status, model.paymentsFor("committed", c.id));
                 const lb = labels.get(c.id) ?? "1/1";
                 const label = `${(supplierIdentity(d, c).name) ?? "—"} · ${c.document || "sem documento"} · parcela ${lb}`;
                 const sibs = c.noteId ? d.committed.filter((x) => x.noteId === c.noteId).length : 1;
@@ -219,7 +202,7 @@ function Page() {
               }
               const e = r.e;
               const orig = e.termDays != null ? addDays(e.baseDate, e.termDays) : null;
-              const ts = titleStatus(e.value, e.status, paymentsFor(d, "expense", e.id));
+              const ts = titleStatus(e.value, e.status, model.paymentsFor("expense", e.id));
               const label = `${(supplierIdentity(d, e).name) ?? "—"} · ${e.document || "sem documento"}`;
               return [
                 <tr key={e.id} id={`pending-${e.id}`} tabIndex={0} onClick={(event) => { if (!(event.target as HTMLElement).closest("button, input")) setManaged({ kind: "expense", id: e.id, parcel: e.id }); }} onKeyDown={(event) => { if (event.key === "Enter" && event.target === event.currentTarget) setManaged({ kind: "expense", id: e.id, parcel: e.id }); }} className={target.focus === e.id ? "bg-warning-soft" : ""}>

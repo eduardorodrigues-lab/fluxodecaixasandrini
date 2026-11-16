@@ -68,7 +68,7 @@ export function ColumnFilter({ cols, filter, suggest }: { cols: FilterCol[]; fil
   const { f, setF } = filter;
   const c = cols[f.col];
   const listId = useId();
-  const opts = useMemo(() => (c?.type === "text" ? suggest(f.col) : []), [c, f.col]); // eslint-disable-line react-hooks/exhaustive-deps
+  const opts = useMemo(() => (c?.type === "text" ? suggest(f.col) : []), [c, f.col, suggest]);
   const active = c && (f.text.trim() || f.from || f.to || f.min != null || f.max != null);
   return <div className="flex min-w-0 flex-wrap items-end gap-2 text-xs">
     <label><span className="lbl block">Filtrar por</span><select className="inp h-8" value={f.col} onChange={(e) => setF({ ...EMPTY_CF, col: Number(e.target.value) })}><option value={-1}>—</option>{cols.map((x, i) => <option key={x.label} value={i}>{x.label}</option>)}</select></label>
