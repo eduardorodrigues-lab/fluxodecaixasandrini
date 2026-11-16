@@ -1,3 +1,5 @@
+import { OriginNote } from "@/components/OriginNote";
+import { presentLabel } from "@/lib/originText";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { DateInput, PageHeader } from "@/components/kit";
@@ -84,7 +86,7 @@ function Page() {
               <td>{fmtDate(r.date)}</td>
               <td><span className={`tag ${r.stage === "planejada" ? "tag-warn" : ""}`}>{r.stage === "planejada" ? "Planejada" : "Efetuada"}</span>{r.it.paid ? " · pago" : ""}</td>
               <td>{r.sub}</td>
-              <td>{r.it.label}{r.it.note && <span className="block text-[11px] text-muted-foreground">{r.it.note}</span>}</td>
+              <td>{presentLabel(r.it.label)}<OriginNote note={r.it.note} className="block text-[11px] text-muted-foreground" /></td>
               <td className={`num ${r.it.amount < 0 ? "neg" : ""}`}>{fmtBRL(r.it.amount)}</td>
             </tr>
           ))}{!rows.length && <tr><td colSpan={5} className="text-muted-foreground">Nenhuma despesa no período/filtros.</td></tr>}</tbody>

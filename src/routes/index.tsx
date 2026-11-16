@@ -1,3 +1,5 @@
+import { OriginNote } from "@/components/OriginNote";
+import { presentLabel } from "@/lib/originText";
 import { supplierIdentityOptions } from "@/lib/supplierIdentity";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
@@ -102,7 +104,7 @@ function FluxoPage() {
             <div className="num mb-2 text-base font-semibold">{fmtBRL(sel.row.values[sel.i] ?? 0)}</div>
             {sel.row.match ? (
               <ul className="space-y-1 text-xs">
-                {res.days[sel.i]?.items.filter(sel.row.match).map((it, j) => <li key={j} className="flex justify-between gap-2 border-b border-border py-1"><span>{it.label}{it.note && <span className="block text-muted-foreground">{it.note}</span>}</span><span className="num">{fmtBRL(it.amount)}</span></li>)}
+                {res.days[sel.i]?.items.filter(sel.row.match).map((it, j) => <li key={j} className="flex justify-between gap-2 border-b border-border py-1"><span>{presentLabel(it.label)}<OriginNote note={it.note} className="block text-muted-foreground" audit /></span><span className="num">{fmtBRL(it.amount)}</span></li>)}
               </ul>
             ) : <p className="text-xs text-muted-foreground">Linha de saldo: Saldo inicial + recebimento usado − saídas. Não é movimentação.</p>}
           </div>
