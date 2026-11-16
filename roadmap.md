@@ -1,5 +1,11 @@
 # Roadmap
 
+## Gerenciar lançamentos — autorizado 16/11/2026
+- [ ] Agrupamento seguro de documentos importados, consulta e Dashboard integrados
+- [ ] Painel único, edição por escopo, cancelamento protegido e revisão por data
+- [ ] Efetivação selecionada com restante manual confirmado e sem pagamento
+- [ ] Testes isolados, navegador UZ3 e comparação real somente leitura 2025–2030
+
 ## Migração autorizada de recebimentos (2026-11-16)
 - [x] Base v160 lida e backup recuperável; 28→17 plataformas + Geral; 1.225 linhas e 913 componentes preservados
 - [x] Oito testes focados; ZERO diferenças por dia/natureza, bancos e 2.191 dias de fluxo 2025–2030 antes/após gravação

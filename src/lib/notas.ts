@@ -1,3 +1,4 @@
+import { documentGroups } from "./documentGroups";
 // Nova nota (painel lateral): geração de parcelas, validação e gravação como lançamentos por parcela.
 // Funções puras sobre o rascunho do cenário — chamadas via update() só após "Revisar e confirmar".
 import { distributePlanned, splitCents } from "@/lib/engine/engine";
@@ -186,13 +187,5 @@ export function editCommittedNote(d: ScenarioData, committedId: string, patch: P
 
 /** Número da parcela por título: noteId quando existir; senão ordem por vencimento em fornecedor+código+documento. */
 export function parcelLabels(d: Pick<ScenarioData, "committed">): Map<string, string> {
-  const out = new Map<string, string>();
-  const groups = new Map<string, Committed[]>();
-  for (const c of d.committed) {
-    if (c.noteId && c.parcelNo && c.parcelCount) { out.set(c.id, `${c.parcelNo}/${c.parcelCount}`); continue; }
-    const k = `${c.supplierId}|${c.purchaseCode}|${c.document}`;
-    groups.set(k, [...(groups.get(k) ?? []), c]);
-  }
-  for (const g of groups.values()) { g.sort((a, b) => a.dueDate.localeCompare(b.dueDate)); g.forEach((c, i) => out.set(c.id, `${i + 1}/${g.length}`)); }
-  return out;
+  return new Map([...documentGroups(d).byId].map(([id, group]) => [id, group.labels.get(id) ?? "1/1"]));
 }

@@ -1,3 +1,6 @@
+import { ManageLaunchPanel } from "@/components/ManageLaunchPanel";
+import { documentGroups } from "@/lib/documentGroups";
+import type { LaunchRef } from "@/lib/manageLaunch";
 import { supplierIdentity } from "@/lib/supplierIdentity";
 import { ColumnFilter, columnTest, DetailReport, Pager, ReportSearch, SortHead, suggestFrom, useColumnFilter, usePager, useReportState, type FilterCol } from "@/components/ReportControls";
 import { dateValue, parcelValue, queryReport } from "@/lib/reportTable";
@@ -89,6 +92,7 @@ function Page() {
   const report = tab === "planned" ? plannedReport : tab === "committed" ? committedReport : paymentsReport;
   const [open, setOpen] = useState<{ kind: string; id: string } | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
+  const [managed, setManaged] = useState<LaunchRef | null>(null);
   const act = (fn: (x: ScenarioData) => void) => { const e = update(fn); setErr(e ?? ""); return !e; };
   const actAlone = (fn: (x: ScenarioData) => void, what: string) => {
     if (active.isBase && changes.length) { setErr(`Há alterações não salvas. Salve ou descarte antes de ${what}.`); return false; }
@@ -102,7 +106,8 @@ function Page() {
   const del = (k: "planned" | "committed" | "expenses", id: string) => act((x) => { (x[k] as { id: string }[]) = (x[k] as { id: string }[]).filter((i) => i.id !== id); });
   const isOpen = (kind: string, id: string) => open?.kind === kind && open.id === id;
   const toggle = (kind: string, id: string) => setOpen(isOpen(kind, id) ? null : { kind, id });
-  const labels = parcelLabels(d);
+  const groups = documentGroups(d);
+  const labels = new Map([...groups.byId].map(([id, group]) => [id, group.labels.get(id) ?? "1/1"]));
 
   // ---- Planejada: uma linha por parcela ----
   const plannedSource = d.planned.filter((p) => !fKind || (kindOfCat(p.categoryId) || "compra") === fKind).flatMap((p) => {
@@ -121,12 +126,12 @@ function Page() {
     const t = row.t === "committed" ? row.c : row.e;
     const ts = titleStatus(t.value, t.status, paymentsFor(d, row.t, t.id));
     const due = row.t === "committed" ? row.c.dueDate : row.e.termDays != null ? addDays(row.e.baseDate, row.e.termDays) : null;
-    return [kindL(t.categoryId, row.t === "expense" ? "despesa" : "compra"), catOf(t.categoryId)?.name, (supplierIdentity(d, t).name), row.t === "committed" ? row.c.purchaseCode : null, t.document, t.notes, parcelValue(labels.get(t.id) ?? "1/1"), t.value, dateValue(due), dateValue(t.extensionDate), t.status === "cancelado" ? "Cancelado" : row.t === "committed" && row.c.origin === "efetivacao" ? "Efetivado (previsão)" : row.t === "committed" && row.c.origin === "legado" ? "Efetivado (histórico)" : "Efetivado", ts.state === "Parcial" ? "Parcialmente pago" : ts.state, ts.paid, Math.max(0, ts.open)];
+    return [kindL(t.categoryId, row.t === "expense" ? "despesa" : "compra"), catOf(t.categoryId)?.name, (supplierIdentity(d, t).name), row.t === "committed" ? row.c.purchaseCode : null, row.t === "committed" ? groups.byId.get(t.id)?.document ?? t.document : t.document, t.notes, parcelValue(labels.get(t.id) ?? "1/1"), t.value, dateValue(due), dateValue(t.extensionDate), t.status === "cancelado" ? "Cancelado" : row.t === "committed" && row.c.origin === "efetivacao" ? "Efetivado (previsão)" : row.t === "committed" && row.c.origin === "legado" ? "Efetivado (histórico)" : "Efetivado", ts.state === "Parcial" ? "Parcialmente pago" : ts.state, ts.paid, Math.max(0, ts.open)];
   };
   const efetivados = queryReport(committedSource.filter((r) => columnTest(committedCF.f, COMMITTED_COLS, committedValues(r))), committedReport.query, committedReport.sort, committedValues, (row) => {
     const t = row.t === "committed" ? row.c : row.e;
     const v = committedValues(row);
-    return [...v, ...(sup(t.supplierId)?.aliases ?? []), labels.get(t.id) ?? "1/1", ...[7, 12, 13].map((i) => fmtBRL(Number(v[i]))), ...[8, 9].map((i) => typeof v[i] === "number" ? fmtDate(new Date(v[i]).toISOString().slice(0, 10)) : ""), paymentsFor(d, row.t, t.id).some((p) => p.method === "cartao") ? "Quitado com cartão parte no cartão" : ""];
+    return [...v, t.document, ...(sup(t.supplierId)?.aliases ?? []), labels.get(t.id) ?? "1/1", ...[7, 12, 13].map((i) => fmtBRL(Number(v[i]))), ...[8, 9].map((i) => typeof v[i] === "number" ? fmtDate(new Date(v[i]).toISOString().slice(0, 10)) : ""), paymentsFor(d, row.t, t.id).some((p) => p.method === "cartao") ? "Quitado com cartão parte no cartão" : ""];
   });
   const paymentValues = (p: ScenarioData["payments"][number]) => {
     const t = p.titleKind === "committed" ? d.committed.find((c) => c.id === p.titleId) : d.expenses.find((e) => e.id === p.titleId);
@@ -156,7 +161,7 @@ function Page() {
         </div>
       )}
       {tab !== "consultas" && <div className="filter-bar"><ReportSearch value={report.query} onChange={report.setQuery} count={tab === "planned" ? plannedRows.length : tab === "committed" ? efetivados.length : paymentRows.length} /><ColumnFilter key={tab} cols={tab === "planned" ? PLANNED_COLS : tab === "committed" ? COMMITTED_COLS : PAYMENT_COLS} filter={cf} suggest={tab === "planned" ? suggestFrom(plannedSource, plannedValues) : tab === "committed" ? suggestFrom(committedSource, committedValues) : suggestFrom(d.payments, paymentValues)} /><Button variant="outline" size="sm" onClick={() => { report.setQuery(""); setFKind(""); cf.clear(); }}>Limpar filtros</Button></div>}
-      <div hidden={tab !== "consultas"}><Consultas d={d} /></div>
+      <div hidden={tab !== "consultas"}><Consultas d={d} onManage={setManaged} /></div>
       {tab === "consultas" ? null : <div className="card overflow-auto">
         {tab === "planned" && (
           <table className="tbl"><thead><tr><SortHead label="Categoria" column={0} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Subgrupo" column={1} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Fornecedor" column={2} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Código do pedido" column={3} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Documento" column={4} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Descrição" column={5} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Parcela" column={6} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Valor da parcela" column={7} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={true} /><SortHead label="Vencimento" column={8} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Prorrogar para" column={9} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Situação do lançamento" column={10} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><th>Ações</th></tr></thead>
@@ -166,20 +171,13 @@ function Page() {
               const effs = d.effectivations.filter((e) => e.plannedId === p.id);
               const sit = p.status === "encerrado" ? "Encerrada" : p.status === "cancelado" ? "Cancelada" : r.effectivated > 0 ? "Efetivada parcialmente" : "Prevista";
               const out = [
-                <tr key={p.id + i} id={i === 0 ? `pending-${p.id}` : undefined} tabIndex={-1} className={target.focus === p.id ? "bg-warning-soft" : ""}>
+                <tr key={p.id + i} id={i === 0 ? `pending-${p.id}` : undefined} tabIndex={0} onClick={(e) => { if (!(e.target as HTMLElement).closest("button, input")) setManaged({ kind: "planned", id: p.id, parcel: currentParcels(d, p.id)[i]?.key }); }} onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) setManaged({ kind: "planned", id: p.id, parcel: currentParcels(d, p.id)[i]?.key }); }} className={target.focus === p.id ? "bg-warning-soft" : ""}>
                   <td>{kindL(p.categoryId)}</td><Txt v={catOf(p.categoryId)?.name} /><Txt v={supplierIdentity(d, p).name} /><Txt v={p.purchaseCode} /><Txt v={p.document} /><Txt v={p.notes} />
                   <td>{pc ? `${i + 1}/${n}` : "—"}</td><td className="num">{pc ? fmtBRL(pc.amount) : "—"}</td>
                   <td>{pc ? fmtDate(it ? it.date : pc.date) : "—"}</td><td>{it?.extensionDate ? <span className="tag tag-warn">{fmtDate(it.extensionDate)}</span> : "—"}</td>
                   <td><span className={`tag ${r.health === "ok" ? "" : "tag-err"}`}>{sit}{r.health !== "ok" ? " · conciliação pendente" : ""}</span></td>
                   <td><Acoes>
-                    {p.status === "ativo" && <button className="btn btn-primary" disabled={r.health !== "ok" || !pc} onClick={() => { const k = currentParcels(d, p.id)[i]?.key; if (k) setPanel({ t: "eff", id: p.id, mode: "parcela", sel: [k] }); }}>Efetivar esta parcela</button>}
-                    {p.status === "ativo" && <button className="btn" disabled={r.health !== "ok" || !pc} onClick={() => setPanel({ t: "eff", id: p.id, mode: "documento", sel: [] })}>Efetivar documento</button>}
-                    {p.status === "ativo" && pc && <button className="btn" disabled={r.health !== "ok"} onClick={() => setPanel({ t: "eff", id: p.id, mode: "ajustar", sel: [] })}>Ajustar planejamento</button>}
-                    {pc && p.status === "ativo" && <button className="btn" onClick={() => setPanel({ t: "parcela", label, amount: baseAmt, date: it ? it.date : pc.date, save: (x, amount, date) => editPlannedParcel(x, p.id, idx, { amount, date }), log: (x) => x.planned.find((y) => y.id === p.id) })}>Editar esta parcela</button>}
-                    <button className="btn" onClick={() => setPanel({ t: "nota", init: noteInit(p, "compra"), siblings: n, save: (x, f) => { const t = x.planned.find((y) => y.id === p.id); if (t) Object.assign(t, { categoryId: f.categoryId, supplierId: f.supplierId, purchaseCode: f.purchaseCode, document: f.document, notes: f.notes }); } })}>Editar dados da nota</button>
-                    {pc && p.status === "ativo" && <button className="btn" onClick={() => setPanel({ t: "prorrogar", label, current: it?.extensionDate ?? null, original: it ? it.date : pc.date, history: it?.extensionHistory ?? [], save: (x, to, note) => extendPlannedParcel(x, p.id, idx, to, note, now()) })}>Prorrogar parcela</button>}
-                    <button className="btn" onClick={() => toggle("tl", p.id + ":" + idx)}>Detalhes ({effs.length})</button>
-                    <button className="btn btn-danger" onClick={async () => await askConfirm("Excluir esta previsão (todas as parcelas)?") && del("planned", p.id)}>Excluir nota</button>
+                    <Button variant="outline" size="sm" onClick={() => setManaged({ kind: "planned", id: p.id, parcel: currentParcels(d, p.id)[i]?.key })}>Gerenciar lançamento</Button>
                   </Acoes></td>
                 </tr>,
               ];
@@ -199,20 +197,14 @@ function Page() {
                 const sibs = c.noteId ? d.committed.filter((x) => x.noteId === c.noteId).length : 1;
                 const pl = c.plannedId ? d.planned.find((p) => p.id === c.plannedId) : null;
                 return [
-                  <tr key={c.id} id={`pending-${c.id}`} tabIndex={-1} className={target.focus === c.id ? "bg-warning-soft" : ""}>
-                    <td>{kindL(c.categoryId)}</td><Txt v={catOf(c.categoryId)?.name} /><Txt v={supplierIdentity(d, c).name} /><Txt v={c.purchaseCode} /><Txt v={c.document} /><Txt v={c.notes} />
+                  <tr key={c.id} id={`pending-${c.id}`} tabIndex={0} onClick={(event) => { if (!(event.target as HTMLElement).closest("button, input")) setManaged({ kind: "committed", id: c.id, parcel: c.id }); }} onKeyDown={(event) => { if (event.key === "Enter" && event.target === event.currentTarget) setManaged({ kind: "committed", id: c.id, parcel: c.id }); }} className={target.focus === c.id ? "bg-warning-soft" : ""}>
+                    <td>{kindL(c.categoryId)}</td><Txt v={catOf(c.categoryId)?.name} /><Txt v={supplierIdentity(d, c).name} /><Txt v={c.purchaseCode} /><Txt v={groups.byId.get(c.id)?.document ?? c.document} /><Txt v={c.notes} />
                     <td>{lb}</td><td className="num">{fmtBRL(c.value)}</td><td>{fmtDate(c.dueDate)}</td><td>{c.extensionDate ? <span className="tag tag-warn">{fmtDate(c.extensionDate)}</span> : "—"}</td>
                     <td>{c.status === "cancelado" ? "Cancelado" : c.origin === "efetivacao" ? "Efetivado (previsão)" : c.origin === "legado" ? "Efetivado (histórico)" : "Efetivado"}</td>
                     <td><span className={`tag ${ts.state === "Pago" ? "tag-ok" : ts.state === "Parcial" ? "tag-warn" : ""}`}>{ts.state === "Parcial" ? "Parcialmente pago" : ts.state}</span>{ts.payments.some((p) => p.method === "cartao") && <span className="tag tag-ok ml-1">{ts.payments.every((p) => p.method === "cartao") && ts.open <= 0 ? "Quitado com cartão" : "parte no cartão"}</span>}</td>
                     <td className="num">{fmtBRL(ts.paid)}</td><td className="num">{fmtBRL(Math.max(0, ts.open))}</td>
                     <td><Acoes>
-                      {c.status === "ativo" && ts.open > 0 && <button className="btn btn-primary" disabled={!active.isBase} title={active.isBase ? "" : "Simulação não registra pagamentos"} onClick={() => setPanel({ t: "pay", kind: "committed", id: c.id, label })}>Registrar pagamento</button>}
-                      <button className="btn" onClick={() => setPanel({ t: "parcela", label, amount: c.value, date: c.dueDate, save: (x, amount, date) => { const t = x.committed.find((y) => y.id === c.id); if (t) Object.assign(t, { value: amount, dueDate: date }); }, log: (x) => x.committed.find((y) => y.id === c.id) })}>Editar esta parcela</button>
-                      <button className="btn" onClick={() => setPanel({ t: "nota", init: noteInit(c, "compra"), siblings: sibs, save: (x, f) => editCommittedNote(x, c.id, { categoryId: f.categoryId, supplierId: f.supplierId, purchaseCode: f.purchaseCode, document: f.document, notes: f.notes }) })}>Editar dados da nota</button>
-                      <button className="btn" onClick={() => setPanel({ t: "prorrogar", label, current: c.extensionDate, original: c.dueDate, history: c.extensionHistory, save: (x, to, note) => confirmExtension(x, "committed", c.id, to, note, now()) })}>Prorrogar parcela</button>
-                      <button className="btn" onClick={() => toggle("det", c.id)}>Detalhes</button>
-                      {c.status === "ativo" ? <button className="btn" onClick={async () => await askConfirm(`A parcela ${label} será cancelada. Pagamentos e histórico não serão desfeitos.`, { title: "Cancelar parcela?", action: "Cancelar parcela", destructive: true }) && act((x) => { const t = x.committed.find((y) => y.id === c.id); if (t) t.status = "cancelado"; })}>Cancelar parcela</button> : <button className="btn" onClick={async () => await askConfirm(`A parcela ${label} voltará a compor o fluxo. Pagamentos anteriores serão preservados.`, { title: "Reativar parcela?", action: "Reativar parcela" }) && act((x) => { const t = x.committed.find((y) => y.id === c.id); if (t) t.status = "ativo"; })}>Reativar parcela</button>}
-                      <button className="btn btn-danger" onClick={async () => await askConfirm("Excluir esta parcela?") && del("committed", c.id)}>Excluir parcela</button>
+                      <Button variant="outline" size="sm" onClick={() => setManaged({ kind: "committed", id: c.id, parcel: c.id })}>Gerenciar lançamento</Button>
                     </Acoes></td>
                   </tr>,
                   isOpen("det", c.id) && <tr key={c.id + "-d"}><td colSpan={15} className="bg-muted">
@@ -230,19 +222,14 @@ function Page() {
               const ts = titleStatus(e.value, e.status, paymentsFor(d, "expense", e.id));
               const label = `${(supplierIdentity(d, e).name) ?? "—"} · ${e.document || "sem documento"}`;
               return [
-                <tr key={e.id} id={`pending-${e.id}`} tabIndex={-1} className={target.focus === e.id ? "bg-warning-soft" : ""}>
+                <tr key={e.id} id={`pending-${e.id}`} tabIndex={0} onClick={(event) => { if (!(event.target as HTMLElement).closest("button, input")) setManaged({ kind: "expense", id: e.id, parcel: e.id }); }} onKeyDown={(event) => { if (event.key === "Enter" && event.target === event.currentTarget) setManaged({ kind: "expense", id: e.id, parcel: e.id }); }} className={target.focus === e.id ? "bg-warning-soft" : ""}>
                   <td>{kindL(e.categoryId, "despesa")}</td><Txt v={catOf(e.categoryId)?.name} /><Txt v={supplierIdentity(d, e).name} /><td>—</td><Txt v={e.document} /><Txt v={e.notes} />
                   <td>1/1</td><td className="num">{fmtBRL(e.value)}</td><td>{orig ? fmtDate(orig) : <span className="tag tag-warn">não distribuída</span>}</td><td>{e.extensionDate ? <span className="tag tag-warn">{fmtDate(e.extensionDate)}</span> : "—"}</td>
                   <td>{e.status === "cancelado" ? "Cancelado" : "Efetivado"}</td>
                   <td><span className={`tag ${ts.state === "Pago" ? "tag-ok" : ts.state === "Parcial" ? "tag-warn" : ""}`}>{ts.state === "Parcial" ? "Parcialmente pago" : ts.state}</span>{ts.payments.some((p) => p.method === "cartao") && <span className="tag tag-ok ml-1">{ts.payments.every((p) => p.method === "cartao") && ts.open <= 0 ? "Quitado com cartão" : "parte no cartão"}</span>}</td>
                   <td className="num">{fmtBRL(ts.paid)}</td><td className="num">{fmtBRL(Math.max(0, ts.open))}</td>
                   <td><Acoes>
-                    {e.status === "ativo" && ts.open > 0 && expenseDate(e) && <button className="btn btn-primary" disabled={!active.isBase} onClick={() => setPanel({ t: "pay", kind: "expense", id: e.id, label })}>Registrar pagamento</button>}
-                    <button className="btn" onClick={() => setPanel({ t: "parcela", label, amount: e.value, date: orig ?? e.baseDate, save: (x, amount, date) => { const t = x.expenses.find((y) => y.id === e.id); if (t) Object.assign(t, { value: amount, termDays: daysBetween(t.baseDate, date) }); }, log: (x) => x.expenses.find((y) => y.id === e.id) })}>Editar esta parcela</button>
-                    <button className="btn" onClick={() => setPanel({ t: "nota", init: noteInit(e, "despesa"), siblings: 1, save: (x, f) => { const t = x.expenses.find((y) => y.id === e.id); if (t) Object.assign(t, { categoryId: f.categoryId, supplierId: f.supplierId, document: f.document, notes: f.notes }); } })}>Editar dados da nota</button>
-                    <button className="btn" onClick={() => setPanel({ t: "prorrogar", label, current: e.extensionDate, original: orig, history: e.extensionHistory, save: (x, to, note) => confirmExtension(x, "expense", e.id, to, note, now()) })}>Prorrogar parcela</button>
-                    <button className="btn" onClick={() => toggle("det", e.id)}>Detalhes e baixas</button>
-                    <button className="btn btn-danger" onClick={async () => await askConfirm("Excluir esta parcela?") && del("expenses", e.id)}>Excluir parcela</button>
+                    <Button variant="outline" size="sm" onClick={() => setManaged({ kind: "expense", id: e.id, parcel: e.id })}>Gerenciar lançamento</Button>
                   </Acoes></td>
                 </tr>,
                 isOpen("det", e.id) && <tr key={e.id + "-d"}><td colSpan={15} className="bg-muted p-2"><div className="lbl mb-1">Baixas da parcela</div><BaixasList d={d} kind="expense" titleId={e.id} canReverse={active.isBase} onReverse={(id, n) => act((x) => reversePayment(x, id, n, now()))} />{e.cardId && <p className="mt-1">Compra no cartão — paga pela fatura{e.invoiceId ? "" : " (fatura ainda não fechada)"}.</p>}</td></tr>,
@@ -263,8 +250,9 @@ function Page() {
       {tab === "planned" && <Pager pager={plannedPager} />}{tab === "committed" && <Pager pager={committedPager} />}{tab === "payments" && <Pager pager={paymentsPager} />}
       <p className="mt-2 text-[11px] text-muted-foreground">Registrar pagamento é o registro de uma baixa já realizada (Pix, TED, DOC ou Boleto) — não executa transferência bancária. Boleto pago com cartão não debita conta: passa para a fatura.</p>
 
+      {managed && <ManageLaunchPanel key={`${managed.kind}:${managed.id}`} launch={managed} onClose={() => setManaged(null)} />}
       {panel?.t === "pay" && <PagamentoPanel d={d} kind={panel.kind} titleId={panel.id} label={panel.label} onCancel={() => setPanel(null)} onConfirm={(r) => { const ok = act((x) => r.origin === "conta" ? registerPaymentBatch(x, { batchId: uid(), titleKind: panel.kind, titleId: panel.id, lines: r.lines, note: r.note, form: r.form }) : coverTitleWithCard(x, { id: uid(), at: now(), by: user?.email ?? "", titleKind: panel.kind, titleId: panel.id, cardId: r.cardId, date: r.date, amount: r.amount, fee: r.fee, installments: r.installments, form: "boleto" })); if (ok) setPanel(null); return ok; }} />}
-      {panel?.t === "new" && <NovaNota d={d} isBase={active.isBase} onCancel={() => setPanel(null)} onConfirm={(n, sv) => { const ok = act((x) => { if (sv) saveSupplierCondition(x, n.supplierId, sv.terms, now(), sv.name, user?.email ?? ""); applyNote(x, n, { id: uid, at: now() }); }); if (ok) setPanel(null); return ok; }} />}
+      {panel?.t === "new" && <NovaNota d={d} isBase={active.isBase} onManagePlanned={(id) => { setPanel(null); setManaged({ kind: "planned", id }); }} onCancel={() => setPanel(null)} onConfirm={(n, sv) => { const ok = act((x) => { if (sv) saveSupplierCondition(x, n.supplierId, sv.terms, now(), sv.name, user?.email ?? ""); applyNote(x, n, { id: uid, at: now() }); }); if (ok) setPanel(null); return ok; }} />}
       {panel?.t === "parcela" && <ParcelaPanel label={panel.label} amount={panel.amount} date={panel.date} onCancel={() => setPanel(null)} onSave={(a, dt, note) => doPanel((x) => { panel.save(x, a, dt); const r = panel.log(x); if (r) (r.editLog ??= []).push({ at: now(), by: user?.email ?? "", note, parcel: panel.label, before: { amount: panel.amount, date: panel.date }, after: { amount: a, date: dt } }); })} />}
       {panel?.t === "nota" && <DadosNotaPanel d={d} init={panel.init} siblings={panel.siblings} onCancel={() => setPanel(null)} onSave={(f) => doPanel((x) => panel.save(x, f))} />}
       {panel?.t === "prorrogar" && <ProrrogarPanel label={panel.label} current={panel.current} original={panel.original} history={panel.history} isBase={active.isBase} onCancel={() => setPanel(null)} onSave={(to, note) => doPanel((x) => panel.save(x, to, note))} />}

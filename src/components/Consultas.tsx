@@ -1,3 +1,5 @@
+import { documentGroups } from "@/lib/documentGroups";
+import type { LaunchRef } from "@/lib/manageLaunch";
 import { supplierIdentity } from "@/lib/supplierIdentity";
 import { ColumnFilter, columnTest, DetailReport, Pager, ReportSearch, SortHead, suggestFrom, useColumnFilter, usePager, useReportState, type FilterCol } from "@/components/ReportControls";
 import { dateValue, parcelValue, queryReport, reportCSV } from "@/lib/reportTable";
@@ -11,13 +13,14 @@ import { SupplierSearch } from "@/components/NotaPanel";
 import { fmtBRL } from "@/lib/money";
 
 export interface ConsultaRow {
-  search?: string[]; key: string; supplierId: string; supplier: string; document: string; parcel: string; category: string; sub: string;
+  launch?: LaunchRef; search?: string[]; key: string; supplierId: string; supplier: string; document: string; parcel: string; category: string; sub: string;
   value: number; due: string | null; extended: string | null; effective: string | null;
   paid: number; open: number; state: string; lastPay: string | null; payments: Payment[]; history: ExtensionEvent[];
 }
 
 /** Uma linha por título (parcela/boleto) a partir dos lançamentos existentes — sem duplicar dados. */
 export function buildConsulta(d: ScenarioData): ConsultaRow[] {
+  const index = documentGroups(d);
   const cat = (id: string) => d.categories.find((c) => c.id === id);
   const rows: ConsultaRow[] = [];
   const push = (kind: "committed" | "expense", id: string, supplierId: string, document: string, groupKey: string, value: number, status: string, due: string | null, ext: string | null, categoryId: string, history: ExtensionEvent[], srcName?: string) => {
@@ -26,10 +29,10 @@ export function buildConsulta(d: ScenarioData): ConsultaRow[] {
     const pays = [...ts.payments].sort((a, b) => a.date.localeCompare(b.date));
     const source = kind === "committed" ? d.committed.find((r) => r.id === id) : d.expenses.find((r) => r.id === id);
     const identity = supplierIdentity(d, source);
-    rows.push({ key: `${kind}:${id}|${groupKey}`, supplierId: identity.key, supplier: identity.name, document, parcel: "", category: c ? (c.kind === "compra" ? "Compra" : "Despesa") : "—", sub: c?.name ?? "—", value, due, extended: ext, effective: ext || due, paid: ts.paid, open: Math.max(0, ts.open), state: ts.state === "Parcial" ? "Parcialmente pago" : ts.state, lastPay: pays.at(-1)?.date ?? null, payments: pays, history });
+    rows.push({ launch: { kind, id, parcel: id }, key: `${kind}:${id}|${groupKey}`, supplierId: identity.key, supplier: identity.name, document, parcel: "", category: c ? (c.kind === "compra" ? "Compra" : "Despesa") : "—", sub: c?.name ?? "—", value, due, extended: ext, effective: ext || due, paid: ts.paid, open: Math.max(0, ts.open), state: ts.state === "Parcial" ? "Parcialmente pago" : ts.state, lastPay: pays.at(-1)?.date ?? null, payments: pays, history });
   };
   // Importados sem vínculo cadastral: agrupa pelo nome da fonte; documento vazio = título independente.
-  for (const c of d.committed) push("committed", c.id, c.supplierId, c.document, c.supplierId || c.document ? `${c.supplierId || c.sourceSupplier}|${c.purchaseCode}|${c.document}` : c.id, c.value, c.status, c.dueDate, c.extensionDate, c.categoryId, c.extensionHistory ?? [], c.sourceSupplier);
+  for (const c of d.committed) push("committed", c.id, c.supplierId, index.byId.get(c.id)?.document ?? c.document, index.byId.get(c.id)?.key ?? c.id, c.value, c.status, c.dueDate, c.extensionDate, c.categoryId, c.extensionHistory ?? [], c.sourceSupplier);
   for (const e of d.expenses) {
     const orig = e.termDays != null ? addDays(e.baseDate, e.termDays) : null;
     push("expense", e.id, e.supplierId, e.document, e.supplierId || e.document ? `${e.supplierId || e.sourceSupplier}||${e.document}` : e.id, e.value, e.status, orig, e.extensionDate, e.categoryId, e.extensionHistory ?? [], e.sourceSupplier);
@@ -43,8 +46,9 @@ export function buildConsulta(d: ScenarioData): ConsultaRow[] {
   }
   for (const r of rows) {
     const titleId = r.key.split("|")[0]?.split(":")[1];
+    if (titleId && index.byId.has(titleId)) r.parcel = index.byId.get(titleId)?.labels.get(titleId) ?? "1/1";
     const t = d.committed.find((c) => c.id === titleId) ?? d.expenses.find((e) => e.id === titleId);
-    r.search = [...(d.suppliers.find((s) => s.id === r.supplierId)?.aliases ?? []), t?.notes ?? "", t && "purchaseCode" in t ? t.purchaseCode : ""];
+    r.search = [t?.document ?? "",...(d.suppliers.find((s) => s.id === r.supplierId)?.aliases ?? []), t?.notes ?? "", t && "purchaseCode" in t ? t.purchaseCode : ""];
   }
   return rows;
 }
@@ -78,7 +82,7 @@ export function consultaReport(all: ConsultaRow[], f: ConsultaFilter, byDoc: boo
 /** Agrupa por documento (fornecedor+documento): soma valores, pago e aberto das parcelas. */
 export function groupByDocument(rows: ConsultaRow[]): ConsultaRow[] {
   const m = new Map<string, ConsultaRow[]>();
-  for (const r of rows) { const k = r.document ? `${r.supplierId}|${r.document}` : r.key; m.set(k, [...(m.get(k) ?? []), r]); }
+  for (const r of rows) { const k = r.document ? r.key.split("|").slice(1).join("|") || `${r.supplierId}|${r.document}` : r.key; m.set(k, [...(m.get(k) ?? []), r]); }
   return [...m.entries()].map(([k, g]) => {
     const paid = g.reduce((a, r) => a + r.paid, 0), open = g.reduce((a, r) => a + r.open, 0), value = g.reduce((a, r) => a + r.value, 0);
     const first = [...g].sort((a, b) => (a.effective ?? "").localeCompare(b.effective ?? ""))[0];
@@ -88,17 +92,17 @@ export function groupByDocument(rows: ConsultaRow[]): ConsultaRow[] {
   });
 }
 
-export function Consultas({ d }: { d: ScenarioData }) {
+export function Consultas({ d, onManage }: { d: ScenarioData; onManage?: ((ref: LaunchRef) => void) | undefined }) {
   const [rep, setRep] = useState<"boletos" | "dia">("boletos");
   return <div>
     <div className="mb-2 flex gap-1 text-xs">{([["boletos", "Boletos e pagamentos"], ["dia", "Relatório de Pagamentos do Dia"]] as const).map(([k, l]) => <button key={k} className={`btn ${rep === k ? "btn-primary" : ""}`} onClick={() => setRep(k)}>{l}</button>)}</div>
-    <div hidden={rep !== "dia"}><PagamentosDia /></div><div hidden={rep !== "boletos"}><ConsultaBoletos d={d} /></div>
+    <div hidden={rep !== "dia"}><PagamentosDia /></div><div hidden={rep !== "boletos"}><ConsultaBoletos d={d} onManage={onManage} /></div>
   </div>;
 }
 const cT = (label: string, type: FilterCol["type"] = "text"): FilterCol => ({ label, type });
 const C_COLS = [cT("Fornecedor"), cT("Documento"), cT("Parcela"), cT("Categoria"), cT("Subgrupo"), cT("Valor", "money"), cT("Vencimento", "date"), cT("Prorrogado para", "date"), cT("Pago", "money"), cT("Saldo", "money"), cT("Situação"), cT("Última baixa", "date")];
 const cVals = (r: ConsultaRow) => [r.supplier, r.document, r.parcel, r.category, r.sub, r.value, dateValue(r.due), dateValue(r.extended), r.paid, r.open, r.state, dateValue(r.lastPay)];
-function ConsultaBoletos({ d }: { d: ScenarioData }) {
+function ConsultaBoletos({ d, onManage }: { d: ScenarioData; onManage?: ((ref: LaunchRef) => void) | undefined }) {
   const all = useMemo(() => buildConsulta(d), [d]);
   const [f, setF] = useState<ConsultaFilter>(EMPTY_FILTER);
   const [sel, setSel] = useState<ConsultaRow | null>(null);
@@ -152,7 +156,7 @@ function ConsultaBoletos({ d }: { d: ScenarioData }) {
       </div>
       <div className="card overflow-auto">
         <table className="tbl"><thead><tr>{HEAD.map((h, i) => <SortHead key={h} label={h} column={i} sort={report.sort} onSort={report.toggle} numeric={[5, 8, 9].includes(i)} />)}</tr></thead>
-          <tbody>{pager.slice(rows).map((r) => <tr key={r.key} className="cursor-pointer hover:bg-muted" onClick={() => setSel(r)}>{consultaCells(r).map((c, i) => <td key={i} className={[5, 8, 9].includes(i) ? "num" : ""}>{c}</td>)}</tr>)}
+          <tbody>{pager.slice(rows).map((r) => <tr key={r.key} className="cursor-pointer hover:bg-muted" onClick={() => { if (onManage && r.launch) onManage(r.launch); else setSel(r); }}>{consultaCells(r).map((c, i) => <td key={i} className={[5, 8, 9].includes(i) ? "num" : ""}>{c}</td>)}</tr>)}
             {!rows.length && <tr><td colSpan={HEAD.length} className="text-center text-muted-foreground">Nenhum resultado para os filtros informados</td></tr>}</tbody></table><Pager pager={pager} />
       </div>
       {sel && (

@@ -1,3 +1,6 @@
+import { documentGroups, type DocumentIndex } from "./documentGroups";
+import { currentParcels } from "./efetivacao";
+import type { LaunchRef } from "./manageLaunch";
 import { fmtDate } from "./dates";
 import { fmtBRL } from "./money";
 import { distributePlanned } from "./engine/engine";
@@ -18,16 +21,17 @@ export function supplierSlot(id: string) {
   return (hash >>> 0) % 12;
 }
 export interface ReportCell { text: string; amount?: number }
-export interface SourceRow { id: string; group: string; label: string; supplierId?: string | undefined; cells: ReportCell[]; value: number; stage?: "planned" | "open" }
+export interface SourceRow { launch?: LaunchRef; id: string; group: string; label: string; supplierId?: string | undefined; cells: ReportCell[]; value: number; stage?: "planned" | "open" }
 export interface ChartGroup { key: string; label: string; value: number; second?: number; supplierId?: string }
 export interface DashboardReport { heads: string[]; rows: SourceRow[]; groups: ChartGroup[]; type: "line" | "bars" | "paired" | "list"; total: number; totalLabel: string }
 const money = (amount: number): ReportCell => ({ text: signedMoney(amount), amount });
 const cell = (text: string): ReportCell => ({ text });
-function titleRow(d: ScenarioData, title: OpenTitle, group: string): SourceRow {
+function titleRow(d: ScenarioData, title: OpenTitle, group: string, index: DocumentIndex): SourceRow {
   const source = title.kind === "committed" ? d.committed.find((c) => c.id === title.id) : d.expenses.find((e) => e.id === title.id);
-  const parcel = source && "parcelNo" in source ? `${source.parcelNo ?? 1}/${source.parcelCount ?? 1}` : "1/1";
-  return { id: `${title.kind}-${title.id}`, group, supplierId: title.supplierId, label: title.supplier, stage: "open", value: title.open,
-    cells: [cell(title.supplier), cell(title.document || "—"), cell(parcel), cell(title.due ? fmtDate(title.due) : "Sem vencimento"), money(title.value), money(title.paid), money(title.open), cell(title.state)] };
+  const documentGroup = title.kind === "committed" ? index.byId.get(title.id) : undefined;
+  const parcel = documentGroup?.labels.get(title.id) ?? "1/1";
+  return { launch: { kind: title.kind, id: title.id, parcel: title.id }, id: `${title.kind}-${title.id}`, group, supplierId: title.supplierId, label: title.supplier, stage: "open", value: title.open,
+    cells: [cell(title.supplier), cell(documentGroup?.document || title.document || "—"), cell(parcel), cell(title.due ? fmtDate(title.due) : "Sem vencimento"), money(title.value), money(title.paid), money(title.open), cell(title.state)] };
 }
 function groupsFor(rows: SourceRow[], mode: "supplier" | "date" | "subgroup", d: ScenarioData): ChartGroup[] {
   const grouped = new Map<string, ChartGroup>();
@@ -46,10 +50,11 @@ export function cashReport(days: Day[]): DashboardReport {
     groups: days.map((day) => ({ key: day.date, label: fmtDate(day.date), value: day.saldoFinal })), type: "line", total: days.at(-1)?.saldoFinal ?? 0, totalLabel: "Saldo final (não somar saldos diários)" };
 }
 export function titlesReport(d: ScenarioData, titles: OpenTitle[], mode: "supplier" | "date" | "subgroup" = "supplier"): DashboardReport {
+  const index = documentGroups(d);
   const rows = titles.map((title) => {
     const source = title.kind === "committed" ? d.committed.find((c) => c.id === title.id) : d.expenses.find((e) => e.id === title.id);
     const subgroup = d.categories.find((c) => c.id === source?.categoryId)?.name ?? "Sem subgrupo";
-    return titleRow(d, title, mode === "supplier" ? title.supplierId : mode === "date" ? title.due ?? "sem-data" : subgroup);
+    return titleRow(d, title, mode === "supplier" ? title.supplierId : mode === "date" ? title.due ?? "sem-data" : subgroup, index);
   });
   return { heads: ["Fornecedor", "Documento", "Parcela", "Vencimento", "Valor original", "Pago", "Em aberto", "Situação"], rows, groups: groupsFor(rows, mode, d), type: "bars", total: rows.reduce((sum, row) => sum + row.value, 0), totalLabel: "Total em aberto dos registros" };
 }
@@ -60,7 +65,7 @@ export function plannedReport(d: ScenarioData, parcels: PlannedParcel[]): Dashbo
     const number = source.findIndex((x) => x.date === p.date && x.amount === p.amount) + 1;
     const subgroup = d.categories.find((c) => c.id === plan?.categoryId)?.name ?? "Sem subgrupo";
     const identity = supplierIdentity(d, plan);
-    return { id: `${p.plannedId}-${i}`, group: identity.key, supplierId: identity.key, label: identity.name, value: p.amount, stage: "planned", cells: [cell(identity.name), cell(plan?.document || p.code || "—"), cell(`${number || 1}/${source.length || 1}`), cell(fmtDate(p.date)), money(p.amount), cell(subgroup), cell("Planejada")] };
+    return { launch: { kind: "planned", id: p.plannedId, parcel: currentParcels(d, p.plannedId)[Math.max(0, number - 1)]?.key }, id: `${p.plannedId}-${i}`, group: identity.key, supplierId: identity.key, label: identity.name, value: p.amount, stage: "planned", cells: [cell(identity.name), cell(plan?.document || p.code || "—"), cell(`${number || 1}/${source.length || 1}`), cell(fmtDate(p.date)), money(p.amount), cell(subgroup), cell("Planejada")] };
   });
   return { heads: ["Fornecedor", "Documento / pedido", "Parcela", "Vencimento", "Valor previsto", "Subgrupo", "Etapa"], rows, groups: groupsFor(rows, "supplier", d), type: "bars", total: rows.reduce((s, r) => s + r.value, 0), totalLabel: "Total previsto restante" };
 }

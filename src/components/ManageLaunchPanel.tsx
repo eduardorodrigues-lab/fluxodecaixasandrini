@@ -1,0 +1,102 @@
+import { useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { DateInput, MoneyInput } from "@/components/kit";
+import { CatSubFields, Field, SidePanel, SupplierSearch } from "@/components/NotaPanel";
+import { BaixasList, PagamentoPanel } from "@/components/BancoPanels";
+import { applyManaged, flowImpact, managedDocument, redistributeSelected, validateManualRemaining, type LaunchRef, type ManagedParcel } from "@/lib/manageLaunch";
+import { HistoryView } from "@/components/HistoryView";
+import { askConfirm } from "@/lib/decisions";
+import { currentParcels, effectivateManual } from "@/lib/efetivacao";
+import { distributePlanned } from "@/lib/engine/engine";
+import { guardClose } from "@/components/NotaPanel";
+import { registerPaymentBatch, coverTitleWithCard } from "@/lib/engine/banco";
+import { reversePayment, todaySP } from "@/lib/engine/actions";
+import { supplierIdentity } from "@/lib/supplierIdentity";
+import { splitOrigin } from "@/lib/originText";
+import { fmtBRL } from "@/lib/money";
+import { fmtDate } from "@/lib/dates";
+import { uid, useApp } from "@/lib/store";
+import type { ScenarioData } from "@/lib/engine/types";
+
+export function ManageLaunchPanel({ launch, onClose }: { launch: LaunchRef; onClose: () => void }) {
+  const { active, update, canEdit, user, audit, allSims } = useApp();
+  const d = active.data;
+  const [initial] = useState(() => managedDocument(d, launch));
+  const [parcels, setParcels] = useState(initial.parcels);
+  const [fields, setFields] = useState(initial.fields);
+  const [tab, setTab] = useState("Resumo"), [reason, setReason] = useState("");
+  const [eff, setEff] = useState(false), [selected, setSelected] = useState<string[]>(launch.parcel ? [launch.parcel] : []);
+  const [remaining, setRemaining] = useState<number | null>(null), [checked, setChecked] = useState(false);
+  const [effectiveDate, setEffectiveDate] = useState<string | null>(todaySP());
+  const [review, setReview] = useState<{ data: ScenarioData; impacts: ReturnType<typeof flowImpact> } | null>(null);
+  const [error, setError] = useState(""), [pay, setPay] = useState<ManagedParcel | null>(null);
+  const [effId] = useState(() => `ef-${uid()}`);
+  const [spreadTotal, setSpreadTotal] = useState<number | null>(null);
+  const [spreadKeys, setSpreadKeys] = useState<string[]>([]);
+  const dirty = eff || JSON.stringify(parcels) !== JSON.stringify(initial.parcels) || JSON.stringify(fields) !== JSON.stringify(initial.fields);
+  const patch = (key: string, p: Partial<ManagedParcel>) => { setParcels((all) => all.map((r) => r.key === key ? { ...r, ...p } : r)); setChecked(false); };
+  const rest = parcels.filter((p) => !selected.includes(p.key) && p.status !== "cancelado");
+  const paid = initial.parcels.reduce((s, p) => s + p.paid, 0);
+  const original = initial.parcels.reduce((s, p) => s + p.original, 0);
+  const open = parcels.reduce((s, p) => s + (p.status === "cancelado" ? 0 : Math.max(0, (p.amount ?? 0) - p.paid)), 0);
+  const history = useMemo(() => active.isBase ? audit.filter((a) => a.changes.some((c) => initial.records.some((r) => r.id === c.id))) : (allSims.find((s) => s.id === active.id)?.history ?? []).filter((a) => a.changes.some((c) => initial.records.some((r) => r.id === c.id))).map((a, i) => ({ id: String(i), at: a.at, user_email: a.user, changes: a.changes })), [audit, initial, active.id, active.isBase, allSims]);
+  const build = (base: ScenarioData) => {
+    if (eff) {
+      const pl = base.planned.find((p) => p.id === launch.id);
+      if (!pl || distributePlanned(pl, base.suppliers.find((s) => s.id === pl.supplierId), base.committed, base.params.profile, base.effectivations).health !== "ok") throw new Error("Planejamento com abatimento pendente. Confira os vínculos antes de efetivar.");
+    }
+    applyManaged(base, { ref: launch, before: initial.parcels, parcels, fields, initialFields: initial.fields, reason, at: new Date().toISOString(), by: user?.email ?? "" });
+    if (!eff) return;
+    if (!reason.trim()) throw new Error("Informe a justificativa da efetivação.");
+    const err = validateManualRemaining(remaining, checked, rest); if (err) throw new Error(err);
+    const chosen = parcels.filter((p) => selected.includes(p.key));
+    if (!chosen.length || chosen.some((p) => p.status === "cancelado" || p.amount === null || p.amount <= 0 || !p.date)) throw new Error("Selecione parcelas ativas com valores e vencimentos conferidos.");
+    if (!effectiveDate) throw new Error("Informe a data da efetivação.");
+    const current = currentParcels(d, launch.id);
+    effectivateManual(base, { id: effId, plannedId: launch.id, at: new Date().toISOString(), effectiveDate, document: fields.document, purchaseCode: fields.purchaseCode, selected,
+      eff: chosen.map((p) => ({ amount: p.amount ?? 0, date: p.date ?? "" })), rest: rest.map((p) => ({ id: p.key, amount: p.amount ?? 0, date: p.extension ?? p.date ?? "" })),
+      substituted: current.filter((p) => selected.includes(p.key)).reduce((s, p) => s + p.amount, 0), rule: `${reason} · saldo restante informado e confirmado: ${fmtBRL(remaining)} · ${user?.email ?? ""}` });
+    chosen.forEach((p, i) => { const title = base.committed.find((c) => c.id === `${effId}-${i + 1}`); if (title && p.extension) { title.extensionDate = p.extension; title.extensionHistory.push({ at: new Date().toISOString(), from: null, to: p.extension, note: reason }); } });
+  };
+  const prepare = () => {
+    try { const next = structuredClone(d); build(next); setReview({ data: next, impacts: flowImpact(d, next) }); setError(""); } catch (e) { setError((e as Error).message); }
+  };
+  const confirm = () => { const e = update(build); if (e) setError(e); else onClose(); };
+  const changeSelection = (keys: string[]) => { setSelected(keys); setRemaining(null); setChecked(false); };
+  const labels = ["Resumo", "Parcelas", "Dados do documento", "Histórico"];
+  const finance = [["Valor original", launch.kind === "planned" ? initial.record.value : original], ["Pago", paid], [launch.kind === "planned" ? "Saldo restante previsto" : "Em aberto", open]] as const;
+  if (pay) return <PagamentoPanel d={d} kind={launch.kind === "expense" ? "expense" : "committed"} titleId={pay.id} label={`${initial.fields.document} · ${pay.label}`} onCancel={() => setPay(null)} onConfirm={(r) => {
+    const kind = launch.kind === "expense" ? "expense" : "committed";
+    const e = update((x) => r.origin === "conta" ? registerPaymentBatch(x, { batchId: uid(), titleKind: kind, titleId: pay.id, lines: r.lines, note: r.note, form: r.form }) : coverTitleWithCard(x, { id: uid(), at: new Date().toISOString(), by: user?.email ?? "", titleKind: kind, titleId: pay.id, cardId: r.cardId, date: r.date, amount: r.amount, fee: r.fee, installments: r.installments, form: "boleto" }));
+    if (e) { setError(e); return false; } onClose(); return true;
+  }} />;
+  return <SidePanel wide centered={!!review} title={review ? "Revisar lançamento" : "Gerenciar lançamento"} sub={`${supplierIdentity(d, initial.record).name} · Documento ${initial.fields.document || "—"} · Pedido ${initial.fields.purchaseCode || "—"}`} onClose={onClose} dirty={dirty} footer={review ? <><Button variant="outline" onClick={() => setReview(null)}>Voltar</Button><Button variant="outline" onClick={guardClose(dirty, onClose)}>Cancelar</Button><Button disabled={!canEdit} onClick={confirm}>Confirmar alterações</Button></> : <><Button variant="outline" onClick={guardClose(dirty, onClose)}>Cancelar</Button><Button disabled={!canEdit || !dirty} onClick={prepare}>Revisar antes de salvar</Button></>}>
+    {error && <p role="alert" className="text-destructive">{error}</p>}
+    {review ? <>
+      <table className="tbl"><thead><tr><th>Parcela</th><th>Escopo</th><th>Antes → depois</th><th>Vencimento → depois</th><th>Status → depois</th></tr></thead><tbody>{parcels.map((p) => { const b = initial.parcels.find((x) => x.key === p.key); return <tr key={p.key}><td>{p.label}</td><td>{selected.includes(p.key) && eff ? "Efetivar" : JSON.stringify(b) === JSON.stringify(p) ? "Não afetada" : "Alterada"}</td><td>{fmtBRL(b?.original)} → {fmtBRL(p.amount)}</td><td>{fmtDate(b?.extension ?? b?.date)} → {fmtDate(p.extension ?? p.date)}</td><td>{b?.status} → {eff && selected.includes(p.key) ? "Efetivado" : p.status === "cancelado" ? "Cancelado (efeito futuro zero)" : p.status}</td></tr>; })}</tbody></table>
+      {JSON.stringify(fields) !== JSON.stringify(initial.fields) && <div><h3 className="font-semibold">Dados compartilhados — documento inteiro</h3>{(Object.keys(fields) as (keyof typeof fields)[]).filter((k) => fields[k] !== initial.fields[k]).map((k) => <p key={k}>{({ supplierId: "Fornecedor", categoryId: "Subgrupo", purchaseCode: "Pedido", document: "Documento", notes: "Descrição" })[k]}: {k === "supplierId" ? supplierIdentity(d, { supplierId: initial.fields[k] }).name : k === "categoryId" ? d.categories.find((c) => c.id === initial.fields[k])?.name : initial.fields[k]} → {k === "supplierId" ? supplierIdentity(d, { supplierId: fields[k] }).name : k === "categoryId" ? d.categories.find((c) => c.id === fields[k])?.name : fields[k]}</p>)}</div>}
+      {eff && <p>Saldo restante previsto confirmado manualmente: <b>{fmtBRL(remaining)}</b>. Efetivar não registra pagamento.</p>}
+      <p>Justificativa: {reason || "Alteração de dados do documento"}</p>
+      <p className="text-muted-foreground">Confirmar prepara alterações não salvas; a base só é gravada no botão Salvar do sistema.</p><h3 className="font-semibold">Impacto por data no fluxo</h3><div className="max-h-64 overflow-auto"><table className="tbl"><thead><tr><th>Data</th><th>Saídas antes → depois</th><th>Saldo final antes → depois</th></tr></thead><tbody>{review.impacts.map((p) => <tr key={p.date}><td>{fmtDate(p.date)}</td><td>{fmtBRL(p.before)} → {fmtBRL(p.after)}</td><td>{fmtBRL(p.balanceBefore)} → {fmtBRL(p.balanceAfter)}</td></tr>)}</tbody></table>{!review.impacts.length && <p>Sem alteração financeira no período 2025–2030.</p>}</div>
+    </> : <>
+      <div className="flex flex-wrap gap-1 border-b border-border pb-2">{labels.map((l) => <Button key={l} size="sm" variant={tab === l ? "default" : "outline"} onClick={() => setTab(l)}>{l}</Button>)}</div>
+      {tab === "Resumo" && <><dl className="grid grid-cols-3 gap-3">{finance.map(([label, v]) => <div key={label}><dt className="lbl">{label}</dt><dd className="num font-semibold">{fmtBRL(v)}</dd></div>)}</dl><p>{splitOrigin(initial.record.notes).text || "—"}</p><Button variant="outline" onClick={() => setTab("Parcelas")}>Ver todas as parcelas ({parcels.length})</Button></>}
+      {tab === "Parcelas" && <>
+        {launch.kind === "planned" && <Button disabled={!canEdit || initial.record.status !== "ativo"} onClick={() => { setEff(true); setRemaining(null); setChecked(false); }}>Efetivar</Button>}
+        {eff && <><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => changeSelection(launch.parcel ? [launch.parcel] : parcels[0] ? [parcels[0].key] : [])}>Desta parcela</Button><Button size="sm" variant="outline" onClick={() => changeSelection(parcels.filter((p) => p.status !== "cancelado").map((p) => p.key))}>Todas as parcelas</Button><Button size="sm" variant="outline" onClick={() => changeSelection([])}>Escolher algumas</Button></div><Field l="Data da efetivação"><DateInput value={effectiveDate} onChange={setEffectiveDate} /></Field></>}
+        <div className="overflow-auto"><table className="tbl"><thead><tr>{eff && <th>Efetivar</th>}<th>Parcela / identificação original</th><th>Valor</th><th>Vencimento original</th><th>Prorrogar para</th><th>Pago</th><th>Situação</th><th>Ações</th></tr></thead><tbody>{parcels.map((p) => <tr key={p.key} className={p.key === launch.parcel || p.id === launch.id && launch.kind !== "planned" ? "bg-warning-soft" : ""} aria-label={`Parcela ${p.label}`}>
+          {eff && <td><input aria-label={`Efetivar parcela ${p.label}`} type="checkbox" disabled={p.status === "cancelado"} checked={selected.includes(p.key)} onChange={() => changeSelection(selected.includes(p.key) ? selected.filter((k) => k !== p.key) : [...selected, p.key])} /></td>}
+          <td>{p.label}<small className="block">{(() => { const r = initial.records.find((r) => r.id === p.id); return r && "importOrigin" in r && typeof r.importOrigin?.raw?.[2] === "string" ? r.importOrigin.raw[2] : r?.document; })()}</small></td><td>{p.status === "cancelado" ? fmtBRL(p.original) : <fieldset disabled={!canEdit || p.paid > 0}><MoneyInput value={p.amount} onChange={(amount) => patch(p.key, { amount })} /></fieldset>}</td><td><fieldset disabled={!canEdit || p.paid > 0 || p.status === "cancelado"}><DateInput value={p.date} onChange={(date) => patch(p.key, { date })} /></fieldset></td><td><fieldset disabled={!canEdit || p.paid > 0 || p.status === "cancelado"}><DateInput allowEmpty value={p.extension} onChange={(extension) => patch(p.key, { extension })} /></fieldset></td><td className="num">{fmtBRL(p.paid)}</td><td>{p.status === "cancelado" ? "Cancelado" : p.paid >= (p.amount ?? 0) ? "Pago" : p.paid > 0 ? "Parcialmente pago" : launch.kind === "planned" ? "Planejado" : "Efetivado"}</td>
+          <td><Button size="sm" variant="outline" disabled={!canEdit || p.paid > 0 || p.status === "cancelado"} onClick={() => patch(p.key, { status: "cancelado" })}>Cancelar parcela</Button>{launch.kind !== "planned" && <Button size="sm" variant="outline" disabled={!active.isBase || !canEdit || dirty || p.status === "cancelado" || p.paid >= (p.amount ?? 0)} onClick={() => setPay(p)}>Registrar pagamento</Button>}</td>
+        </tr>)}</tbody></table></div>
+        <Button variant="destructive" disabled={!canEdit || parcels.some((p) => p.paid > 0)} onClick={() => { setParcels((all) => all.map((p) => ({ ...p, status: "cancelado" }))); setChecked(false); }}>Cancelar documento</Button>
+        {!eff && <details><summary>Redistribuir valores — escolha explícita</summary><div className="space-y-2 py-2">{parcels.map((p) => <label className="mr-3 inline-flex gap-1" key={p.key}><input type="checkbox" disabled={p.paid > 0 || p.status === "cancelado" || !canEdit} checked={spreadKeys.includes(p.key)} onChange={() => setSpreadKeys(spreadKeys.includes(p.key) ? spreadKeys.filter((k) => k !== p.key) : [...spreadKeys, p.key])} />{p.label}</label>)}<Field l="Total a redistribuir nas selecionadas"><MoneyInput value={spreadTotal} onChange={setSpreadTotal} /></Field><Button variant="outline" disabled={!canEdit} onClick={async () => { try { const next = redistributeSelected(parcels, spreadKeys, spreadTotal); if (await askConfirm(`Redistribuir ${fmtBRL(spreadTotal)} em ${spreadKeys.length} parcelas selecionadas, com resíduo na última? Datas e outras parcelas não mudam.`, { title: "Redistribuir valores?", action: "Preparar redistribuição" })) { setParcels(next); setChecked(false); } } catch (e) { setError((e as Error).message); } }}>Preparar redistribuição</Button></div></details>}
+        {eff && <><Field l="Saldo restante previsto (informação manual)"><MoneyInput value={remaining} onChange={(v) => { setRemaining(v); setChecked(false); }} /></Field><p className="text-muted-foreground">Referência matemática: {fmtBRL(original - parcels.filter((p) => selected.includes(p.key)).reduce((s, p) => s + (p.amount ?? 0), 0))}. Não é aplicada automaticamente.</p><label className="flex gap-2"><input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} />Conferi o saldo restante informado e os vencimentos das parcelas não selecionadas; R$ 0,00 encerra o restante.</label></>}
+        <Field l="Justificativa para valores, datas, efetivação ou cancelamento"><textarea className="inp w-full" value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
+        {launch.kind !== "planned" && initial.parcels.filter((p) => p.paid > 0).map((p) => <div key={p.key}><h3 className="font-semibold">Baixas — parcela {p.label}</h3><BaixasList d={d} kind={launch.kind === "expense" ? "expense" : "committed"} titleId={p.id} canReverse={active.isBase && canEdit && !dirty} onReverse={(id, n) => { const e = update((x) => reversePayment(x, id, n, new Date().toISOString())); if (e) setError(e); else onClose(); }} /></div>)}
+      </>}
+      {tab === "Dados do documento" && <><p className="text-warning-foreground">Alterações destes campos afetam todas as parcelas deste documento, não outras notas do mesmo pedido.</p><fieldset disabled={!canEdit} className="grid grid-cols-2 gap-3"><CatSubFields d={d} kind={d.categories.find((c) => c.id === fields.categoryId)?.kind ?? "compra"} categoryId={fields.categoryId} onChange={(_, categoryId) => setFields({ ...fields, categoryId })} /><Field l="Fornecedor"><SupplierSearch d={d} existing value={fields.supplierId} onChange={(supplierId) => setFields({ ...fields, supplierId })} /></Field>{([['purchaseCode', 'Pedido'], ['document', 'Documento'], ['notes', 'Descrição']] as const).map(([key, label]) => <Field key={key} l={label}><input className="inp" value={fields[key]} onChange={(e) => setFields({ ...fields, [key]: e.target.value })} disabled={!canEdit} /></Field>)}</fieldset></>}
+      {tab === "Histórico" && <>{initial.records.map((r) => <div key={r.id}>{r.editLog?.map((h, i) => <p key={i}>{fmtDate(h.at.slice(0, 10))} {h.at.slice(11, 19)} · {h.by} · {splitOrigin(h.note).text} · {fmtBRL(h.before.amount)} → {fmtBRL(h.after.amount)} · {fmtDate(h.before.date)} → {fmtDate(h.after.date)}</p>)}{'extensionHistory' in r && r.extensionHistory.map((h, i) => <p key={`ext-${i}`}>{fmtDate(h.at.slice(0, 10))} · {fmtDate(h.from)} → {fmtDate(h.to)} · {splitOrigin(h.note).text}</p>)}</div>)}<HistoryView data={d} entries={history.map((a) => ({ at: a.at, user: a.user_email ?? "", changes: a.changes.filter((c) => initial.records.some((r) => r.id === c.id)) }))} />{!history.length && !initial.records.some((r) => r.editLog?.length) && <p>Sem alterações registradas neste documento.</p>}</>}
+    </>}
+  </SidePanel>;
+}
