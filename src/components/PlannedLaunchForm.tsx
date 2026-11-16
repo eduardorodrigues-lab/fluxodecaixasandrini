@@ -1,3 +1,4 @@
+import { PlanVsActualDetail } from "@/components/PlanVsActual";
 import { useOperationSave } from "./useOperationSave";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -107,6 +108,7 @@ export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onCl
   </tr>)}</tbody></table>;
   const history = active.isBase ? audit.map(a => ({ at: a.at, user: a.user_email ?? "", changes: a.changes })) : allSims.find(s=>s.id===active.id)?.history ?? [];
   return <SidePanel expanded title={review ? "Revisar lançamento" : real ? "Efetivar parcelas planejadas" : "Editar lançamento · Planejada"} sub={`${supplierIdentity(d, initial.record).name} · Pedido ${fields.purchaseCode || "Não informado"}`} dirty={dirty} onClose={()=>{if(!saving.saving)onClose();}} footer={<>{review && <Button variant="outline" disabled={saving.saving} onClick={()=>{if(saving.reset())setReview(null);}}>Voltar</Button>}<Button variant="outline" disabled={saving.saving} onClick={guardClose(dirty,onClose)}>Cancelar</Button><Button disabled={!canEdit || !dirty || saving.saving} onClick={review ? async ()=>{ if(await saving.save(review.before,review.data)) onClose(); } : prepare}>{saving.saving ? "Salvando…" : review ? active.isBase ? "Confirmar e salvar" : "Confirmar na simulação" : real ? "Revisar alterações" : "Revisar e confirmar"}</Button></>}>
+      {!review && !real && <PlanVsActualDetail d={d} plannedId={launch.id} />}
     {saving.error && <p role="alert" className="text-destructive">{saving.error}</p>}
     {error && <p role="alert" className="text-destructive">{error}</p>}
     {review ? <>

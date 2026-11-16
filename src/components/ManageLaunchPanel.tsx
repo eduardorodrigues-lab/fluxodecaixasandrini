@@ -1,3 +1,4 @@
+import { PlanVsActualDetail } from "@/components/PlanVsActual";
 import { useOperationSave } from "./useOperationSave";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -142,6 +143,7 @@ function ExistingLaunchPanel({ launch, onClose }: { launch: LaunchRef; onClose: 
       </>}
       {tab === "Dados do documento" && <><p className="text-warning-foreground">Alterações destes campos afetam todas as {parcels.length} parcelas deste documento, não outras notas do mesmo pedido.</p><fieldset disabled={!canEdit} className="grid grid-cols-1 gap-3 sm:grid-cols-2"><CatSubFields d={d} kind={d.categories.find((c) => c.id === fields.categoryId)?.kind ?? "compra"} categoryId={fields.categoryId} onChange={(_, categoryId) => setFields({ ...fields, categoryId })} /><Field l="Fornecedor"><SupplierSearch d={d} existing value={fields.supplierId} onChange={(supplierId) => setFields({ ...fields, supplierId })} /></Field>{([['purchaseCode', 'Pedido'], ['document', 'Documento'], ['notes', 'Descrição']] as const).map(([key, label]) => <Field key={key} l={label}><input className="inp" value={fields[key]} onChange={(e) => setFields({ ...fields, [key]: e.target.value })} disabled={!canEdit} /></Field>)}</fieldset></>}
       {tab === "Histórico" && <>{initial.records.map((r) => <div key={r.id}>{r.editLog?.map((h, i) => <p key={i}>{fmtDate(h.at.slice(0, 10))} {h.at.slice(11, 19)} · {h.by} · {splitOrigin(h.note).text} · {fmtBRL(h.before.amount)} → {fmtBRL(h.after.amount)} · {fmtDate(h.before.date)} → {fmtDate(h.after.date)}</p>)}{'extensionHistory' in r && r.extensionHistory.map((h, i) => <p key={`ext-${i}`}>{fmtDate(h.at.slice(0, 10))} · {fmtDate(h.from)} → {fmtDate(h.to)} · {splitOrigin(h.note).text}</p>)}</div>)}<HistoryView data={d} entries={history.map((a) => ({ at: a.at, user: a.user_email ?? "", changes: a.changes.filter((c) => initial.records.some((r) => r.id === c.id)) }))} />{!history.length && !initial.records.some((r) => r.editLog?.length) && <p>Sem alterações registradas neste documento.</p>}</>}
+      {tab === "Resumo" && "plannedId" in initial.record && <PlanVsActualDetail d={d} plannedId={initial.record.plannedId as string | null} />}
     </>}
   </SidePanel>;
 }

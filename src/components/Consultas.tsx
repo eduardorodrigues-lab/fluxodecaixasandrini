@@ -1,3 +1,4 @@
+import { PlanVsActual } from "@/components/PlanVsActual";
 import { documentGroups } from "@/lib/documentGroups";
 import type { LaunchRef } from "@/lib/manageLaunch";
 import { supplierIdentity } from "@/lib/supplierIdentity";
@@ -93,10 +94,10 @@ export function groupByDocument(rows: ConsultaRow[]): ConsultaRow[] {
 }
 
 export function Consultas({ d, onManage }: { d: ScenarioData; onManage?: ((ref: LaunchRef) => void) | undefined }) {
-  const [rep, setRep] = useState<"boletos" | "dia">("boletos");
+  const [rep, setRep] = useState<"boletos" | "dia" | "pva">("boletos");
   return <div>
-    <div className="mb-2 flex gap-1 text-xs">{([["boletos", "Boletos e pagamentos"], ["dia", "Relatório de Pagamentos do Dia"]] as const).map(([k, l]) => <button key={k} className={`btn ${rep === k ? "btn-primary" : ""}`} onClick={() => setRep(k)}>{l}</button>)}</div>
-    <div hidden={rep !== "dia"}><PagamentosDia /></div><div hidden={rep !== "boletos"}><ConsultaBoletos d={d} onManage={onManage} /></div>
+    <div className="mb-2 flex gap-1 text-xs">{([["boletos", "Boletos e pagamentos"], ["dia", "Relatório de Pagamentos do Dia"], ["pva", "Planejado × Efetivado"]] as const).map(([k, l]) => <button key={k} className={`btn ${rep === k ? "btn-primary" : ""}`} onClick={() => setRep(k)}>{l}</button>)}</div>
+    <div hidden={rep !== "dia"}><PagamentosDia /></div>{rep === "pva" && <PlanVsActual d={d} />}<div hidden={rep !== "boletos"}><ConsultaBoletos d={d} onManage={onManage} /></div>
   </div>;
 }
 const cT = (label: string, type: FilterCol["type"] = "text"): FilterCol => ({ label, type });

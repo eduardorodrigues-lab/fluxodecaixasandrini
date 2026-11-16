@@ -250,3 +250,9 @@ Script de reprodução local: `bun scripts/validate-ceo-xlsm.ts <arquivo> /tmp/r
 ## Carga real (11/11/2026, versões 115→139)
 Fonte: FLUXO_DE_CAIXA_ORIGINAL.xlsm + Despesas_corrigidas.xlsx. Recebimento importado com soma do dia 0 aciona estimativa (IF(D6=0) da fonte); zero digitado no sistema continua substituindo. Meses importados e planejadas importadas usam valores exatos (sem arredondar ao centavo). Divergências da fonte não reproduzidas: GI4 (07/07/2025) exclui recebimentos; HL32 (05/08/2025) não subtrai saídas; JX7 (08/10/2025) estimativa digitada 0; RECEBIMENTOS 02/01/2027 com -1 sem linha fonte; distribuição de efetivadas 14–16/11/2026 desatualizada (total igual); arredondamento da macro nas planejadas. UR32 (15/07/2026) digitado foi importado como ajuste de saldo em 16/07/2026.
 - Fluxo real: gravação somente ao clicar Salvar; rascunho protegido no navegador por usuário+organização; envio só dos registros alterados; conflito na mesma informação abre janela de decisão; alteração de valor/vencimento exige justificativa (registrada no próprio lançamento e na auditoria).
+
+## Planejado × Efetivado (Consultas) — leitura
+- Escopo por previsão; vínculos só explícitos (`Committed.plannedId` ou `committedIds` de efetivação não revertida). Título reivindicado por duas previsões = Não comparável.
+- Referência = valor da previsão (a efetivação não altera `Planned.value`); revisão de valor após a 1ª efetivação torna a referência Não disponível. Não há fotografia dedicada gravada: lacuna para cobertura futura.
+- Total atual = efetivado ativo + restante confirmado (encerrado=0, `remainingOverride`); sem restante confirmado = Não comparável. Pago não soma; cancelados à parte, não são economia. % Não aplicável com referência 0.
+- Período filtra por data da efetivação; colunas acumuladas. Responsável da efetivação não é registrado no evento (Não disponível).
