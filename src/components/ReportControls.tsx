@@ -9,7 +9,7 @@ export function useReportState() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<ReportSort | null>(null);
   const toggle = (column: number) => setSort((s) => ({ column, direction: s?.column === column && s.direction === "asc" ? "desc" : "asc" }));
-  return { query, setQuery, sort, toggle };
+  return { query, setQuery, sort, setSort, toggle };
 }
 export function ReportSearch({ value, onChange, count }: { value: string; onChange: (s: string) => void; count: number }) {
   return <div className="flex flex-wrap items-end gap-2 text-xs"><label><span className="lbl block">Buscar no relatório</span><input type="search" className="inp h-8 w-56" value={value} onChange={(e) => onChange(e.target.value)} /></label><span className="pb-2 text-muted-foreground" role="status">{count} resultado(s)</span></div>;

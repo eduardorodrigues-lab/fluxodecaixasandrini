@@ -18,6 +18,7 @@ import { fmtBRL } from "@/lib/money";
 import { fmtDate } from "@/lib/dates";
 import { uid, useApp } from "@/lib/store";
 import type { ScenarioData } from "@/lib/engine/types";
+import { createLaunchDates, formatLaunchTime } from '@/lib/launchFilters';
 
 export function ManageLaunchPanel({ launch, onClose }: { launch: LaunchRef; onClose: () => void }) {
   const { active, update, canEdit, user, audit, allSims } = useApp();
@@ -49,6 +50,10 @@ export function ManageLaunchPanel({ launch, onClose }: { launch: LaunchRef; onCl
   const rest = parcels.filter((p) => !chosenKeys.includes(p.key) && p.status !== "cancelado");
   const original = initial.parcels.reduce((s, p) => s + p.original, 0);
   const history = useMemo(() => active.isBase ? audit.filter((a) => a.changes.some((c) => initial.records.some((r) => r.id === c.id))) : (allSims.find((s) => s.id === active.id)?.history ?? []).filter((a) => a.changes.some((c) => initial.records.some((r) => r.id === c.id))).map((a, i) => ({ id: String(i), at: a.at, user_email: a.user, changes: a.changes })), [audit, initial, active.id, active.isBase, allSims]);
+  const recordDates = useMemo(() => {
+    const get = createLaunchDates(history.map(a => ({ at: a.at, user: a.user_email ?? '', changes: a.changes })));
+    return initial.parcels.map((p, i) => { const r = initial.records.find(r => r.id === p.id) ?? initial.record; return { parcel: p.label, ...get(launch.kind, r, p.key, i) }; });
+  }, [history, initial, launch.kind]);
   const build = (base: ScenarioData) => {
     if (eff) {
       const pl = base.planned.find((p) => p.id === launch.id);
@@ -100,6 +105,7 @@ export function ManageLaunchPanel({ launch, onClose }: { launch: LaunchRef; onCl
         <section><h3 className="font-semibold">Próximos vencimentos</h3><div className="flex flex-wrap gap-x-6 gap-y-2 pt-2">{nextDue.slice(0, 3).map((p) => <p key={p.key}>Parcela {p.label} · {p.extension || p.date ? fmtDate(p.extension ?? p.date) : "Não informado"} · {fmtBRL(p.amount)} · {situation(p)}</p>)}{!nextDue.length && <p>Sem parcelas pendentes.</p>}</div></section>
         <section><h3 className="mb-2 font-semibold">Prévia das parcelas</h3><table className="tbl"><thead><tr><th>Parcela</th><th>Valor</th><th>Vencimento</th><th>Situação</th></tr></thead><tbody>{parcels.map((p) => <tr key={p.key} className={focus(p) ? "launch-focus" : ""}><td>{p.label}{focus(p) && <span className="block text-warning-foreground">Parcela em destaque</span>}</td><td>{fmtBRL(p.status === "cancelado" ? p.original : p.amount)}</td><td>{p.extension || p.date ? fmtDate(p.extension ?? p.date) : "Não informado"}</td><td>{situation(p)}</td></tr>)}</tbody></table></section>
         <Button variant="outline" onClick={() => setTab("Parcelas")}>Gerenciar parcelas ({parcels.length})</Button>
+        <section><h3 className="mb-2 font-semibold">Cadastro e última alteração · horário de Brasília</h3><table className="tbl"><thead><tr><th>Parcela</th><th>Cadastrado em</th><th>Responsável pelo cadastro</th><th>Última alteração</th><th>Responsável pela alteração</th></tr></thead><tbody>{recordDates.map((r, i) => <tr key={i}><td>{r.parcel}</td><td>{formatLaunchTime(r.created)}</td><td>{r.createdBy || 'Não disponível'}</td><td>{formatLaunchTime(r.updated)}</td><td>{r.updatedBy || 'Não disponível'}</td></tr>)}</tbody></table></section>
       </>}
       {tab === "Parcelas" && <>
         {launch.kind === "planned" && <section className="space-y-3 border-b border-border pb-4">

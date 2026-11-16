@@ -1,5 +1,10 @@
 # Roadmap
 
+## Filtros interativos de Lançamentos — autorizado 16/11/2026
+- [ ] Painel compacto Planejada/Efetivado, critérios combinados/chips/ordenação e totais completos antes da paginação; pesquisa e Gerenciar preservados
+- [ ] Datas confiáveis por parcela via auditoria/histórico existentes, sem inventar cadastro original nem escrever metadados
+- [ ] Testes focados, navegador 1366/1536/menor e medição na mesma amostra isolada; nenhuma escrita oficial/publicação
+
 ## Rapidez da busca de Lançamentos — autorizado 16/11/2026
 - [x] Baseline e comparação no mesmo navegador: amostra v160 (600 planejadas/2.000 títulos/1.700 baixas/78 fornecedores), 3 repetições; contagens atuais lidas
 - [x] Modelos lazy por snapshot, pagamentos tipo+ID, busca normalizada reutilizada, abas ocultas memoizadas; painel/motor/persistência preservados

@@ -1,3 +1,6 @@
+import { LaunchFilterPanel, useLaunchFilters } from "@/components/LaunchFilters";
+import { filterLaunchRows, formatLaunchTime } from "@/lib/launchFilters";
+import { reportCSV } from "@/lib/reportTable";
 import { ManageLaunchPanel } from "@/components/ManageLaunchPanel";
 import { createLaunchPresentation } from "@/lib/launchPresentation";
 import type { LaunchRef } from "@/lib/manageLaunch";
@@ -87,7 +90,7 @@ const AmbiguousDocuments = memo(function AmbiguousDocuments({ d, groups, onManag
 
 function Page() {
   const target = Route.useSearch();
-  const { active, update, changes, user } = useApp();
+  const { active, update, changes, user, audit, allSims, official } = useApp();
   const d = active.data;
   const [tab, setTab] = useState<Tab>(TABS.find((t) => t.k === target.tab)?.k ?? "planned");
   usePendingFocus(target.focus, tab);
@@ -96,6 +99,7 @@ function Page() {
   const fKind = kinds[tab] ?? "";
   const setFKind = (v: "" | CategoryKind) => setKinds((k) => ({ ...k, [tab]: v }));
   const plannedReport = useReportState(), committedReport = useReportState(), paymentsReport = useReportState();
+  const plannedFilters = useLaunchFilters(), committedFilters = useLaunchFilters();
   const plannedCF = useColumnFilter(), committedCF = useColumnFilter(), paymentsCF = useColumnFilter();
   const cf = tab === "planned" ? plannedCF : tab === "committed" ? committedCF : paymentsCF;
   const report = tab === "planned" ? plannedReport : tab === "committed" ? committedReport : paymentsReport;
@@ -114,7 +118,9 @@ function Page() {
   const kindL = (id: string, fb: CategoryKind = "compra") => ((kindOfCat(id) || fb) === "compra" ? "Compra" : "Despesa");
   const isOpen = (kind: string, id: string) => open?.kind === kind && open.id === id;
   const toggle = (kind: string, id: string) => setOpen(isOpen(kind, id) ? null : { kind, id });
-  const model = useMemo(() => createLaunchPresentation(d), [d]);
+  const sourceHistory = active.isBase ? audit.map(a => ({ at: a.at, user: a.user_email ?? "", changes: a.changes })) : allSims.find(s => s.id === active.id)?.history ?? [];
+  const historyKey = sourceHistory.map(a => a.at).join("|") + (active.isBase ? audit.map(a => a.id).join("|") : "");
+  const model = useMemo(() => createLaunchPresentation(d, sourceHistory), [d, historyKey, official.orgId, active.id]);
   const plannedIndex = tab === "planned" ? model.planned : EMPTY_ROWS;
   const committedIndex = tab === "committed" ? model.committed : EMPTY_ROWS;
   const paymentIndex = tab === "payments" ? model.payments : EMPTY_ROWS;
@@ -122,12 +128,27 @@ function Page() {
   const labels = useMemo(() => new Map([...groups.byId].map(([id, group]) => [id, group.labels.get(id) ?? "1/1"])), [groups]);
   const plannedSource = useMemo(() => plannedIndex.filter(({ row }) => !fKind || (kindOfCat(row.p.categoryId) || "compra") === fKind), [plannedIndex, fKind]);
   const committedSource = useMemo(() => committedIndex.filter(({ row }) => !fKind || kindOfCat(row.catId) === fKind || (!row.catId && fKind === "despesa" && row.t === "expense")), [committedIndex, fKind]);
-  const plannedRows = useMemo(() => queryIndexedReport(plannedSource.filter(r => columnTest(plannedCF.f, PLANNED_COLS, r.values)), plannedReport.query, plannedReport.sort).map(r => r.row), [plannedSource, plannedCF.f, plannedReport.query, plannedReport.sort]);
-  const efetivados = useMemo(() => queryIndexedReport(committedSource.filter(r => columnTest(committedCF.f, COMMITTED_COLS, r.values)), committedReport.query, committedReport.sort).map(r => r.row), [committedSource, committedCF.f, committedReport.query, committedReport.sort]);
+  const plannedResult = useMemo(() => filterLaunchRows(plannedSource.filter(r => columnTest(plannedCF.f, PLANNED_COLS, r.values)), plannedFilters.applied, plannedFilters.appliedQuery, plannedFilters.order, plannedReport.sort), [plannedSource, plannedCF.f, plannedFilters.applied, plannedFilters.appliedQuery, plannedFilters.order, plannedReport.sort]);
+  const committedResult = useMemo(() => filterLaunchRows(committedSource.filter(r => columnTest(committedCF.f, COMMITTED_COLS, r.values)), committedFilters.applied, committedFilters.appliedQuery, committedFilters.order, committedReport.sort), [committedSource, committedCF.f, committedFilters.applied, committedFilters.appliedQuery, committedFilters.order, committedReport.sort]);
+  const plannedRows = useMemo(() => plannedResult.map(r => r.row), [plannedResult]);
+  const efetivados = useMemo(() => committedResult.map(r => r.row), [committedResult]);
+  const plannedMeta = useMemo(() => new Map(plannedIndex.map(r => [`${r.row.p.id}#${r.row.idx}`, r.facets])), [plannedIndex]);
+  const committedMeta = useMemo(() => new Map(committedIndex.map(r => [r.row.t + ':' + (r.row.t === "committed" ? r.row.c.id : r.row.e.id), r.facets])), [committedIndex]);
+  const filterSource = tab === "planned" ? plannedIndex : committedIndex;
+  const supplierOptions = useMemo(() => [...new Map(filterSource.map(r => [r.facets.supplier, r.facets])).values()].sort((a, b) => a.supplierName.localeCompare(b.supplierName, "pt-BR")), [filterSource]);
+  const situations = useMemo(() => [...new Set(filterSource.map(r => String(r.values[10])))].sort(), [filterSource]);
+  const paymentSituations = useMemo(() => [...new Set(committedIndex.map(r => String(r.values[11])))].sort(), [committedIndex]);
+  const datesCells = (meta: ReturnType<typeof createLaunchPresentation>["planned"][number]["facets"] | undefined) => <><td className="launch-date" title={meta?.createdBy ? `Cadastrado por ${meta.createdBy}` : undefined}>{formatLaunchTime(meta?.created ?? null)}</td><td className="launch-date" title={meta?.updatedBy ? `Alterado por ${meta.updatedBy}` : undefined}>{formatLaunchTime(meta?.updated ?? null)}</td></>;
+  const exportFiltered = () => {
+    const result = tab === "planned" ? plannedResult : committedResult;
+    const cols = tab === "planned" ? PLANNED_COLS : COMMITTED_COLS;
+    const csv = reportCSV([...cols.map(c => c.label), "Cadastrado em (Brasília)", "Última alteração (Brasília)"], result.map(r => [...r.values.map((v, i) => cols[i]?.type === "money" ? fmtBRL(typeof v === "number" ? v : null) : cols[i]?.type === "date" ? typeof v === "number" ? fmtDate(new Date(v).toISOString().slice(0, 10)) : "Não disponível" : String(v ?? "")), formatLaunchTime(r.facets.created), formatLaunchTime(r.facets.updated)]));
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); const a = document.createElement("a"); a.href = url; a.download = `lancamentos-${tab}.csv`; a.click(); URL.revokeObjectURL(url);
+  };
   const paymentRows = useMemo(() => queryIndexedReport(paymentIndex.filter(r => columnTest(paymentsCF.f, PAYMENT_COLS, r.values)), paymentsReport.query, paymentsReport.sort).map(r => r.row), [paymentIndex, paymentsCF.f, paymentsReport.query, paymentsReport.sort]);
   const suggestions = useMemo(() => tab === "planned" ? suggestFrom(plannedSource, r => r.values) : tab === "committed" ? suggestFrom(committedSource, r => r.values) : suggestFrom(paymentIndex, r => r.values), [tab, plannedSource, committedSource, paymentIndex]);
-  const plannedPager = usePager(plannedRows.length, plannedRows.length + plannedReport.query + JSON.stringify(plannedReport.sort) + fKind + plannedCF.key);
-  const committedPager = usePager(efetivados.length, efetivados.length + committedReport.query + JSON.stringify(committedReport.sort) + fKind + committedCF.key);
+  const plannedPager = usePager(plannedRows.length, plannedRows.length + plannedFilters.appliedQuery + JSON.stringify(plannedFilters.applied) + plannedFilters.order + JSON.stringify(plannedReport.sort) + fKind + plannedCF.key);
+  const committedPager = usePager(efetivados.length, efetivados.length + committedFilters.appliedQuery + JSON.stringify(committedFilters.applied) + committedFilters.order + JSON.stringify(committedReport.sort) + fKind + committedCF.key);
   const paymentsPager = usePager(paymentRows.length, paymentRows.length + paymentsReport.query + JSON.stringify(paymentsReport.sort) + paymentsCF.key);
   const noteInit = (o: { categoryId: string; supplierId: string; purchaseCode?: string; document: string; notes: string }, fb: CategoryKind): NoteFields => ({ kind: kindOfCat(o.categoryId) || fb, categoryId: o.categoryId, supplierId: o.supplierId, purchaseCode: o.purchaseCode ?? "", document: o.document, notes: o.notes });
 
@@ -138,18 +159,13 @@ function Page() {
       </PageHeader>
       {err && <div className="mb-2 rounded border border-destructive p-2 text-xs text-destructive">{err}</div>}
       <div className="mb-2 flex overflow-x-auto border-b border-border">{TABS.map((t) => <button key={t.k} className={`tab whitespace-nowrap ${tab === t.k ? "tab-on" : ""}`} onClick={() => setTab(t.k)}>{t.l} {t.k === "consultas" ? "" : `(${t.k === "committed" ? d.committed.length + d.expenses.length : (d[t.k] as unknown[]).length})`}</button>)}</div>
-      {(tab === "planned" || tab === "committed") && (
-        <div className="mb-2 flex items-center gap-2 text-xs">
-          <span className="lbl">Categoria</span>
-          <select className="inp" value={fKind} onChange={(e) => setFKind(e.target.value as "" | CategoryKind)}><option value="">Todas</option><option value="compra">Compra</option><option value="despesa">Despesa</option></select>
-        </div>
-      )}
-      {tab !== "consultas" && <div className="filter-bar"><ReportSearch value={report.query} onChange={report.setQuery} count={tab === "planned" ? plannedRows.length : tab === "committed" ? efetivados.length : paymentRows.length} /><ColumnFilter key={tab} cols={tab === "planned" ? PLANNED_COLS : tab === "committed" ? COMMITTED_COLS : PAYMENT_COLS} filter={cf} suggest={suggestions} /><Button variant="outline" size="sm" onClick={() => { report.setQuery(""); setFKind(""); cf.clear(); }}>Limpar filtros</Button></div>}
+      {(tab === "planned" || tab === "committed") && <LaunchFilterPanel key={tab} state={{ ...(tab === "planned" ? plannedFilters : committedFilters), setOrder: (v) => { (tab === "planned" ? plannedFilters : committedFilters).setOrder(v); report.setSort(null); }, clear: () => { (tab === "planned" ? plannedFilters : committedFilters).clear(); setFKind(""); cf.clear(); report.setQuery(""); } }} suppliers={supplierOptions} categories={d.categories} situations={situations} payments={tab === "committed" ? paymentSituations : undefined} count={tab === "planned" ? plannedRows.length : efetivados.length} total={(tab === "planned" ? plannedResult : committedResult).reduce((sum, r) => sum + (typeof r.values[7] === "number" ? r.values[7] : 0), 0)} onExport={exportFiltered} extra={<ColumnFilter cols={tab === "planned" ? PLANNED_COLS : COMMITTED_COLS} filter={cf} suggest={suggestions} />} />}
+      {tab === "payments" && <div className="filter-bar"><ReportSearch value={report.query} onChange={report.setQuery} count={paymentRows.length} /><ColumnFilter cols={PAYMENT_COLS} filter={cf} suggest={suggestions} /><Button variant="outline" size="sm" onClick={() => { report.setQuery(""); cf.clear(); }}>Limpar filtros</Button></div>}
       <div hidden={tab !== "consultas"}><CachedConsultas d={d} onManage={setManaged} /></div>
       {tab === "committed" && <AmbiguousDocuments d={d} groups={model.groups} onManage={setManaged} />}
-      {tab === "consultas" ? null : <div className="card overflow-auto">
+      {tab === "consultas" ? null : <div className="card overflow-auto launch-table">
         {tab === "planned" && (
-          <table className="tbl"><thead><tr><SortHead label="Categoria" column={0} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Subgrupo" column={1} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Fornecedor" column={2} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Código do pedido" column={3} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Documento" column={4} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Descrição" column={5} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Parcela" column={6} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Valor da parcela" column={7} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={true} /><SortHead label="Vencimento" column={8} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Prorrogar para" column={9} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Situação do lançamento" column={10} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><th>Ações</th></tr></thead>
+          <table className="tbl"><thead><tr><SortHead label="Categoria" column={0} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Subgrupo" column={1} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Fornecedor" column={2} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Código do pedido" column={3} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Documento" column={4} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Descrição" column={5} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Parcela" column={6} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Valor da parcela" column={7} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={true} /><SortHead label="Vencimento" column={8} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Prorrogar para" column={9} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Situação do lançamento" column={10} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><th>Cadastrado em<br />(Brasília)</th><th>Última alteração<br />(Brasília)</th><th>Ações</th></tr></thead>
             <tbody>{plannedPager.slice(plannedRows).flatMap(({ p, r, pc, i, n, it, idx }) => {
               const label = `${(supplierIdentity(d, p).name) ?? "—"} · ${p.document || p.purchaseCode || "sem documento"} · parcela ${i + 1}/${n}`;
               const sit = p.status === "encerrado" ? "Encerrada" : p.status === "cancelado" ? "Cancelada" : r.effectivated > 0 ? "Efetivada parcialmente" : "Prevista";
@@ -159,18 +175,19 @@ function Page() {
                   <td>{pc ? `${i + 1}/${n}` : "—"}</td><td className="num">{pc ? fmtBRL(pc.amount) : "—"}</td>
                   <td>{pc ? fmtDate(it ? it.date : pc.date) : "—"}</td><td>{it?.extensionDate ? <span className="tag tag-warn">{fmtDate(it.extensionDate)}</span> : "—"}</td>
                   <td><span className={`tag ${r.health === "ok" ? "" : "tag-err"}`}>{sit}{r.health !== "ok" ? " · conciliação pendente" : ""}</span></td>
+                  {datesCells(plannedMeta.get(`${p.id}#${idx}`))}
                   <td><Acoes>
                     <Button variant="outline" size="sm" onClick={() => setManaged({ kind: "planned", id: p.id, parcel: currentParcels(d, p.id)[i]?.key })}>Gerenciar lançamento</Button>
                   </Acoes></td>
                 </tr>,
               ];
-              if (isOpen("tl", p.id + ":" + idx)) out.push(<tr key={p.id + ":" + idx + "-e"}><td colSpan={12} className="bg-muted"><Timeline d={d} p={p} act={actAlone} /></td></tr>);
+              if (isOpen("tl", p.id + ":" + idx)) out.push(<tr key={p.id + ":" + idx + "-e"}><td colSpan={14} className="bg-muted"><Timeline d={d} p={p} act={actAlone} /></td></tr>);
               return out;
             })}
-            {!plannedRows.length && <tr><td colSpan={12} className="text-center text-muted-foreground">Nenhum resultado para os filtros informados</td></tr>}</tbody></table>
+            {!plannedRows.length && <tr><td colSpan={14} className="text-center text-muted-foreground">Nenhum resultado para os filtros informados</td></tr>}</tbody></table>
         )}
         {tab === "committed" && (
-          <table className="tbl"><thead><tr><SortHead label="Categoria" column={0} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Subgrupo" column={1} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Fornecedor" column={2} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Código do pedido" column={3} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Documento" column={4} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Descrição" column={5} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Parcela" column={6} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Valor da parcela" column={7} sort={committedReport.sort} onSort={committedReport.toggle} numeric={true} /><SortHead label="Vencimento" column={8} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Prorrogar para" column={9} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Situação do lançamento" column={10} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Situação do pagamento" column={11} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Pago" column={12} sort={committedReport.sort} onSort={committedReport.toggle} numeric={true} /><SortHead label="Saldo em aberto" column={13} sort={committedReport.sort} onSort={committedReport.toggle} numeric={true} /><th>Ações</th></tr></thead>
+          <table className="tbl"><thead><tr><SortHead label="Categoria" column={0} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Subgrupo" column={1} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Fornecedor" column={2} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Código do pedido" column={3} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Documento" column={4} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Descrição" column={5} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Parcela" column={6} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Valor da parcela" column={7} sort={committedReport.sort} onSort={committedReport.toggle} numeric={true} /><SortHead label="Vencimento" column={8} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Prorrogar para" column={9} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Situação do lançamento" column={10} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Situação do pagamento" column={11} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Pago" column={12} sort={committedReport.sort} onSort={committedReport.toggle} numeric={true} /><SortHead label="Saldo em aberto" column={13} sort={committedReport.sort} onSort={committedReport.toggle} numeric={true} /><th>Cadastrado em<br />(Brasília)</th><th>Última alteração<br />(Brasília)</th><th>Ações</th></tr></thead>
             <tbody>{committedPager.slice(efetivados).flatMap((r) => {
               if (r.t === "committed") {
                 const c = r.c;
@@ -186,11 +203,12 @@ function Page() {
                     <td>{c.status === "cancelado" ? "Cancelado" : c.origin === "efetivacao" ? "Efetivado (previsão)" : c.origin === "legado" ? "Efetivado (histórico)" : "Efetivado"}</td>
                     <td><span className={`tag ${ts.state === "Pago" ? "tag-ok" : ts.state === "Parcial" ? "tag-warn" : ""}`}>{ts.state === "Parcial" ? "Parcialmente pago" : ts.state}</span>{ts.payments.some((p) => p.method === "cartao") && <span className="tag tag-ok ml-1">{ts.payments.every((p) => p.method === "cartao") && ts.open <= 0 ? "Quitado com cartão" : "parte no cartão"}</span>}</td>
                     <td className="num">{fmtBRL(ts.paid)}</td><td className="num">{fmtBRL(Math.max(0, ts.open))}</td>
+                    {datesCells(committedMeta.get(`committed:${c.id}`))}
                     <td><Acoes>
                       <Button variant="outline" size="sm" onClick={() => setManaged({ kind: "committed", id: c.id, parcel: c.id })}>Gerenciar lançamento</Button>
                     </Acoes></td>
                   </tr>,
-                  isOpen("det", c.id) && <tr key={c.id + "-d"}><td colSpan={15} className="bg-muted">
+                  isOpen("det", c.id) && <tr key={c.id + "-d"}><td colSpan={17} className="bg-muted">
                     <div className="flex flex-wrap items-end gap-3 p-1 text-xs">
                       <span>Origem: <b>{c.origin === "efetivacao" ? `efetivação da previsão ${pl?.purchaseCode || pl?.document || ""}` : c.origin === "legado" ? "histórico (abatimento pelo código do pedido)" : "manual"}</b></span>
                       {c.origin === "efetivacao" ? <span className="text-muted-foreground">Base de abatimento do histórico: não se aplica (vínculo explícito)</span> : <label>Base de abatimento do histórico<br /><MoneyInput value={c.legacyAbatement} onChange={(v) => act((x) => { const t = x.committed.find((y) => y.id === c.id); if (t) { t.legacyAbatement = v; if (v !== null) t.origin = "legado"; } })} /></label>}
@@ -211,14 +229,15 @@ function Page() {
                   <td>{e.status === "cancelado" ? "Cancelado" : "Efetivado"}</td>
                   <td><span className={`tag ${ts.state === "Pago" ? "tag-ok" : ts.state === "Parcial" ? "tag-warn" : ""}`}>{ts.state === "Parcial" ? "Parcialmente pago" : ts.state}</span>{ts.payments.some((p) => p.method === "cartao") && <span className="tag tag-ok ml-1">{ts.payments.every((p) => p.method === "cartao") && ts.open <= 0 ? "Quitado com cartão" : "parte no cartão"}</span>}</td>
                   <td className="num">{fmtBRL(ts.paid)}</td><td className="num">{fmtBRL(Math.max(0, ts.open))}</td>
+                  {datesCells(committedMeta.get(`expense:${e.id}`))}
                   <td><Acoes>
                     <Button variant="outline" size="sm" onClick={() => setManaged({ kind: "expense", id: e.id, parcel: e.id })}>Gerenciar lançamento</Button>
                   </Acoes></td>
                 </tr>,
-                isOpen("det", e.id) && <tr key={e.id + "-d"}><td colSpan={15} className="bg-muted p-2"><div className="lbl mb-1">Baixas da parcela</div><BaixasList d={d} kind="expense" titleId={e.id} canReverse={active.isBase} onReverse={(id, n) => act((x) => reversePayment(x, id, n, now()))} />{e.cardId && <p className="mt-1">Compra no cartão — paga pela fatura{e.invoiceId ? "" : " (fatura ainda não fechada)"}.</p>}</td></tr>,
+                isOpen("det", e.id) && <tr key={e.id + "-d"}><td colSpan={17} className="bg-muted p-2"><div className="lbl mb-1">Baixas da parcela</div><BaixasList d={d} kind="expense" titleId={e.id} canReverse={active.isBase} onReverse={(id, n) => act((x) => reversePayment(x, id, n, now()))} />{e.cardId && <p className="mt-1">Compra no cartão — paga pela fatura{e.invoiceId ? "" : " (fatura ainda não fechada)"}.</p>}</td></tr>,
               ];
             })}
-            {!efetivados.length && <tr><td colSpan={15} className="text-center text-muted-foreground">Nenhum resultado para os filtros informados</td></tr>}</tbody></table>
+            {!efetivados.length && <tr><td colSpan={17} className="text-center text-muted-foreground">Nenhum resultado para os filtros informados</td></tr>}</tbody></table>
         )}
         {tab === "payments" && (
           <table className="tbl"><thead><tr><SortHead label="Data" column={0} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><SortHead label="Título" column={1} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><SortHead label="Conta" column={2} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><SortHead label="Valor" column={3} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={true} /><SortHead label="Obs." column={4} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><SortHead label="Situação" column={5} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><th>Ações</th></tr></thead>

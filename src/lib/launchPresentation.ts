@@ -6,9 +6,12 @@ import type { ScenarioData, CategoryKind } from "./engine/types";
 import { addDays, fmtDate } from "./dates";
 import { fmtBRL } from "./money";
 import { dateValue, parcelValue, indexReport } from "./reportTable";
+import { createLaunchDates, launchDays, type LaunchAudit, type LaunchFacets } from './launchFilters';
+import { normalizeSearch } from './reportTable';
 
 /** Read-only, per-data-snapshot lazy models. No shared cache across organizations/scenarios. */
-export function createLaunchPresentation(d: ScenarioData) {
+export function createLaunchPresentation(d: ScenarioData, audit: LaunchAudit[] = []) {
+  const dates = createLaunchDates(audit);
   const suppliers = new Map(d.suppliers.map(s => [s.id, s]));
   const categories = new Map(d.categories.map(c => [c.id, c]));
   const titles = { committed: new Map(d.committed.map(c => [c.id, c])), expense: new Map(d.expenses.map(e => [e.id, e])) };
@@ -19,6 +22,14 @@ export function createLaunchPresentation(d: ScenarioData) {
   const catOf = (id: string) => categories.get(id);
   const kindOfCat = (id: string): CategoryKind | "" => catOf(id)?.kind ?? "";
   const kindL = (id: string, fb: CategoryKind = "compra") => ((kindOfCat(id) || fb) === "compra" ? "Compra" : "Despesa");
+  const facets = (kind: 'planned' | 'committed' | 'expense', record: ScenarioData['planned'][number] | ScenarioData['committed'][number] | ScenarioData['expenses'][number], key: string, due: string | null, extended: string | null, document: string, index = 0): LaunchFacets => {
+    const identity = supplierIdentity(d, record);
+    const timestamps = dates(kind, record, key, index);
+    return { ...timestamps, ...launchDays(timestamps), key: JSON.stringify([kind, key]), supplier: identity.key, supplierName: identity.name,
+      supplierText: normalizeSearch([identity.name, ...(sup(record.supplierId)?.aliases ?? [])].join(' ')),
+      category: kindL(record.categoryId, kind === 'expense' ? 'despesa' : 'compra'), subgroup: record.categoryId,
+      document: normalizeSearch(document), order: normalizeSearch(record.purchaseCode ?? ''), description: normalizeSearch(record.notes), due, extended };
+  };
   let cachedGroups: ReturnType<typeof documentGroups> | undefined;
   const getGroups = () => cachedGroups ??= documentGroups(d);
   const buildPlanned = () => {
@@ -30,7 +41,12 @@ export function createLaunchPresentation(d: ScenarioData) {
     return parts.map((pc, i) => ({ p, r, pc, i, n: parts.length, it: inst && pc ? inst[pc.idx ?? i] ?? null : null, idx: pc?.idx ?? i }));
   });
   const plannedValues = ({ p, r, pc, i, n, it }: (typeof plannedSource)[number]) => [kindL(p.categoryId), catOf(p.categoryId)?.name, (supplierIdentity(d, p).name), p.purchaseCode, p.document, p.notes, pc ? i + 1 : null, pc?.amount, dateValue(it?.date ?? pc?.date), dateValue(it?.extensionDate), p.status === "encerrado" ? "Encerrada" : p.status === "cancelado" ? "Cancelada" : r.effectivated > 0 ? "Efetivada parcialmente" : "Prevista"];
-    return indexReport(plannedSource, plannedValues, (row) => [...plannedValues(row), ...(sup(row.p.supplierId)?.aliases ?? []), row.pc ? `${row.i + 1}/${row.n}` : "", row.pc ? fmtBRL(row.pc.amount) : "", fmtDate(row.it?.date ?? row.pc?.date ?? null), fmtDate(row.it?.extensionDate ?? null), row.r.health !== "ok" ? "conciliação pendente" : ""]);
+    return indexReport(plannedSource, plannedValues, (row) => [...plannedValues(row), ...(sup(row.p.supplierId)?.aliases ?? []), row.pc ? `${row.i + 1}/${row.n}` : "", row.pc ? fmtBRL(row.pc.amount) : "", fmtDate(row.it?.date ?? row.pc?.date ?? null), fmtDate(row.it?.extensionDate ?? null), row.r.health !== "ok" ? "conciliação pendente" : ""]).map(r => {
+      const key = r.row.p.remainingOverride?.items?.[r.row.i]?.id ?? `${r.row.p.id}#${r.row.idx}`;
+      const log = [...(r.row.p.editLog ?? [])].reverse().find(l => l.parcel === key);
+      const extended = log?.note.includes('prorrogação') ? log.after.date : r.row.it?.extensionDate ?? null;
+      return { ...r, facets: facets('planned', r.row.p, key, extended ? log?.before.date ?? r.row.it?.date ?? r.row.pc?.date ?? null : r.row.it?.date ?? r.row.pc?.date ?? null, extended, r.row.p.document, r.row.idx) };
+    });
   };
   const buildCommitted = () => {
   const groups = getGroups();
@@ -47,7 +63,12 @@ export function createLaunchPresentation(d: ScenarioData) {
     return indexReport(committedSource, committedValues, (row) => {
     const t = row.t === "committed" ? row.c : row.e;
     const v = committedValues(row);
-    return [...v, t.document, ...(sup(t.supplierId)?.aliases ?? []), labels.get(t.id) ?? "1/1", ...[7, 12, 13].map((i) => fmtBRL(Number(v[i]))), ...[8, 9].map((i) => typeof v[i] === "number" ? fmtDate(new Date(v[i]).toISOString().slice(0, 10)) : ""), paymentsFor(d, row.t, t.id).some((p) => p.method === "cartao") ? "Quitado com cartão parte no cartão" : ""];
+    return [...v, t.document, t.importOrigin?.sheet === 'Lançamentos' ? t.importOrigin.raw?.[2] as string | undefined : '', ...(sup(t.supplierId)?.aliases ?? []), labels.get(t.id) ?? "1/1", ...[7, 12, 13].map((i) => fmtBRL(Number(v[i]))), ...[8, 9].map((i) => typeof v[i] === "number" ? fmtDate(new Date(v[i]).toISOString().slice(0, 10)) : ""), paymentsFor(d, row.t, t.id).some((p) => p.method === "cartao") ? "Quitado com cartão parte no cartão" : ""];
+  }).map(r => {
+    const t = r.row.t === 'committed' ? r.row.c : r.row.e;
+    const original = t.importOrigin?.sheet === 'Lançamentos' ? t.importOrigin.raw?.[2] : '';
+    const due = r.row.t === 'committed' ? r.row.c.dueDate : r.row.e.termDays != null ? addDays(r.row.e.baseDate, r.row.e.termDays) : null;
+    return { ...r, facets: facets(r.row.t, t, t.id, due, t.extensionDate ?? null, [r.values[4], t.document, typeof original === 'string' ? original : ''].join(' ')) };
   });
   };
   const buildPayments = () => {
