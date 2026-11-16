@@ -2,6 +2,7 @@ import { fmtBRL } from "./money";
 
 /** Proveniência técnica conhecida: "(ABA linha N, coluna N)" e frases da carga. Somente renderização. */
 const PATTERNS: RegExp[] = [
+  /\bimportado\s+\S+\.xls[xm]?\b[^;()]*?(?:linha|coluna)\s*\d+(?:\s*\([^()]*\))?/gi,
   /Saldo substituído na fonte\s*\([^()]*linha\s*\d+[^()]*\)\.?/gi,
   /\((?:[A-ZÇÃÕÉ ]{3,}\s+)?linha\s*\d+(?:\s*,\s*coluna\s*[\dA-Z]+)?\)/g,
 ];

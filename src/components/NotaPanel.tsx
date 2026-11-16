@@ -1,3 +1,4 @@
+import { splitOrigin } from "@/lib/originText";
 import { supplierIdentity, supplierIdentityOptions } from "@/lib/supplierIdentity";
 import { askConfirm } from "@/lib/decisions";
 import { DecisionWindow } from "@/components/DecisionDialog";
@@ -354,11 +355,11 @@ export function ConditionPicker({ d, supplierId, hint, disabled, disabledHint, o
       {hint && <p className="font-medium">{hint}</p>}
       <div className="flex flex-wrap items-end gap-3">
         <Field l="Condição"><select aria-label="Condição" className="inp h-8 min-w-56" value={sel} onChange={(e) => { setSel(e.target.value); setTouched(true); setSave(false); }}>
-          {list.map((c) => <option key={c.id} value={c.id}>{c.name}{c.note ? ` · ${c.note}` : ""} · {termsTxt(c.terms)} dias{c.id === cur?.id ? " (vigente na data base)" : ""}</option>)}
+          {list.map((c) => <option key={c.id} value={c.id}>{c.name}{splitOrigin(c.note).text ? ` · ${splitOrigin(c.note).text}` : ""} · {termsTxt(c.terms)} dias{c.id === cur?.id ? " (vigente na data base)" : ""}</option>)}
           <option value="__esp">Informar condição específica…</option></select></Field>
         {!isEsp && <span className="text-muted-foreground">{termsTxt(chosen.terms)} dias · {chosen.terms.filter((t) => t !== null).length} parcela(s)</span>}
       </div>
-      {!isEsp && list.find((x) => x.id === sel)?.note && <p className="rounded bg-muted p-2">Observação da condição: {list.find((x) => x.id === sel)!.note}</p>}
+      {!isEsp && splitOrigin(list.find((x) => x.id === sel)?.note).text && <p className="rounded bg-muted p-2">Observação da condição: {splitOrigin(list.find((x) => x.id === sel)?.note).text}</p>}
       {isEsp && <TermsEditor terms={espT} onChange={setEspT} />}
       {isEsp && <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-1"><input type="checkbox" checked={save} onChange={async (e) => { const checked = e.target.checked; if (checked && !await askConfirm("Esta condição será salva como nova condição do fornecedor. As condições anteriores serão preservadas.", { title: "Salvar nova condição?", action: "Salvar condição" })) return; setSave(checked); }} /> Salvar como nova condição do fornecedor</label>
