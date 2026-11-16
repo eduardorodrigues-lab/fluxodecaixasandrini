@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { emptyData } from "./engine/actions";
 import { documentGroups } from "./documentGroups";
-import { applyManaged, managedDocument, validateManualRemaining } from "./manageLaunch";
+import { applyManaged, managedDocument, redistributeSelected, validateManualRemaining } from "./manageLaunch";
 import { effectivateManual, currentParcels } from "./efetivacao";
 import { computeFlow } from "./engine/engine";
 import { diffData, applyOps } from "./diff";
@@ -70,5 +70,19 @@ describe("Gerenciamento autorizado", () => {
   it("referência de outra organização não encontra registro; alterações concorrentes são recusadas", () => {
     expect(() => managedDocument(emptyData(), { kind: "committed", id: "c2" })).toThrow();
     const d = fixture(), inp = edit(d); const row = d.committed[1]; if (!row) throw new Error(); row.value += 1; expect(() => applyManaged(d, inp)).toThrow("mudou");
+  });
+  it("redistribuição explícita afeta apenas selecionadas, resíduo na última e protege pagas", () => {
+    const d = fixture(), doc = managedDocument(d, { kind: "committed", id: "c2" });
+    const next = redistributeSelected(doc.parcels, ["c2", "c3"], 10001);
+    expect(next.map((p) => p.amount)).toEqual([2640000, 5001, 5000]); expect(next[0]).toEqual(doc.parcels[0]);
+    expect(() => redistributeSelected(doc.parcels, ["c1"], 10000)).toThrow("protegidas");
+  });
+  it("prorrogação preserva vencimento original e histórico; cancelada planejada preserva valor original na consulta", () => {
+    const d = fixture(), inp = edit(d); const p = inp.parcels[1]; if (!p) throw new Error(); p.extension = "2026-11-25"; applyManaged(d, inp);
+    expect(d.committed[1]?.dueDate).toBe("2026-11-05"); expect(d.committed[1]?.extensionHistory[0]?.to).toBe("2026-11-25");
+    const plan = emptyData(); plan.planned.push({ id: "pl", supplierId: "s", categoryId: "cat", document: "NF", purchaseCode: "P", value: 200000, baseDate: "2026-10-01", notes: "", status: "ativo", remainingOverride: null, installments: [10,11].map((n) => ({ amount: 100000, date: `2026-${n}-05`, extensionDate: null, extensionHistory: [] })) });
+    const ref = { kind: "planned" as const, id: "pl" }, doc = managedDocument(plan, ref), rows = structuredClone(doc.parcels); const row = rows[0]; if (!row) throw new Error(); row.status = "cancelado";
+    applyManaged(plan, { ref, before: doc.parcels, parcels: rows, fields: doc.fields, initialFields: doc.fields, reason: "Pedido cancelado", at: "2026-11-16T15:57:00Z", by: "editor" });
+    const read = managedDocument(plan, ref); expect(read.parcels[0]?.original).toBe(100000); expect(read.parcels[0]?.status).toBe("cancelado"); expect(read.parcels[1]?.amount).toBe(100000);
   });
 });

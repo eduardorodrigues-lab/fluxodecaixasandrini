@@ -45,7 +45,8 @@ export function ManageLaunchPanel({ launch, onClose }: { launch: LaunchRef; onCl
       const pl = base.planned.find((p) => p.id === launch.id);
       if (!pl || distributePlanned(pl, base.suppliers.find((s) => s.id === pl.supplierId), base.committed, base.params.profile, base.effectivations).health !== "ok") throw new Error("Planejamento com abatimento pendente. Confira os vínculos antes de efetivar.");
     }
-    applyManaged(base, { ref: launch, before: initial.parcels, parcels, fields, initialFields: initial.fields, reason, at: new Date().toISOString(), by: user?.email ?? "" });
+    const plannedDraft = eff ? parcels.map((p) => selected.includes(p.key) ? initial.parcels.find((old) => old.key === p.key) ?? p : p) : parcels;
+    applyManaged(base, { ref: launch, before: initial.parcels, parcels: plannedDraft, fields, initialFields: initial.fields, reason, at: new Date().toISOString(), by: user?.email ?? "" });
     if (!eff) return;
     if (!reason.trim()) throw new Error("Informe a justificativa da efetivação.");
     const err = validateManualRemaining(remaining, checked, rest); if (err) throw new Error(err);

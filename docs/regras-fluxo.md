@@ -1,5 +1,12 @@
 # Fluxo de Caixa Sandrini — Regras, schema e critérios de aceite (NÃO homologado)
 
+## Gerenciar lançamento — 16/11/2026
+- Painel único com Resumo, Parcelas, Dados do documento e Histórico; linhas permanecem individuais. Agrupamento importado é somente consulta: série numérica A1…An exige células de identificação/fornecedor/pedido/data e linhas consecutivas na origem comprovada. IDs, identificações originais pesquisáveis e baixas não são regravados. Séries ambíguas ficam individuais e listadas para revisão.
+- Valores/datas/prorrogação alteram somente parcelas escolhidas; campos compartilhados afetam o documento inteiro, não todas as notas de um pedido. Redistribuição de valores exige seleção, total explícito e revisão; resíduo na última selecionada. Alteração de quantidade de parcelas ainda não disponibilizada neste painel.
+- Efetivar seleciona esta/algumas/todas, não paga; saldo restante previsto é informado manualmente e deve conferir com suas parcelas/datas. Vazio não é zero; encerramento exige informar e confirmar R$ 0. Referência matemática nunca se aplica automaticamente. Selecionar uma previsão ao criar efetivado abre o gerenciamento seguro, sem o antigo restante automático.
+- Cancelamento conserva valor original e status/histórico; efeito futuro zero. Planejada usa itens de restante com zero e valor anterior no registro de edição existente, sem alterar schema; consulta mantém o valor original visível. Parcela com baixa ativa não pode ser editada/cancelada diretamente. Estornos seguem mecanismo próprio existente, sem transferência bancária ou exclusão da baixa.
+- Revisão mostra afetadas/não afetadas, antes/depois e impacto diário pelo motor 2025–2030. Justificativa obrigatória para valores/datas/cancelamento/efetivação. Confirmar aplica ao rascunho; somente Salvar grava a base pelo caminho existente. Cancelar painel não aplica, simulações e permissões continuam isoladas.
+
 ## Consolidação autorizada de recebimentos — 16/11/2026
 - Migração explícita, sem reimportação: aliases confirmados consolidam IDs de plataforma; MELI SP/MG e AMAZON SP/MG permanecem separados, Menswear/Sports seguem o mapeamento autorizado. GERAL não é plataforma. TIKTOK é cadastro sem valores históricos.
 - A ordem operacional persistida é a ordem do array de plataformas; GERAL vem após plataformas e antes das colunas calculadas. Cadastros inesperados permanecem, sem exclusão por contagem alvo.
