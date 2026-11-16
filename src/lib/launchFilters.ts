@@ -63,7 +63,7 @@ const shared = ['supplierId', 'categoryId', 'purchaseCode', 'document', 'notes',
 function parcelState(v: unknown, key: string, index: number) {
   const r = object(v), remaining = object(r["remainingOverride"]);
   if (Array.isArray(remaining["items"])) return remaining["items"].find((v) => object(v)["id"] === key) ?? null;
-  if (Array.isArray(r["installments"])) return r["installments"][index] ?? null;
+  if (Array.isArray(r["installments"]) && key.startsWith(`${String(r['id'])}#`)) return r["installments"][index] ?? null;
   return null;
 }
 /** Index existing audit once. Imported inclusions never imply historical creation. */
