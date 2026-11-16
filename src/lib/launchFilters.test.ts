@@ -99,4 +99,13 @@ describe('metadados confiáveis por parcela', () => {
     expect(filterLaunchRows(old.committed, emptyLaunchFilters(), 'NOVO', 'updated')).toHaveLength(0);
     expect(createLaunchPresentation(emptyData()).committed).toHaveLength(0);
   });
+  it('nova parcela do restante não herda cadastro de uma parcela original anterior', () => {
+    const p = planned(), after = { ...p, remainingOverride: { value: 20900, dates: ['2027-08-01'], items: [{ id: 'nova-parcela', amount: 20900, date: '2027-08-01' }] } };
+    const get = createLaunchDates([
+      { at: '2026-11-10T15:00:00Z', user: 'Primeiro', changes: [{ entity: 'Previsão (planejada)', id: p.id, kind: 'inclusão', before: null, after: p, fields: [] }] },
+      { at: '2026-11-16T15:00:00Z', user: 'Segundo', changes: [{ entity: 'Previsão (planejada)', id: p.id, kind: 'alteração', before: p, after, fields: ['remainingOverride'] }] },
+    ]);
+    expect(get('planned', after, 'nova-parcela').created).toBe('2026-11-16T15:00:00Z');
+    expect(get('planned', after, 'nova-parcela').createdBy).toBe('Segundo');
+  });
 });

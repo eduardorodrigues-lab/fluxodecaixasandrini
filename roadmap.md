@@ -1,9 +1,11 @@
 # Roadmap
 
 ## Filtros interativos de Lançamentos — autorizado 16/11/2026
-- [ ] Painel compacto Planejada/Efetivado, critérios combinados/chips/ordenação e totais completos antes da paginação; pesquisa e Gerenciar preservados
-- [ ] Datas confiáveis por parcela via auditoria/histórico existentes, sem inventar cadastro original nem escrever metadados
-- [ ] Testes focados, navegador 1366/1536/menor e medição na mesma amostra isolada; nenhuma escrita oficial/publicação
+- [x] Painel compacto Planejada/Efetivado, critérios combinados/chips/ordenação, CSV e totais completos antes da paginação; pesquisa e Gerenciar preservados
+- [x] Datas por parcela via auditoria/histórico existentes; importação não vira cadastro original, ausentes Não disponível; sem escrita de metadados
+- [x] Testes focados e navegador isolado 1366/1536/768/390: Mais filtros, chips, limpar, trocar abas, ordenar, exportar 2.000 registros com 50 na tela e abrir Gerenciar; zero funções de escrita
+- [x] Mesma amostra v160, 3 repetições: consulta+digitação+estabilidade 361186A2 Planejada 0,77→1,07s / Efetivado 0,85→1,08s; MANCHESTER 1,13→1,29s / 0,85→1,03s. Variação entre execuções, sem benchmark integral nem ganho alegado
+- [ ] Cadastro/última alteração históricos fora das últimas 200 auditorias ou sem histórico inequívoco indisponíveis; sem backfill/schema autorizado. Navegador real integral não medido; menu existente precisa ser recolhido abaixo de 900px
 
 ## Rapidez da busca de Lançamentos — autorizado 16/11/2026
 - [x] Baseline e comparação no mesmo navegador: amostra v160 (600 planejadas/2.000 títulos/1.700 baixas/78 fornecedores), 3 repetições; contagens atuais lidas
