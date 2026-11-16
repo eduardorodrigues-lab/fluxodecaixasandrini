@@ -4,6 +4,7 @@ import { normalizeData } from "./engine/actions";
 import { applyOps, diffData, summarize, type Change } from "./diff";
 import type { ScenarioData } from "./engine/types";
 import { pickOrg } from "./team";
+import { dependenciesMatch, type ReviewedOperation } from './operationSave';
 
 // Base OFICIAL compartilhada: leitura sob RLS do próprio usuário; gravação apenas via servidor
 // (verifica papel, versão esperada, idempotência e grava auditoria antes/depois).
@@ -74,9 +75,10 @@ export const commitOfficial = createServerFn({ method: "POST" })
 // Alterações independentes de outras pessoas são preservadas; mesma informação alterada → conflito para decisão.
 export const commitOps = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: { orgId: string | null; requestId: string; opsJson: string }) => {
+  .inputValidator((i: { orgId: string | null; requestId: string; opsJson: string; dependenciesJson?: string }) => {
     orgIn(i);
     if (typeof i?.requestId !== "string" || !/^[0-9a-f-]{36}$/i.test(i.requestId) || typeof i.opsJson !== "string" || i.opsJson.length > 20_000_000) throw new Error("Entrada inválida.");
+    if(i.dependenciesJson !== undefined && (typeof i.dependenciesJson !== 'string' || i.dependenciesJson.length > 20_000_000)) throw new Error('Dependências inválidas.');
     return i;
   })
   .handler(async ({ data: input, context }) => {
@@ -88,6 +90,13 @@ export const commitOps = createServerFn({ method: "POST" })
     try { ops = JSON.parse(input.opsJson) as Change[]; if (!Array.isArray(ops)) throw new Error(); } catch { throw new Error("Dados inválidos."); }
     const { data: cur, error } = await context.supabase.from("official_data").select("data, version").eq("org_id", m.org_id).single();
     if (error || !cur) throw new Error("Falha ao ler os dados da organização.");
+    if(input.dependenciesJson) {
+      const dependencies=JSON.parse(input.dependenciesJson) as ReviewedOperation['dependencies'];
+      if(!Array.isArray(dependencies))throw new Error('Dependências inválidas.');
+      if(!dependenciesMatch(normalizeData(cur.data),{scope:'',orgId:m.org_id,requestId:input.requestId,ops,dependencies})) {
+        return {status:'conflict' as const,version:cur.version,conflictsJson:JSON.stringify(ops.map(change=>({change,server:'Dependências alteradas (título, pagamentos ou vínculo). Releia e revise.'})))};
+      }
+    }
     const r = applyOps(normalizeData(cur.data), ops, true);
     if (r.conflicts.length) return { status: "conflict" as const, version: cur.version, conflictsJson: JSON.stringify(r.conflicts) };
     if (!r.applied.length) return { status: "noop" as const, version: cur.version, conflictsJson: "[]" };

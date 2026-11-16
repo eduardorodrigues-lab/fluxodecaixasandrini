@@ -1,3 +1,4 @@
+import { useOperationSave } from "@/components/useOperationSave";
 import { LaunchFilterPanel, useLaunchFilters } from "@/components/LaunchFilters";
 import { filterLaunchRows, formatLaunchTime } from "@/lib/launchFilters";
 import { reportCSV } from "@/lib/reportTable";
@@ -91,6 +92,7 @@ const AmbiguousDocuments = memo(function AmbiguousDocuments({ d, groups, onManag
 function Page() {
   const target = Route.useSearch();
   const { active, update, changes, user, audit, allSims, official } = useApp();
+  const operation = useOperationSave();
   const d = active.data;
   const [tab, setTab] = useState<Tab>(TABS.find((t) => t.k === target.tab)?.k ?? "planned");
   usePendingFocus(target.focus, tab);
@@ -108,10 +110,14 @@ function Page() {
   const [managed, setManaged] = useState<LaunchRef | null>(null);
   const act = (fn: (x: ScenarioData) => void) => { const e = update(fn); setErr(e ?? ""); return !e; };
   const actAlone = (fn: (x: ScenarioData) => void, what: string) => {
-    if (active.isBase && changes.length) { setErr(`Há alterações não salvas. Salve ou descarte antes de ${what}.`); return false; }
-    return act(fn);
+    void operation.saveMutation(d,fn);
+    return true;
   };
-  const doPanel = (fn: (x: ScenarioData) => void) => { if (act(fn)) setPanel(null); };
+  const savePanel = async (fn: (x: ScenarioData) => void) => {
+    try { const ok=await operation.saveMutation(d,fn); if(ok)setPanel(null); return ok; }
+    catch(e) { setErr((e as Error).message); return false; }
+  };
+  const doPanel = (fn: (x: ScenarioData) => void) => { void savePanel(fn); };
   const sup = (id: string) => d.suppliers.find((s) => s.id === id);
   const catOf = (id: string) => d.categories.find((c) => c.id === id);
   const kindOfCat = (id: string): CategoryKind | "" => catOf(id)?.kind ?? "";
@@ -155,8 +161,9 @@ function Page() {
   return (
     <div>
       <PageHeader title="Lançamentos" sub={active.isBase ? "" : "Simulação: alterações imediatas e apenas visuais."}>
-        {(tab === "planned" || tab === "committed") && <button className="btn btn-primary" onClick={() => setPanel({ t: "new" })}>+ Novo lançamento</button>}
+        {(tab === "planned" || tab === "committed") && <button className="btn btn-primary" onClick={() => {operation.reset();setPanel({ t: "new" });}}>+ Novo lançamento</button>}
       </PageHeader>
+      {operation.error && <p role="alert" className="text-destructive">{operation.error}</p>}
       {err && <div className="mb-2 rounded border border-destructive p-2 text-xs text-destructive">{err}</div>}
       <div className="mb-2 flex overflow-x-auto border-b border-border">{TABS.map((t) => <button key={t.k} className={`tab whitespace-nowrap ${tab === t.k ? "tab-on" : ""}`} onClick={() => setTab(t.k)}>{t.l} {t.k === "consultas" ? "" : `(${t.k === "committed" ? d.committed.length + d.expenses.length : (d[t.k] as unknown[]).length})`}</button>)}</div>
       {(tab === "planned" || tab === "committed") && <LaunchFilterPanel key={tab} state={{ ...(tab === "planned" ? plannedFilters : committedFilters), setOrder: (v) => { (tab === "planned" ? plannedFilters : committedFilters).setOrder(v); report.setSort(null); }, clear: () => { (tab === "planned" ? plannedFilters : committedFilters).clear(); setFKind(""); cf.clear(); report.setQuery(""); } }} suppliers={supplierOptions} categories={d.categories} situations={situations} payments={tab === "committed" ? paymentSituations : undefined} count={tab === "planned" ? plannedRows.length : efetivados.length} total={(tab === "planned" ? plannedResult : committedResult).reduce((sum, r) => sum + (typeof r.values[7] === "number" ? r.values[7] : 0), 0)} onExport={exportFiltered} extra={<ColumnFilter cols={tab === "planned" ? PLANNED_COLS : COMMITTED_COLS} filter={cf} suggest={suggestions} />} />}
@@ -214,7 +221,7 @@ function Page() {
                       {c.origin === "efetivacao" ? <span className="text-muted-foreground">Base de abatimento do histórico: não se aplica (vínculo explícito)</span> : <label>Base de abatimento do histórico<br /><MoneyInput value={c.legacyAbatement} onChange={(v) => act((x) => { const t = x.committed.find((y) => y.id === c.id); if (t) { t.legacyAbatement = v; if (v !== null) t.origin = "legado"; } })} /></label>}
                       {c.extensionInfo && <span className="text-muted-foreground">Campo K (informativo): {c.extensionInfo}</span>}
                     </div>
-                    <div className="lbl mb-1 mt-2">Baixas da parcela</div><BaixasList d={d} kind="committed" titleId={c.id} canReverse={active.isBase} onReverse={(id, n) => act((x) => reversePayment(x, id, n, now()))} />
+                    <div className="lbl mb-1 mt-2">Baixas da parcela</div><BaixasList d={d} kind="committed" titleId={c.id} canReverse={active.isBase} onReverse={(id, n) => {void operation.saveMutation(d,(x) => reversePayment(x, id, n, now()));}} />
                   </td></tr>,
                 ];
               }
@@ -234,7 +241,7 @@ function Page() {
                     <Button variant="outline" size="sm" onClick={() => setManaged({ kind: "expense", id: e.id, parcel: e.id })}>Gerenciar lançamento</Button>
                   </Acoes></td>
                 </tr>,
-                isOpen("det", e.id) && <tr key={e.id + "-d"}><td colSpan={17} className="bg-muted p-2"><div className="lbl mb-1">Baixas da parcela</div><BaixasList d={d} kind="expense" titleId={e.id} canReverse={active.isBase} onReverse={(id, n) => act((x) => reversePayment(x, id, n, now()))} />{e.cardId && <p className="mt-1">Compra no cartão — paga pela fatura{e.invoiceId ? "" : " (fatura ainda não fechada)"}.</p>}</td></tr>,
+                isOpen("det", e.id) && <tr key={e.id + "-d"}><td colSpan={17} className="bg-muted p-2"><div className="lbl mb-1">Baixas da parcela</div><BaixasList d={d} kind="expense" titleId={e.id} canReverse={active.isBase} onReverse={(id, n) => {void operation.saveMutation(d,(x) => reversePayment(x, id, n, now()));}} />{e.cardId && <p className="mt-1">Compra no cartão — paga pela fatura{e.invoiceId ? "" : " (fatura ainda não fechada)"}.</p>}</td></tr>,
               ];
             })}
             {!efetivados.length && <tr><td colSpan={17} className="text-center text-muted-foreground">Nenhum resultado para os filtros informados</td></tr>}</tbody></table>
@@ -245,7 +252,7 @@ function Page() {
               const t = p.titleKind === "committed" ? d.committed.find((c) => c.id === p.titleId) : d.expenses.find((e) => e.id === p.titleId);
               return <tr key={p.id}><td>{fmtDate(p.date)}</td><td>{(supplierIdentity(d, t).name)} · {t?.document || "sem documento"}{p.titleKind === "committed" && labels.get(p.titleId) ? ` · parcela ${labels.get(p.titleId)}` : ""}</td><td>{p.method === "cartao" ? <span className="tag tag-ok">Quitado com cartão</span> : p.accountId ? accountName(d, p.accountId) : <span className="tag tag-warn">{NO_ACCOUNT}</span>}</td><td className="num">{fmtBRL(p.amount)}</td><Txt v={p.note} />
                 <td>{p.reversedAt ? <span className="tag tag-err">estornado {fmtDate(p.reversedAt.slice(0, 10))}: {p.reversalNote}</span> : <span className="tag tag-ok">ativo</span>}</td>
-                <td>{!p.reversedAt && p.method !== "cartao" && <button className="btn" disabled={!active.isBase} onClick={async () => { const n = await askText("Motivo do estorno (auditado):"); if (n) act((x) => reversePayment(x, p.id, n, now())); }}>Estornar</button>}</td></tr>;
+                <td>{!p.reversedAt && p.method !== "cartao" && <button className="btn" disabled={!active.isBase} onClick={async () => { const n = await askText("Motivo do estorno (auditado):"); if (n) await operation.saveMutation(d,x=>reversePayment(x,p.id,n,now())); }}>Estornar</button>}</td></tr>;
             })}{!paymentRows.length && <tr><td colSpan={7} className="text-center text-muted-foreground">Nenhum resultado para os filtros informados</td></tr>}</tbody></table>
         )}
       </div>}
@@ -253,19 +260,19 @@ function Page() {
       <p className="mt-2 text-[11px] text-muted-foreground">Registrar pagamento é o registro de uma baixa já realizada (Pix, TED, DOC ou Boleto) — não executa transferência bancária. Boleto pago com cartão não debita conta: passa para a fatura.</p>
 
       {managed && <ManageLaunchPanel key={`${managed.kind}:${managed.id}`} launch={managed} onClose={() => setManaged(null)} />}
-      {panel?.t === "pay" && <PagamentoPanel d={d} kind={panel.kind} titleId={panel.id} label={panel.label} onCancel={() => setPanel(null)} onConfirm={(r) => { const ok = act((x) => r.origin === "conta" ? registerPaymentBatch(x, { batchId: uid(), titleKind: panel.kind, titleId: panel.id, lines: r.lines, note: r.note, form: r.form }) : coverTitleWithCard(x, { id: uid(), at: now(), by: user?.email ?? "", titleKind: panel.kind, titleId: panel.id, cardId: r.cardId, date: r.date, amount: r.amount, fee: r.fee, installments: r.installments, form: "boleto" })); if (ok) setPanel(null); return ok; }} />}
-      {panel?.t === "new" && <NovaNota d={d} isBase={active.isBase} onManagePlanned={(id) => { setPanel(null); setManaged({ kind: "planned", id }); }} onCancel={() => setPanel(null)} onConfirm={(n, sv) => { const ok = act((x) => { if (sv) saveSupplierCondition(x, n.supplierId, sv.terms, now(), sv.name, user?.email ?? ""); applyNote(x, n, { id: uid, at: now() }); }); if (ok) setPanel(null); return ok; }} />}
-      {panel?.t === "parcela" && <ParcelaPanel label={panel.label} amount={panel.amount} date={panel.date} onCancel={() => setPanel(null)} onSave={(a, dt, note) => doPanel((x) => { panel.save(x, a, dt); const r = panel.log(x); if (r) (r.editLog ??= []).push({ at: now(), by: user?.email ?? "", note, parcel: panel.label, before: { amount: panel.amount, date: panel.date }, after: { amount: a, date: dt } }); })} />}
-      {panel?.t === "nota" && <DadosNotaPanel d={d} init={panel.init} siblings={panel.siblings} onCancel={() => setPanel(null)} onSave={(f) => doPanel((x) => panel.save(x, f))} />}
-      {panel?.t === "prorrogar" && <ProrrogarPanel label={panel.label} current={panel.current} original={panel.original} history={panel.history} isBase={active.isBase} onCancel={() => setPanel(null)} onSave={(to, note) => doPanel((x) => panel.save(x, to, note))} />}
-      {panel?.t === "eff" && (() => { const p = d.planned.find((x) => x.id === panel.id); return p ? <EfetivarPanel key={panel.mode + panel.sel.join()} data={d} planned={p} mode={panel.mode} preselect={panel.sel} onCancel={() => setPanel(null)} onDone={(fn) => { if (actAlone(fn, panel.mode === "ajustar" ? "o ajuste" : "a efetivação")) setPanel(null); }} /> : null; })()}
+      {panel?.t === "pay" && <PagamentoPanel d={d} kind={panel.kind} titleId={panel.id} label={panel.label} saving={operation.saving} saveError={operation.error} saveLabel="Confirmar e salvar" onCancel={() => {if(!operation.saving){operation.reset();setPanel(null);}}} onConfirm={async (r) => { const ok = await operation.saveMutation(d,(x) => r.origin === "conta" ? registerPaymentBatch(x, { batchId: uid(), titleKind: panel.kind, titleId: panel.id, lines: r.lines, note: r.note, form: r.form }) : coverTitleWithCard(x, { id: uid(), at: now(), by: user?.email ?? "", titleKind: panel.kind, titleId: panel.id, cardId: r.cardId, date: r.date, amount: r.amount, fee: r.fee, installments: r.installments, form: "boleto" })); if (ok) setPanel(null); return ok; }} />}
+      {panel?.t === "new" && <NovaNota d={d} isBase={active.isBase} onManagePlanned={(id) => { setPanel(null); setManaged({ kind: "planned", id }); }} onCancel={() => {if(!operation.saving){operation.reset();setPanel(null);}}} saving={operation.saving} saveError={operation.error} onConfirm={(n, sv) => savePanel((x) => { if (sv) saveSupplierCondition(x, n.supplierId, sv.terms, now(), sv.name, user?.email ?? ""); applyNote(x, n, { id: uid, at: now() }); })} />}
+      {panel?.t === "parcela" && <ParcelaPanel saving={operation.saving} saveError={operation.error} label={panel.label} amount={panel.amount} date={panel.date} onCancel={() => {if(!operation.saving){operation.reset();setPanel(null);}}} onSave={(a, dt, note) => doPanel((x) => { panel.save(x, a, dt); const r = panel.log(x); if (r) (r.editLog ??= []).push({ at: now(), by: user?.email ?? "", note, parcel: panel.label, before: { amount: panel.amount, date: panel.date }, after: { amount: a, date: dt } }); })} />}
+      {panel?.t === "nota" && <DadosNotaPanel saving={operation.saving} saveError={operation.error} d={d} init={panel.init} siblings={panel.siblings} onCancel={() => {if(!operation.saving){operation.reset();setPanel(null);}}} onSave={(f) => doPanel((x) => panel.save(x, f))} />}
+      {panel?.t === "prorrogar" && <ProrrogarPanel saving={operation.saving} saveError={operation.error} label={panel.label} current={panel.current} original={panel.original} history={panel.history} isBase={active.isBase} onCancel={() => {if(!operation.saving){operation.reset();setPanel(null);}}} onSave={(to, note) => doPanel((x) => panel.save(x, to, note))} />}
+      {panel?.t === "eff" && (() => { const p = d.planned.find((x) => x.id === panel.id); return p ? <EfetivarPanel key={panel.mode + panel.sel.join()} data={d} planned={p} mode={panel.mode} preselect={panel.sel} saving={operation.saving} saveError={operation.error} onCancel={() => {if(!operation.saving){operation.reset();setPanel(null);}}} onDone={savePanel} /> : null; })()}
     </div>
   );
 }
 
 /** Efetivação com edição manual (protótipo aprovado): parcelas selecionadas → Efetivado; demais continuam em Planejada,
  *  editáveis livremente. Sugestões só ao clicar "Aplicar sugestão". mode "ajustar" = só replanejar, sem efetivar. */
-function EfetivarPanel({ data, planned, mode, preselect, onDone, onCancel }: { data: ScenarioData; planned: Planned; mode: "parcela" | "documento" | "ajustar"; preselect: string[]; onDone: (fn: (x: ScenarioData) => void) => void; onCancel: () => void }) {
+function EfetivarPanel({ data, planned, mode, preselect, onDone, onCancel, saving=false, saveError }: { data: ScenarioData; planned: Planned; mode: "parcela" | "documento" | "ajustar"; preselect: string[]; saving?:boolean; saveError?:string; onDone: (fn: (x: ScenarioData) => void) => Promise<boolean>; onCancel: () => void }) {
   const [id] = useState(() => "ef" + uid()); // idempotência por abertura
   const parcels = currentParcels(data, planned.id);
   const sup = data.suppliers.find((s) => s.id === planned.supplierId);
@@ -314,19 +321,21 @@ function EfetivarPanel({ data, planned, mode, preselect, onDone, onCancel }: { d
   };
   const diff = diffParcels(parcels, sel, rest);
   const pName = (k: string) => `${parcels.findIndex((p) => p.key === k) + 1}/${parcels.length}`;
-  const confirm = () => {
+  const confirm = async () => {
     setSent(true);
     const clean = rest.map((r) => ({ id: r.id, amount: r.amount!, date: r.date! }));
-    onDone(mode === "ajustar" ? (x) => adjustPlanned(x, planned.id, clean)
+    await onDone(mode === "ajustar" ? (x) => adjustPlanned(x, planned.id, clean)
       : (x) => effectivateManual(x, { id, plannedId: planned.id, at: new Date().toISOString(), effectiveDate: effDate!, document: doc, purchaseCode: code, selected: sel, eff: eff.map((e) => ({ amount: e.amount!, date: e.date! })), rest: clean, substituted: subst ?? 0, rule }));
+    setSent(false);
   };
   const title = mode === "ajustar" ? "Ajustar planejamento" : mode === "parcela" ? "Efetivar esta parcela" : "Efetivar documento";
   const footer = review
-    ? <><button className="btn" onClick={() => setReview(false)}>Voltar</button><button className="btn" onClick={onCancel}>Cancelar</button><button className="btn btn-primary" disabled={sent} onClick={confirm}>{mode === "ajustar" ? "Confirmar ajuste" : "Confirmar efetivação"}</button></>
+    ? <><button className="btn" onClick={() => setReview(false)}>Voltar</button><button className="btn" onClick={onCancel}>Cancelar</button><button className="btn btn-primary" disabled={sent || saving} onClick={confirm}>{saving ? "Salvando…" : "Confirmar e salvar"}</button></>
     : <><button className="btn" onClick={guardClose(dirty, onCancel)}>Cancelar</button><button className="btn btn-primary" disabled={errs.length > 0} title={errs.join(" ")} onClick={() => setReview(true)}>Revisar alterações</button></>;
   const KIND: Record<string, string> = { efetivada: "Passa para Efetivado", mantida: "Sem alteração", alterada: "Alterada", removida: "Removida", adicionada: "Adicionada" };
   return (
     <SidePanel centered={review} wide title={review ? `Revisar — ${title.toLowerCase()}` : title} sub={`${sup?.name ?? "—"} · ${planned.purchaseCode || planned.document || "sem código"}${mode === "ajustar" ? "" : " — efetivar não registra pagamento"}`} onClose={onCancel} dirty={dirty} footer={footer}>
+      {saveError && <p role="alert" className="text-destructive">{saveError}</p>}
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-lg border border-border bg-muted px-3 py-2 md:grid-cols-4">
         {[["Fornecedor", sup?.name ?? "—"], ["Categoria", `${cat?.kind === "despesa" ? "Despesa" : "Compra"} · ${cat?.name ?? "—"}`], ["Planejado atual", fmtBRL(t.before)], ["Parcelas planejadas", String(parcels.length)]].map(([k, v]) => <div key={k}><div className="lbl">{k}</div><div className="font-medium">{v}</div></div>)}
       </div>

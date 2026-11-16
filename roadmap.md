@@ -1,5 +1,11 @@
 # Roadmap
 
+## Salvamento da operação revisada — autorizado 16/11/2026
+- [x] Confirmar e salvar somente operação/dependências revisadas; pendências independentes preservadas, sobrepostas bloqueadas explicitamente
+- [x] Recuperação/idempotência, falhas/conflitos, reconciliação e edições durante espera; simulação isolada e viewer
+- [x] Testes focados e navegador fixture com releitura/reload, sem escrita oficial ou publicação
+- [ ] Auditoria/persistência hospedadas e concorrência multiusuário real não testadas: gravações reais de teste não autorizadas; todos os caminhos integrados não exercitados individualmente no navegador
+
 ## Formulários verticais — autorizado 16/11/2026
 - [x] Edição planejada vertical e efetivação com blocos reais/restantes juntos; seleção explícita, sugestões e revisão
 - [x] 69 testes focados; inclusão/cancelamento e IDs, fluxo por data, proteção de pagas, concorrência, sugestões e regressão filtros; navegador fixture 1366/1536 com revisão/desistência, seleção 1/2/3, efetivação parcial relida e zero gravações

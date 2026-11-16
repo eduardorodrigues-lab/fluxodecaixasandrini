@@ -29,7 +29,7 @@ const cardName = (d: ScenarioData, id: string) => { const c = d.cards.find((x) =
 const fmtMonth = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
 
 /** Registrar pagamento: forma (Pix/TED/DOC/Boleto) + origem (contas, divisível; ou cartão, só Boleto). Revisão e confirmação única. */
-export function PagamentoPanel({ d, kind, titleId, label, onCancel, onConfirm }: { d: ScenarioData; kind: Payment["titleKind"]; titleId: string; label: string; onCancel: () => void; onConfirm: (r: PayResult) => boolean }) {
+export function PagamentoPanel({ d, kind, titleId, label, onCancel, onConfirm, saving = false, saveError, saveLabel }: { d: ScenarioData; kind: Payment["titleKind"]; titleId: string; label: string; onCancel: () => void; onConfirm: (r: PayResult) => boolean | Promise<boolean>; saving?: boolean; saveError?: string; saveLabel?: string }) {
   const { open } = titleOpen(d, kind, titleId);
   const [form, setForm] = useState<PaymentForm | "">("");
   const [origin, setOrigin] = useState<"conta" | "cartao">("conta");
@@ -58,11 +58,12 @@ export function PagamentoPanel({ d, kind, titleId, label, onCancel, onConfirm }:
   const dirty = form !== "" || !!note.trim();
   const cancel = guardClose(dirty, onCancel);
   const footer = review
-    ? <><button className="btn" onClick={() => setReview(false)}>Cancelar</button><button className="btn btn-primary" onClick={() => onConfirm(result())}>Confirmar pagamento</button></>
+    ? <><button className="btn" disabled={saving} onClick={() => setReview(false)}>Cancelar</button><button className="btn btn-primary" disabled={saving} onClick={() => onConfirm(result())}>{saving ? "Salvando…" : saveLabel ?? "Confirmar pagamento"}</button></>
     : <><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" onClick={() => { setTried(true); if (!errs.length) setReview(true); }}>Revisar e confirmar</button></>;
   const formL = form ? FORM_LABEL[form] : "—";
   return (
     <SidePanel centered={review} wide title={review ? "Revisar pagamento" : "Registrar pagamento"} sub={label} onClose={onCancel} dirty={dirty} footer={footer}>
+      {saveError && <p role="alert" className="text-destructive">{saveError}</p>}
       <div className="grid grid-cols-3 gap-2 rounded-md bg-muted p-3">
         <div><div className="lbl">Saldo pendente</div><div className="text-sm font-semibold tabular-nums">{fmtBRL(open)}</div></div>
         <div><div className="lbl">{isCard ? "Quitado com cartão" : "Soma informada"}</div><div className="text-sm font-semibold tabular-nums">{fmtBRL(sum)}</div></div>

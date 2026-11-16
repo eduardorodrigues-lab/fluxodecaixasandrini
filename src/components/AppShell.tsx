@@ -23,7 +23,7 @@ const NAV = [
 const NAV_KEY = "fluxo.nav.hidden";
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { orgs, setOrgId, user, authReady, signOut, official, base, active, sims, setActive, draft, saveState, saveMsg, canEdit, changes, commitDraft, discardDraft, conflicts, resolveConflict, protectErr } = useApp();
+  const { orgs, setOrgId, user, authReady, signOut, official, base, active, sims, setActive, draft, saveState, saveMsg, canEdit, changes, commitDraft, discardDraft, conflicts, resolveConflict, protectErr, pendingOperation, saveOperation, abandonOperation } = useApp();
   const simMode = !active.isBase;
   // Barra lateral ocultável: a preferência fica só neste navegador (não é dado da organização).
   const [navHidden, setNavHidden] = useState(false);
@@ -96,6 +96,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             </span>}
           </div>
         )}
+        {active.isBase && pendingOperation && <div role="status" className="flex flex-wrap items-center gap-2 border-b border-border bg-card px-4 py-2 text-sm">
+          <span>Operação em confirmação: {pendingOperation.ops.length} registro(s). Não incluída no Salvar das outras pendências.</span>
+          <button className="btn" disabled={saveState === "saving"} onClick={() => void saveOperation(pendingOperation).catch(() => {})}>Tentar novamente a operação</button>
+          <button className="btn" disabled={saveState === "saving" || !pendingOperation.rejected} title={!pendingOperation.rejected ? 'Confira o resultado tentando novamente a mesma operação primeiro.' : undefined} onClick={async () => { if(await askConfirm("A operação rejeitada será preservada nas alterações não salvas para nova revisão. Nada será gravado; o formulário e outras pendências permanecem.", {title:"Revisar operação pendente?",action:"Liberar para nova revisão"})) await abandonOperation(); }}>Liberar para nova revisão</button>
+        </div>}
         {conflicts.length > 0 && <DecisionWindow wide title="Conflito na mesma informação" description="Outra pessoa salvou alterações nestes registros depois que você começou. Escolha, para cada um, qual versão manter. Nada foi sobrescrito." footer={<span className="text-xs text-muted-foreground">{conflicts.length} pendente(s)</span>}>
           {conflicts.map((c) => { const srv = (c.server ?? {}) as Record<string, unknown>, mine = (c.change.after ?? {}) as Record<string, unknown>; const obj = typeof srv === "object" && typeof mine === "object"; const keys = obj ? Object.keys({ ...srv, ...mine }).filter((k) => JSON.stringify(srv[k]) !== JSON.stringify(mine[k])) : ["valor"]; const show = (v: unknown) => v == null || v === "" ? "—" : typeof v === "object" ? JSON.stringify(v) : String(v); return (
             <div key={c.change.entity + c.change.id} className="rounded border border-border p-2">

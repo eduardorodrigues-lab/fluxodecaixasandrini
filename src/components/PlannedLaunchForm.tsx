@@ -1,3 +1,4 @@
+import { useOperationSave } from "./useOperationSave";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CatSubFields, ConditionPicker, Field, Section, SidePanel, SupplierSearch, guardClose } from "./NotaPanel";
@@ -16,7 +17,8 @@ import { HistoryView } from "./HistoryView";
 import type { ScenarioData } from "@/lib/engine/types";
 
 export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onClose: () => void }) {
-  const { active, official, update, canEdit, user, audit, allSims } = useApp();
+  const { active, official, canEdit, user, audit, allSims } = useApp();
+  const saving = useOperationSave();
   const d = active.data;
   const [initial] = useState(() => structuredClone(managedDocument(d, launch)));
   const [context] = useState({ id: active.id, base: active.isBase, org:official.orgId, version:official.version });
@@ -35,7 +37,7 @@ export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onCl
   const [reason, setReason] = useState("");
   const [mode, setMode] = useState<Suggestion>("manter");
   const [error, setError] = useState("");
-  const [review, setReview] = useState<{ data: ScenarioData; impact: ReturnType<typeof flowImpact> } | null>(null);
+  const [review, setReview] = useState<{ before: ScenarioData; data: ScenarioData; impact: ReturnType<typeof flowImpact> } | null>(null);
   const [effId] = useState(() => `ef-${uid()}`);
   const original = initial.parcels.reduce((s,p) => s + (p.amount ?? 0),0);
   const dirty = !!real || JSON.stringify(rows) !== JSON.stringify(initial.parcels) || JSON.stringify(fields) !== JSON.stringify(initial.fields) || total !== original || ("baseDate" in initial.record && baseDate !== initial.record.baseDate);
@@ -74,7 +76,6 @@ export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onCl
   const linked = useMemo(() => d.committed.filter(c => c.plannedId === launch.id || d.effectivations.some(e => e.plannedId === launch.id && e.committedIds.includes(c.id))), [d, launch.id]);
   const build = (next: ScenarioData) => {
     if (context.id !== active.id || context.base !== active.isBase || context.org !== official.orgId) throw new Error("O contexto mudou. Rascunho preservado; volte à organização e modo de origem.");
-    if (active.isBase && context.version !== official.version) throw new Error("A versão da base mudou. Rascunho preservado; confira a edição concorrente antes de reaplicar.");
     if (!reason.trim()) throw new Error("Informe a justificativa.");
     const draft = real ? rows.map(p => selected.includes(p.key) ? initial.parcels.find(b => b.key === p.key) ?? p : p) : rows;
     const input = { ref: launch, beforeRecords: initial.records, before: initial.parcels, parcels: draft, fields, initialFields: initial.fields, reason, at: new Date().toISOString(), by: user?.email ?? "", plannedBaseDate:baseDate };
@@ -95,7 +96,7 @@ export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onCl
     const pl = next.planned.find(p=>p.id===launch.id), edited = staged.planned.find(p=>p.id===launch.id);
     if(pl && edited) { if(edited.editLog) pl.editLog=edited.editLog; pl.baseDate=edited.baseDate; }
   };
-  const prepare = () => { try { const next=structuredClone(d); build(next); setReview({ data:next, impact:flowImpact(d,next) }); setError(""); } catch(e) { setError((e as Error).message); } };
+  const prepare = () => { try { const next=structuredClone(d); build(next); setReview({ before:d, data:next, impact:flowImpact(d,next) }); setError(""); } catch(e) { setError((e as Error).message); } };
   const table = (ps: ManagedParcel[], effective = false) => <table className="tbl vertical-parcels" aria-label={effective ? "Parcelas reais" : "Parcelas previstas"}><thead><tr>{!real && <th>Selecionar</th>}<th>Parcela</th><th>Valor</th><th>Vencimento</th><th>Prorrogar para</th><th>Situação / ações</th></tr></thead><tbody>{ps.map(p => <tr key={p.key} className={p.key===launch.parcel ? "launch-focus" : ""}>
     {!real && <td><input type="checkbox" aria-label={`Selecionar parcela ${p.label}`} checked={selected.includes(p.key)} disabled={!canEdit || !eligible.some(e=>e.key===p.key)} onChange={e=>setSelected(e.target.checked ? [...selected,p.key] : selected.filter(k=>k!==p.key))}/></td>}
     <td>{p.label}<small className="block">{initial.parcels.some(b=>b.key===p.key) ? "ID preservado" : "Nova linha"}</small></td>
@@ -105,14 +106,15 @@ export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onCl
     <td>{p.status==="cancelado" ? `Cancelada · original ${fmtBRL(p.original)}` : <Button variant="outline" disabled={!canEdit || p.paid>0} onClick={()=>remove(p,effective)}>{effective || !initial.parcels.some(b=>b.key===p.key) ? "Remover linha" : "Cancelar parcela"}</Button>}</td>
   </tr>)}</tbody></table>;
   const history = active.isBase ? audit.map(a => ({ at: a.at, user: a.user_email ?? "", changes: a.changes })) : allSims.find(s=>s.id===active.id)?.history ?? [];
-  return <SidePanel expanded title={review ? "Revisar lançamento" : real ? "Efetivar parcelas planejadas" : "Editar lançamento · Planejada"} sub={`${supplierIdentity(d, initial.record).name} · Pedido ${fields.purchaseCode || "Não informado"}`} dirty={dirty} onClose={onClose} footer={<>{review && <Button variant="outline" onClick={()=>setReview(null)}>Voltar</Button>}<Button variant="outline" onClick={guardClose(dirty,onClose)}>Cancelar</Button><Button disabled={!canEdit || !dirty} onClick={review ? ()=>{ const e=update(build); if(e) setError(e); else onClose(); } : prepare}>{review ? "Confirmar alterações" : real ? "Revisar alterações" : "Revisar e confirmar"}</Button></>}>
+  return <SidePanel expanded title={review ? "Revisar lançamento" : real ? "Efetivar parcelas planejadas" : "Editar lançamento · Planejada"} sub={`${supplierIdentity(d, initial.record).name} · Pedido ${fields.purchaseCode || "Não informado"}`} dirty={dirty} onClose={()=>{if(!saving.saving)onClose();}} footer={<>{review && <Button variant="outline" disabled={saving.saving} onClick={()=>{if(saving.reset())setReview(null);}}>Voltar</Button>}<Button variant="outline" disabled={saving.saving} onClick={guardClose(dirty,onClose)}>Cancelar</Button><Button disabled={!canEdit || !dirty || saving.saving} onClick={review ? async ()=>{ if(await saving.save(review.before,review.data)) onClose(); } : prepare}>{saving.saving ? "Salvando…" : review ? active.isBase ? "Confirmar e salvar" : "Confirmar na simulação" : real ? "Revisar alterações" : "Revisar e confirmar"}</Button></>}>
+    {saving.error && <p role="alert" className="text-destructive">{saving.error}</p>}
     {error && <p role="alert" className="text-destructive">{error}</p>}
     {review ? <>
       <p>Pedido {real ? order : fields.purchaseCode || "Não informado"} · Documento <b>{real ? note : fields.document || "Não informado"}</b></p>
       <table className="tbl"><thead><tr><th>Parcela / escopo</th><th>Valor antes → depois</th><th>Data antes → depois</th><th>Ação</th></tr></thead><tbody>{rows.map(p=>{const b=initial.parcels.find(b=>b.key===p.key);return <tr key={p.key}><td>{p.label}</td><td>{fmtBRL(b?.amount)} → {fmtBRL(p.status==="cancelado" ? 0 : p.amount)}</td><td>{fmtDate(b?.extension??b?.date)} → {fmtDate(p.extension??p.date)}</td><td>{real && selected.includes(p.key) ? "Substituída por nota efetivada" : !b ? "Nova" : p.status==="cancelado" ? "Cancelada" : JSON.stringify(p)===JSON.stringify(b) ? "Não afetada" : "Alterada"}</td></tr>})}</tbody></table>
       {real && <Section title={`Nota ${note} · novas parcelas reais`}><table className="tbl"><thead><tr><th>Parcela</th><th>Valor real</th><th>Vencimento</th><th>Prorrogação</th></tr></thead><tbody>{real.map(p=><tr key={p.key}><td>{p.label}</td><td>{fmtBRL(p.amount)}</td><td>{fmtDate(p.date)}</td><td>{fmtDate(p.extension)}</td></tr>)}</tbody></table><p>Efetivado {fmtBRL(realTotal)} · Planejado restante confirmado {fmtBRL(remaining)} · Total após alteração {fmtBRL(realTotal+plannedTotal)}. Não registra pagamento.</p></Section>}
       {JSON.stringify(fields)!==JSON.stringify(initial.fields) && <p>Dados compartilhados do planejamento: {Object.keys(fields).filter(k=>fields[k as keyof typeof fields]!==initial.fields[k as keyof typeof fields]).map(k=>`${k}: ${initial.fields[k as keyof typeof fields] || "Não informado"} → ${fields[k as keyof typeof fields] || "Não informado"}`).join("; ")}.</p>}
-      <p>Justificativa: {reason}. Confirmar prepara rascunho; só Salvar grava a base.</p>
+      <p>Justificativa: {reason}. A confirmação salva somente esta operação revisada. Outras pendências não são incluídas.</p>
       <Section title="Efeito por data"><div className="max-h-64 overflow-auto"><table className="tbl"><thead><tr><th>Data</th><th>Saídas antes → depois</th><th>Saldo antes → depois</th></tr></thead><tbody>{review.impact.map(p=><tr key={p.date}><td>{fmtDate(p.date)}</td><td>{fmtBRL(p.before)} → {fmtBRL(p.after)}</td><td>{fmtBRL(p.balanceBefore)} → {fmtBRL(p.balanceAfter)}</td></tr>)}</tbody></table></div></Section>
     </> : <>
       {real ? <>

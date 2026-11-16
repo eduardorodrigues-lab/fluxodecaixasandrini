@@ -27,7 +27,7 @@
 - Server fns take an explicit `orgId`; org resolution never picks an arbitrary membership — prevents cross-org writes for invited users.
 - `pickOrg` prioritizes existing shared-company membership over stale defaults in store/server — grants no new access.
 - XLSX adapters use the verified CEO layout (header row 3, fixed columns) and block reconciliation when essential rows are missing — never report healthy numbers from guessed rows.
-- Base mutations go through `update()` in `src/lib/store.tsx` (immer) as per-record ops; written only on Salvar via `commitOps` (changed records, requestId dedupe, per-record before-check → conflict dialog); ops protected in IndexedDB per user+org; simulations local, never promoted; no data without signed-in org — explicit save requested by editors.
+- Base drafts use `update()`; reviewed launches use isolated `saveOperation` → `commitOps`, with dependency checks, stable retry IDs, IndexedDB recovery and re-read; independent drafts remain. Simulations stay local; no autosave or cross-org data.
 - Business rules are documented in `docs/regras-fluxo.md` and covered by `src/lib/**/*.test.ts`; update both when a rule changes.
 - XLSX/XLSM is read by the selective reader `src/lib/xlsxFast.ts` (only source columns per sheet, never VBA/calcChain) and rows are applied via `applyImportRows` in `src/lib/importApply.ts`, shared by the UI and `scripts/validate-ceo-xlsm.ts` — full reads of the real 31 MB file need ~2.8 GB.
 - Real financial files are never copied into the project, assets or bundle; reports with real aggregates stay outside the repo.
