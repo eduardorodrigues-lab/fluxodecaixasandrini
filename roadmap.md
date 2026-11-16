@@ -1,5 +1,12 @@
 # Roadmap
 
+## Formulários verticais — autorizado 16/11/2026
+- [x] Edição planejada vertical e efetivação com blocos reais/restantes juntos; seleção explícita, sugestões e revisão
+- [x] 69 testes focados; inclusão/cancelamento e IDs, fluxo por data, proteção de pagas, concorrência, sugestões e regressão filtros; navegador fixture 1366/1536 com revisão/desistência, seleção 1/2/3, efetivação parcial relida e zero gravações
+- [x] Notas com noteId comprovado permitem adicionar parcela e cancelar existente, sem renumerar histórico pago; notas legadas sem vínculo não recebem IDs inferidos
+- [ ] Verificação hospedada de concorrência/volume integral não executada: testes usam fixture e funções de leitura interceptadas; publicação e gravações reais não autorizadas
+
+
 ## Filtros interativos de Lançamentos — autorizado 16/11/2026
 - [x] Painel compacto Planejada/Efetivado, critérios combinados/chips/ordenação, CSV e totais completos antes da paginação; pesquisa e Gerenciar preservados
 - [x] Datas por parcela via auditoria/histórico existentes; importação não vira cadastro original, ausentes Não disponível; sem escrita de metadados

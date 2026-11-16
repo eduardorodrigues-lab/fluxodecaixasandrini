@@ -20,7 +20,13 @@ import { uid, useApp } from "@/lib/store";
 import type { ScenarioData } from "@/lib/engine/types";
 import { createLaunchDates, formatLaunchTime } from '@/lib/launchFilters';
 
+import { PlannedLaunchForm } from "./PlannedLaunchForm";
+
 export function ManageLaunchPanel({ launch, onClose }: { launch: LaunchRef; onClose: () => void }) {
+  return launch.kind === "planned" ? <PlannedLaunchForm launch={launch} onClose={onClose} /> : <ExistingLaunchPanel launch={launch} onClose={onClose} />;
+}
+
+function ExistingLaunchPanel({ launch, onClose }: { launch: LaunchRef; onClose: () => void }) {
   const { active, update, canEdit, user, audit, allSims } = useApp();
   const d = active.data;
   const [initial] = useState(() => managedDocument(d, launch));
@@ -123,6 +129,8 @@ export function ManageLaunchPanel({ launch, onClose }: { launch: LaunchRef; onCl
           <td data-label="Pago" className="num">{fmtBRL(p.paid)}</td><td data-label="Situação">{situation(p)}</td>
           <td data-label="Ações"><div className="flex flex-col gap-2"><Button size="sm" variant="outline" disabled={!canEdit || p.paid > 0 || p.status === "cancelado"} onClick={() => patch(p.key, { status: "cancelado" })}>Cancelar parcela</Button>{launch.kind !== "planned" && <Button size="sm" variant="outline" disabled={!active.isBase || !canEdit || dirty || p.status === "cancelado" || p.paid >= (p.amount ?? 0)} onClick={() => setPay(p)}>Registrar pagamento</Button>}</div></td>
         </tr>)}</tbody></table></div>
+        {launch.kind === "committed" && "noteId" in initial.record && initial.record.noteId && <Button variant="outline" disabled={!canEdit} onClick={()=>{const id=uid();const no=Math.max(0,...parcels.map(p=>Number.parseInt(p.label)||0))+1;setParcels([...parcels,{key:id,id,label:`${no} (nova)`,original:0,amount:null,date:null,extension:null,status:"ativo",paid:0}]);}}>+ Adicionar parcela da nota</Button>}
+        {parcels.filter(p=>!initial.parcels.some(b=>b.key===p.key)).map(p=><Button key={p.key} variant="outline" onClick={()=>setParcels(ps=>ps.filter(r=>r.key!==p.key))}>Remover linha nova {p.label}</Button>)}
         <Button variant="destructive" disabled={!canEdit || parcels.some((p) => p.paid > 0)} onClick={() => { setParcels((all) => all.map((p) => ({ ...p, status: "cancelado" }))); setChecked(false); }}>Cancelar documento</Button>
         {!eff && <details><summary>Redistribuir valores — seleção independente</summary><div className="space-y-2 py-2"><p>Esta seleção é exclusiva da redistribuição, não utiliza a seleção de efetivação. Cancelar parcela usa apenas o botão da respectiva linha.</p>{parcels.map((p) => <label className="mr-3 inline-flex gap-1" key={p.key}><input type="checkbox" disabled={p.paid > 0 || p.status === "cancelado" || !canEdit} checked={spreadKeys.includes(p.key)} onChange={() => setSpreadKeys(spreadKeys.includes(p.key) ? spreadKeys.filter((k) => k !== p.key) : [...spreadKeys, p.key])} />{p.label}</label>)}<Field l="Total a redistribuir nas selecionadas"><MoneyInput value={spreadTotal} onChange={setSpreadTotal} /></Field><Button variant="outline" disabled={!canEdit || !spreadKeys.length} onClick={async () => { try { const next = redistributeSelected(parcels, spreadKeys, spreadTotal); if (await askConfirm(`Redistribuir ${fmtBRL(spreadTotal)} em ${spreadKeys.length} parcelas selecionadas, com resíduo na última? Datas e outras parcelas não mudam.`, { title: "Redistribuir valores?", action: "Preparar redistribuição" })) { setParcels(next); setChecked(false); } } catch (e) { setError((e as Error).message); } }}>Preparar redistribuição</Button></div></details>}
         {eff && <><Field l="Saldo restante previsto (informação manual)"><MoneyInput value={remaining} onChange={(v) => { setRemaining(v); setChecked(false); }} /></Field><p className="text-muted-foreground">Referência matemática: {fmtBRL(original - parcels.filter((p) => chosenKeys.includes(p.key)).reduce((s, p) => s + (p.amount ?? 0), 0))}. Não é aplicada automaticamente.</p><label className="flex gap-2"><input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} />Conferi o saldo restante informado e os vencimentos das parcelas não selecionadas; R$ 0,00 encerra o restante.</label></>}

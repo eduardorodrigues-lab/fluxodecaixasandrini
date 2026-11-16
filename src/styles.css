@@ -283,3 +283,7 @@
   .launch-manager .launch-parcels td { display: flex; flex-direction: column; gap: 5px; }
   .launch-manager .launch-parcels td::before { content: attr(data-label); color: var(--muted-foreground); font-weight: 500; font-size: 13px; }
 }
+
+.launch-manager .vertical-parcels th:first-child { width: 9%; }
+.launch-manager .vertical-parcels th:last-child { width: 18%; }
+.launch-manager .vertical-parcels button { white-space: normal; height: auto; min-height: 36px; }

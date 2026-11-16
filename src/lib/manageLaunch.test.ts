@@ -20,6 +20,33 @@ function edit(d: ScenarioData, id = "c2") {
   return { ref, before: doc.parcels, parcels: structuredClone(doc.parcels), fields: doc.fields, initialFields: doc.fields, reason: "Negociação", at: "2026-11-16T15:57:00Z", by: "editor" };
 }
 describe("Gerenciamento autorizado", () => {
+  it("nova parcela de nota explícita preserva números/IDs de pagas e notas diferentes do pedido", () => {
+    const d=fixture();d.committed.forEach((c,i)=>{c.noteId="nf1";c.parcelNo=i+1;c.parcelCount=3;});
+    const inp=edit(d);const paid=structuredClone(d.committed[0]),payments=structuredClone(d.payments);
+    inp.parcels.push({key:"c4",id:"c4",label:"4 (nova)",amount:100,date:"2027-01-05",extension:null,status:"ativo",paid:0,original:0});
+    applyManaged(d,inp);expect(d.committed[0]).toEqual(paid);expect(d.payments).toEqual(payments);expect(d.committed[3]?.parcelNo).toBe(4);expect(d.committed[3]?.noteId).toBe("nf1");expect(d.committed[3]?.value).toBe(100);expect(d.committed[3]?.document).toBe(inp.fields.document);
+  });
+  it("alterar data base explicitamente não desloca vencimentos nem muda fluxo", () => {
+    const d=fixture();d.planned=[{id:"pl",supplierId:"s",categoryId:"cat",document:"",purchaseCode:"P",value:10000,baseDate:"2027-07-01",notes:"",status:"ativo",remainingOverride:null,terms:[30]}];
+    const ref={kind:"planned" as const,id:"pl"},doc=managedDocument(d,ref),before=computeFlow(d,{start:"2027-07-01",end:"2027-09-01"});
+    applyManaged(d,{ref,before:doc.parcels,parcels:doc.parcels,fields:doc.fields,initialFields:doc.fields,reason:"Base corrigida sem redistribuir",at:"2026-11-16T20:00:00Z",by:"editor",plannedBaseDate:"2027-08-01"});
+    expect(d.planned[0]?.baseDate).toBe("2027-08-01");expect(managedDocument(d,ref).parcels[0]?.date).toBe("2027-07-31");expect(computeFlow(d,{start:"2027-07-01",end:"2027-09-01"}).days.map(p=>[p.date,p.planejada,p.saidas,p.saldoFinal])).toEqual(before.days.map(p=>[p.date,p.planejada,p.saidas,p.saldoFinal]));
+  });
+  it("inclui, edita e cancela planejadas preservando IDs, origem e fluxo por data", () => {
+    const d=fixture(); d.planned=[{id:"pl",supplierId:"s",categoryId:"cat",document:"",purchaseCode:"P",value:62700,baseDate:"2027-07-01",notes:"",status:"ativo",remainingOverride:null,installments:[7,8,9].map(n=>({amount:20900,date:`2027-0${n}-15`,extensionDate:null,extensionHistory:[]}))}];
+    const ref={kind:"planned" as const,id:"pl"}, doc=structuredClone(managedDocument(d,ref)), ps=structuredClone(doc.parcels);
+    const a=ps[0], b=ps[1]; if(!a||!b)throw new Error(); a.status="cancelado"; b.amount=20000; b.extension="2027-08-20";
+    ps.push({key:"new-4",id:"pl",label:"4 (nova)",amount:900,date:"2027-10-15",extension:null,status:"ativo",paid:0,original:0});
+    applyManaged(d,{ref,beforeRecords:doc.records,before:doc.parcels,parcels:ps,fields:doc.fields,initialFields:doc.fields,reason:"Replanejado",at:"2026-11-16T20:00:00Z",by:"editor"});
+    const read=managedDocument(d,ref); expect(read.parcels.map(p=>p.key)).toEqual(["pl#0","pl#1","pl#2","new-4"]);expect(read.parcels[0]?.original).toBe(20900);expect(read.parcels[0]?.status).toBe("cancelado");expect(d.planned[0]?.value).toBe(62700);expect(d.planned[0]?.installments).toEqual(doc.record && "installments" in doc.record ? doc.record.installments : []);
+    const flow=computeFlow(d,{start:"2027-07-15",end:"2027-10-15"}).days;expect(flow.find(x=>x.date==="2027-07-15")?.planejada).toBe(0);expect(flow.find(x=>x.date==="2027-08-20")?.planejada).toBe(20000);expect(flow.find(x=>x.date==="2027-10-15")?.planejada).toBe(900);expect(d.payments).toEqual(fixture().payments);
+  });
+  it("refusa remoção de ID existente, mas descartar nova linha não deixa registro órfão", () => {
+    const d=fixture(), inp=edit(d); inp.parcels=inp.parcels.slice(1);expect(()=>applyManaged(d,inp)).toThrow("Reparcelamento");expect(d.committed).toHaveLength(3);
+  });
+  it("conflito de histórico conserva rascunho e edição concorrente", () => {
+    const d=fixture(), inp={...edit(d),beforeRecords:structuredClone(managedDocument(d,{kind:"committed",id:"c2"}).records)}; const r=d.committed[1];if(!r)throw new Error();r.notes="Letícia alterou";const draft=structuredClone(inp.parcels);expect(()=>applyManaged(d,inp)).toThrow("mudou");expect(inp.parcels).toEqual(draft);expect(r.notes).toBe("Letícia alterou");
+  });
   it("UZ3 361186A1/A2/A3: documento 361186 e parcelas 1/3, 2/3, 3/3 sem alterar IDs, valores, baixas ou fluxo", () => {
     const d = fixture(), before = structuredClone(d), g = documentGroups(d).byId.get("c2");
     expect(g?.document).toBe("361186"); expect([...g?.labels.values() ?? []]).toEqual(["1/3", "2/3", "3/3"]);
