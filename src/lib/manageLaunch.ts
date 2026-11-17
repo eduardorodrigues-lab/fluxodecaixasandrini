@@ -25,7 +25,8 @@ export function managedDocument(d: ScenarioData, ref: LaunchRef) {
     const first = (record.editLog ?? []).find(l => l.parcel === key);
     const originalAmount = first?.before.date ? first.before.amount : installment?.amount ?? cancelled?.before.amount ?? p.amount;
     const originalIndex = key.startsWith(`${ref.id}#`) ? Number(key.split("#").at(-1)) + 1 : i + 1;
-    return { key, id: ref.id, label: `${originalIndex}/${Math.max(all.length, pl?.installments?.length ?? 0)}`, original: originalAmount, amount: p.amount, date: ext ? extensionLog?.before.date ?? installment?.date ?? p.date : p.date, extension: ext, status: cancelled || record.status === "cancelado" ? "cancelado" : record.status, paid: 0, boletoNumber: pl?.boletoNumbers && key in pl.boletoNumbers ? pl.boletoNumbers[key] : pl?.remainingOverride?.items?.[i]?.boletoNumber ?? installment?.boletoNumber ?? null };
+    const held = pl?.remainingOverride?.items?.[i]?.note;
+    return { key, id: ref.id, label: held ? `NF ${held.document} · ${held.parcelNo}/${held.parcelCount}` : `${originalIndex}/${Math.max(all.length, pl?.installments?.length ?? 0)}`, original: originalAmount, amount: p.amount, date: held ? held.dueDate : ext ? extensionLog?.before.date ?? installment?.date ?? p.date : p.date, extension: held ? held.extension : ext, status: cancelled || record.status === "cancelado" ? "cancelado" : record.status, paid: 0, boletoNumber: pl?.boletoNumbers && key in pl.boletoNumbers ? pl.boletoNumbers[key] : pl?.remainingOverride?.items?.[i]?.boletoNumber ?? installment?.boletoNumber ?? null };
   }) : records.map((r) => {
     const ts = titleStatus(r.value, r.status, paymentsFor(d, ref.kind === "expense" ? "expense" : "committed", r.id));
     const date = "dueDate" in r ? r.dueDate : "termDays" in r ? r.termDays === null ? null : addDays(r.baseDate, r.termDays) : null;
@@ -72,7 +73,8 @@ export function applyManaged(d: ScenarioData, input: ManageInput) {
       pl.baseDate = input.plannedBaseDate;
     }
     if (financial.length) {
-      const items = parcels.map((p) => ({ id: p.key, amount: p.status === "cancelado" ? 0 : p.amount ?? 0, date: p.extension ?? p.date ?? "", boletoNumber: p.boletoNumber }));
+      const prevItems = pl.remainingOverride?.items ?? [];
+      const items = parcels.map((p) => { const note = prevItems.find(i => i.id === p.key)?.note; return { id: p.key, amount: p.status === "cancelado" ? 0 : p.amount ?? 0, date: p.extension ?? p.date ?? "", boletoNumber: p.boletoNumber, ...(note ? { note: { ...note, dueDate: p.date ?? note.dueDate, extension: p.extension } } : {}) }; });
       pl.remainingOverride = { value: items.reduce((s, p) => s + p.amount, 0), dates: items.map((p) => p.date), items };
       if (parcels.every((p) => p.status === "cancelado")) pl.status = "cancelado";
       for (const p of financial) { const b = before.find((x) => x.key === p.key); (pl.editLog ??= []).push({ at, by, note: `${reason} · ${b?.status ?? "Nova parcela"} → ${p.status}${p.extension ? ` · prorrogação ${p.extension}; original ${p.date}` : ""}`, parcel: p.key, before: { amount: b?.amount ?? 0, date: b?.date ?? null }, after: { amount: p.status === "cancelado" ? 0 : p.amount ?? 0, date: p.extension ?? p.date } }); }

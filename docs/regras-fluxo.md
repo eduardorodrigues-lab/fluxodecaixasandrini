@@ -285,3 +285,10 @@ Notas do rascunho aparecem em painéis laterais com rolagem horizontal; cada not
 - Prévia do restante = referência − efetivado anterior vinculado − selecionado agora; abaixo de zero aparece como Excedente separado e exige confirmação. A prévia não redistribui nada: "Usar prévia" e "Distribuir prévia nas restantes (datas mantidas)" só por clique; o restante continua confirmado manualmente e precisa igualar a soma das parcelas restantes.
 - Notas e parcelas têm seleção (cabeçalho com estado parcial e por parcela), em Cards ou Lista completa sobre o mesmo rascunho. Parcelas de nota não selecionadas entram no restante planejado (sem o número da nota, limitação atual).
 - Voltar à edição do planejamento mantém notas e valores no rascunho.
+
+### Notas conhecidas que permanecem planejadas (pedido com várias NFs)
+- Parcelas de nota não selecionadas ficam no restante confirmado com identificação própria (`RemainingItem.note`: NF, condição, data base, data de efetivação prevista, nº/qtde da parcela, vencimento original e prorrogação); `date` do item continua sendo a data efetiva usada no fluxo. Os IDs são os mesmos ao efetivar depois (título = mesmo ID), sem duplicar previsão.
+- Ao reabrir, essas notas voltam como painéis "Planejada (salva)" e saem da lista de parcelas genéricas.
+- Linhas genéricas de R$ 0,00 não selecionadas são substituídas pelo detalhamento das notas: não exigem valor, não persistem no restante e ficam registradas no histórico (evento `manual.before` e editLog). Linhas genéricas positivas continuam exigindo valor/data e soma igual ao restante confirmado.
+- É possível salvar notas conhecidas sem efetivar nenhuma (sem evento de efetivação; histórico no editLog).
+- Erros de restante indicam a nota/parcela e o campo.

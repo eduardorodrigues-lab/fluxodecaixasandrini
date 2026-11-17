@@ -140,3 +140,6 @@ Pendências externas: gravação oficial do XLSM (login de Eduardo + organizaç�
 - [x] Fluxo: Compras/Despesas com filtro consolidada/etapa (totais idênticos, testado)
 - [x] Relatório de despesas (/despesas) com filtros período/subgrupo/etapa
 - [ ] Verificação visual das telas no navegador
+
+## Pedido 1852 — efetivação seletiva bloqueada por linhas R$ 0,00
+- [x] Linhas genéricas 0 substituídas pelo detalhamento; notas não selecionadas planejadas com NF/IDs; salvar notas sem efetivar; resumo final na revisão; testes e navegador (fixture)

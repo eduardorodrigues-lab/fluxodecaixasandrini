@@ -44,7 +44,9 @@ export interface Planned {
   sourceSupplier?: string; // nome do fornecedor na fonte (sem vínculo cadastral)
   installments?: PlannedInstallment[] | null; // parcelas próprias (painel Nova nota); null = prazos
 }
-export interface RemainingItem { id: string; amount: number; date: string; boletoNumber?: string | null | undefined }
+/** Identificação de nota conhecida ainda planejada (não efetivada): preserva NF, condição, datas e numeração da parcela. `date` do item segue sendo a data efetiva (prorrogação ou vencimento). */
+export interface RemainingNote { noteId: string; document: string; total: number; effectiveDate: string | null; baseDate: string | null; condition: Committed["condition"]; parcelNo: number; parcelCount: number; dueDate: string; extension: string | null }
+export interface RemainingItem { id: string; amount: number; date: string; boletoNumber?: string | null | undefined; note?: RemainingNote | undefined }
 export interface PlannedInstallment { amount: number; date: string; extensionDate: string | null; extensionHistory: ExtensionEvent[]; boletoNumber?: string | null | undefined }
 export interface NoteRef { noteId?: string; parcelNo?: number; parcelCount?: number }
 // EFETIVADO/REALIZADO = compra real ou pedido. NÃO é pagamento (ver payments).
