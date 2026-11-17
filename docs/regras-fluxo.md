@@ -292,3 +292,4 @@ Notas do rascunho aparecem em painéis laterais com rolagem horizontal; cada not
 - Linhas genéricas de R$ 0,00 não selecionadas são substituídas pelo detalhamento das notas: não exigem valor, não persistem no restante e ficam registradas no histórico (evento `manual.before` e editLog). Linhas genéricas positivas continuam exigindo valor/data e soma igual ao restante confirmado.
 - É possível salvar notas conhecidas sem efetivar nenhuma (sem evento de efetivação; histórico no editLog).
 - Erros de restante indicam a nota/parcela e o campo.
+- Outros caminhos (Gerenciar, Ajustar, nota avulsa ligada ao pedido, restante genérico): preservam ou bloqueiam sem apagar a identificação das notas planejadas.

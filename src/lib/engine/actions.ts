@@ -93,6 +93,7 @@ export function effectivate(d: ScenarioData, inp: EffectivateInput): ScenarioDat
   if (inp.kind === "parcial" && inp.remaining) {
     if (!inp.remaining.dates.length && inp.remaining.value !== 0) throw new Error("Restante precisa de datas.");
   }
+  if (pl.remainingOverride?.items?.some((i) => i.note)) throw new Error("Este pedido tem notas fiscais planejadas identificadas; use \"Adicionar notas fiscais a este pedido\" para não perder a identificação.");
   const value = inp.installments.reduce((a, i) => a + i.value, 0);
   const cat = pl.categoryId; // a efetivação herda o subgrupo da previsão (Compra ou Despesa)
   const ids: string[] = [];
@@ -160,6 +161,7 @@ export function setPlannedRemaining(d: ScenarioData, plannedId: string, value: n
   const pl = d.planned.find((p) => p.id === plannedId);
   if (!pl || pl.status !== "ativo") throw new Error("Previsão não ativa.");
   if (!dates.length || dates.some((x) => !/^\d{4}-\d{2}-\d{2}$/.test(x))) throw new Error("Informe datas válidas para o restante.");
+  if (pl.remainingOverride?.items?.some((i) => i.note)) throw new Error("Este pedido tem notas fiscais planejadas identificadas; use \"Adicionar notas fiscais a este pedido\" para não perder a identificação.");
   pl.remainingOverride = { value, dates: [...dates].sort() };
   return d;
 }

@@ -93,6 +93,9 @@ export function effectivateManual(d: ScenarioData, inp: ManualEffInput): void {
   if (r.health !== "ok") throw new Error("Conciliação pendente nesta previsão: resolva antes de efetivar.");
   const parcels = currentParcels(d, pl.id);
   if (inp.selected.some((k) => !parcels.some((p) => p.key === k))) throw new Error("Parcela selecionada não está mais planejada.");
+  const noteOf = (id: string) => pl.remainingOverride?.items?.find((i) => i.id === id)?.note;
+  const held = inp.selected.map(noteOf).find(Boolean);
+  if (held) throw new Error(`Parcela da NF ${held.document} planejada: efetive-a em "Adicionar notas fiscais a este pedido" para manter a nota e o mesmo ID.`);
   const errs = validateDraft(inp.eff, inp.rest.map((x) => ({ ...x, origin: null })), inp.substituted, parcels.filter((p) => inp.selected.includes(p.key)).reduce((a, p) => a + p.amount, 0), inp.effectiveDate);
   if (errs.length) throw new Error(errs[0]);
   const ids = inp.eff.map((_, n) => `${inp.id}-${n + 1}`);
@@ -107,7 +110,7 @@ export function effectivateManual(d: ScenarioData, inp: ManualEffInput): void {
     d.committed.push(c);
   });
   const before: RemainingItem[] = parcels.map((p) => ({ id: p.key, amount: p.amount, date: p.date, ...(p.boletoNumber !== undefined ? { boletoNumber: p.boletoNumber } : {}) }));
-  const after: RemainingItem[] = inp.rest.map((x) => ({ id: x.id, amount: x.amount, date: x.date, ...(x.boletoNumber !== undefined ? { boletoNumber: x.boletoNumber } : {}) }));
+  const after: RemainingItem[] = inp.rest.map((x) => { const note = noteOf(x.id); return { id: x.id, amount: x.amount, date: x.date, ...(x.boletoNumber !== undefined ? { boletoNumber: x.boletoNumber } : {}), ...(note ? { note: structuredClone(note) } : {}) }; });
   const value = inp.eff.reduce((a, x) => a + x.amount, 0);
   d.effectivations.push({ id: inp.id, plannedId: pl.id, at: inp.at, kind: after.length ? "parcial" : "concluida", value, substituted: inp.substituted, committedIds: ids,
     prev: { status: pl.status, remainingOverride: pl.remainingOverride ? structuredClone(pl.remainingOverride) : null }, manual: { effectiveDate: inp.effectiveDate, before, after, selected: [...inp.selected], rule: inp.rule }, reversedAt: null, reversalNote: "" });
@@ -122,7 +125,8 @@ export function adjustPlanned(d: ScenarioData, plannedId: string, rest: { id: st
   if (!rest.length) throw new Error("Mantenha ao menos uma parcela ou use Encerrar restante.");
   const errs = validateDraft([], rest.map((x) => ({ ...x, origin: null })), 0, 0, "2000-01-01");
   if (errs.length) throw new Error(errs[0]);
-  const items = rest.map((x) => ({ ...x }));
+  const prev = pl.remainingOverride?.items ?? [];
+  const items = rest.map((x) => { const note = prev.find((i) => i.id === x.id)?.note; return { ...x, ...(note ? { note: { ...structuredClone(note), extension: x.date !== note.dueDate ? x.date : note.extension } } : {}) }; });
   pl.remainingOverride = { value: items.reduce((a, x) => a + x.amount, 0), dates: items.map((x) => x.date), items };
 }
 

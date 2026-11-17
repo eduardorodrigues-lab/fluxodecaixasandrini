@@ -67,3 +67,24 @@ describe("Pedido 1852 (fictício): 7 notas, só NF 372798 efetivada, 4 linhas ge
     expect(heldNotes(d,"p")).toHaveLength(7); expect(d.planned[0]!.remainingOverride!.value).toBe(4762800);
   });
 });
+
+import {effectivateManual,adjustPlanned} from "./efetivacao";
+import {effectivate,setPlannedRemaining} from "./engine/actions";
+describe("Outros caminhos não apagam a identificação das notas planejadas",()=>{
+  const saved=()=>{const d=fixture();effectivateBatch(d,inp(DOCS.map((doc,i)=>note(doc,i===0)),"b1"));return d;};
+  it("Gerenciar/efetivação manual bloqueia parcela de NF planejada e preserva a nota nas demais",()=>{
+    const d=saved(); const items=d.planned[0]!.remainingOverride!.items!;
+    expect(()=>effectivateManual(d,{id:"m1",plannedId:"p",at:"x",effectiveDate:"2026-11-20",document:"",purchaseCode:"",selected:[items[0]!.id],eff:[{amount:170100,date:"2027-01-01"}],rest:items.slice(1).map(i=>({id:i.id,amount:i.amount,date:i.date})),substituted:170100,rule:"t"})).toThrow("Adicionar notas fiscais");
+  });
+  it("ajustar planejamento mantém a nota de cada parcela",()=>{
+    const d=saved(); const items=d.planned[0]!.remainingOverride!.items!;
+    adjustPlanned(d,"p",items.map(i=>({id:i.id,amount:i.amount,date:i.date})));
+    expect(d.planned[0]!.remainingOverride!.items!.every(i=>i.note?.document)).toBe(true);
+  });
+  it("caminhos antigos que trocariam o restante por saldo genérico são bloqueados sem alterar dados",()=>{
+    const d=saved(); const snap=JSON.stringify(d);
+    expect(()=>setPlannedRemaining(d,"p",100,["2027-01-01"])).toThrow("Adicionar notas fiscais");
+    expect(()=>effectivate(d,{id:"e1",plannedId:"p",at:"x",kind:"parcial",installments:[{value:100,date:"2027-01-01",document:"X"}],remaining:{value:0,dates:[]}} as Parameters<typeof effectivate>[1])).toThrow("Adicionar notas fiscais");
+    expect(JSON.stringify(d)).toBe(snap);
+  });
+});
