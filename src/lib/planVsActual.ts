@@ -10,7 +10,7 @@ import { supplierIdentity } from "./supplierIdentity";
  */
 export type Comparison = "Acima" | "Abaixo" | "Sem diferença" | "Não comparável";
 export type PvaSituation = "Parcial" | "Concluído" | "Previsão cancelada";
-export interface PvaNote { id: string; document: string; noteId: string | null; parcel: string; value: number; due: string; extension: string | null; status: string; paid: number; effectivationAt: string | null; cancelled: boolean }
+export interface PvaNote { boletoNumber?: string | null | undefined; id: string; document: string; noteId: string | null; parcel: string; value: number; due: string; extension: string | null; status: string; paid: number; effectivationAt: string | null; cancelled: boolean }
 export interface PvaHistory { at: string; by: string; note: string; scope: string; before: EditLog["before"]; after: EditLog["after"] }
 export interface PvaRow {
   plannedId: string; purchaseCode: string; document: string; supplierKey: string; supplier: string;
@@ -44,7 +44,7 @@ export function planVsActual(d: ScenarioData): PvaRow[] {
     const active = linked.filter((c) => c.status !== "cancelado");
     const effective = active.reduce((a, c) => a + c.value, 0); // valor do título; pagamentos não somam de novo
     const cancelledValue = linked.filter((c) => c.status === "cancelado").reduce((a, c) => a + c.value, 0);
-    const notes: PvaNote[] = linked.map((c) => { const ts = titleStatus(c.value, c.status, paymentsFor(d, "committed", c.id)); return { id: c.id, document: c.document, noteId: c.noteId ?? null, parcel: c.parcelNo && c.parcelCount ? `${c.parcelNo}/${c.parcelCount}` : "Não informado", value: c.value, due: c.dueDate, extension: c.extensionDate, status: ts.state, paid: ts.paid, effectivationAt: effOf.get(c.id) ?? null, cancelled: c.status === "cancelado" }; })
+    const notes: PvaNote[] = linked.map((c) => { const ts = titleStatus(c.value, c.status, paymentsFor(d, "committed", c.id)); return { boletoNumber:c.boletoNumber, id: c.id, document: c.document, noteId: c.noteId ?? null, parcel: c.parcelNo && c.parcelCount ? `${c.parcelNo}/${c.parcelCount}` : "Não informado", value: c.value, due: c.dueDate, extension: c.extensionDate, status: ts.state, paid: ts.paid, effectivationAt: effOf.get(c.id) ?? null, cancelled: c.status === "cancelado" }; })
       .sort((a, b) => a.document.localeCompare(b.document) || a.due.localeCompare(b.due) || a.id.localeCompare(b.id));
     // Referência: valor da previsão (a efetivação altera status/restante, nunca Planned.value). Revisão posterior à 1ª efetivação invalida a prova.
     const history: PvaHistory[] = [...(p.editLog ?? []).map((h) => ({ ...h, scope: "Previsão" })), ...linked.flatMap((c) => (c.editLog ?? []).map((h) => ({ ...h, scope: `Nota ${c.document || "sem documento"}` })))].sort((a, b) => a.at.localeCompare(b.at));

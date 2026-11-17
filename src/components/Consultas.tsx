@@ -16,7 +16,7 @@ import { fmtBRL } from "@/lib/money";
 
 export interface ConsultaRow {
   launch?: LaunchRef; search?: string[]; key: string; supplierId: string; supplier: string; document: string; parcel: string; category: string; sub: string;
-  value: number; due: string | null; extended: string | null; effective: string | null;
+  boletoNumber?: string | null | undefined; value: number; due: string | null; extended: string | null; effective: string | null;
   paid: number; open: number; state: string; lastPay: string | null; payments: Payment[]; history: ExtensionEvent[];
 }
 
@@ -31,7 +31,7 @@ export function buildConsulta(d: ScenarioData): ConsultaRow[] {
     const pays = [...ts.payments].sort((a, b) => a.date.localeCompare(b.date));
     const source = kind === "committed" ? d.committed.find((r) => r.id === id) : d.expenses.find((r) => r.id === id);
     const identity = supplierIdentity(d, source);
-    rows.push({ launch: { kind, id, parcel: id }, key: `${kind}:${id}|${groupKey}`, supplierId: identity.key, supplier: identity.name, document, parcel: "", category: c ? (c.kind === "compra" ? "Compra" : "Despesa") : "—", sub: c?.name ?? "—", value, due, extended: ext, effective: ext || due, paid: ts.paid, open: Math.max(0, ts.open), state: ts.state === "Parcial" ? "Parcialmente pago" : ts.state, lastPay: pays.at(-1)?.date ?? null, payments: pays, history });
+    rows.push({ launch: { kind, id, parcel: id }, key: `${kind}:${id}|${groupKey}`, supplierId: identity.key, supplier: identity.name, document, boletoNumber: source?.boletoNumber ?? null, parcel: "", category: c ? (c.kind === "compra" ? "Compra" : "Despesa") : "—", sub: c?.name ?? "—", value, due, extended: ext, effective: ext || due, paid: ts.paid, open: Math.max(0, ts.open), state: ts.state === "Parcial" ? "Parcialmente pago" : ts.state, lastPay: pays.at(-1)?.date ?? null, payments: pays, history });
   };
   // Importados sem vínculo cadastral: agrupa pelo nome da fonte; documento vazio = título independente.
   for (const c of d.committed) push("committed", c.id, c.supplierId, index.byId.get(c.id)?.document ?? c.document, index.byId.get(c.id)?.key ?? c.id, c.value, c.status, c.dueDate, c.extensionDate, c.categoryId, c.extensionHistory ?? [], c.sourceSupplier);
@@ -50,7 +50,7 @@ export function buildConsulta(d: ScenarioData): ConsultaRow[] {
     const titleId = r.key.split("|")[0]?.split(":")[1];
     if (titleId && index.byId.has(titleId)) r.parcel = index.byId.get(titleId)?.labels.get(titleId) ?? "1/1";
     const t = d.committed.find((c) => c.id === titleId) ?? d.expenses.find((e) => e.id === titleId);
-    r.search = [t?.document ?? "",...(d.suppliers.find((s) => s.id === r.supplierId)?.aliases ?? []), t?.notes ?? "", t && "purchaseCode" in t ? t.purchaseCode : ""];
+    r.search = [t?.boletoNumber ?? "", t?.document ?? "",...(d.suppliers.find((s) => s.id === r.supplierId)?.aliases ?? []), t?.notes ?? "", t && "purchaseCode" in t ? t.purchaseCode : ""];
   }
   return rows;
 }
@@ -72,13 +72,13 @@ export function filterConsulta(rows: ConsultaRow[], f: ConsultaFilter): Consulta
   });
 }
 
-const HEAD = ["Fornecedor", "Documento", "Parcela", "Categoria", "Subgrupo", "Valor", "Vencimento", "Prorrogado para", "Pago", "Em aberto", "Situação", "Última baixa"];
-export const consultaCells = (r: ConsultaRow) => [r.supplier, r.document || "—", r.parcel, r.category, r.sub, fmtBRL(r.value), r.due ? fmtDate(r.due) : "—", r.extended ? fmtDate(r.extended) : "—", fmtBRL(r.paid), fmtBRL(r.open), r.state, r.lastPay ? fmtDate(r.lastPay) : "—"];
+const HEAD = ["Fornecedor", "Documento", "Parcela", "Categoria", "Subgrupo", "Valor", "Vencimento", "Prorrogado para", "Pago", "Em aberto", "Situação", "Última baixa", "Número do boleto"];
+export const consultaCells = (r: ConsultaRow) => [r.supplier, r.document || "—", r.parcel, r.category, r.sub, fmtBRL(r.value), r.due ? fmtDate(r.due) : "—", r.extended ? fmtDate(r.extended) : "—", fmtBRL(r.paid), fmtBRL(r.open), r.state, r.lastPay ? fmtDate(r.lastPay) : "—", r.boletoNumber || "Não informado"];
 
 export function consultaReport(all: ConsultaRow[], f: ConsultaFilter, byDoc: boolean, query: string, sort: import("@/lib/reportTable").ReportSort | null) {
   const filtered = filterConsulta(all, f);
   // Group filtered source parcels first: displayed aggregate fields are searchable without partial document totals.
-  return queryReport(byDoc ? groupByDocument(filtered) : filtered, query, sort, (r) => [r.supplier, r.document, parcelValue(r.parcel), r.category, r.sub, r.value, dateValue(r.due), dateValue(r.extended), r.paid, r.open, r.state, dateValue(r.lastPay)], (r) => [...consultaCells(r), ...(r.search ?? [])]);
+  return queryReport(byDoc ? groupByDocument(filtered) : filtered, query, sort, (r) => [r.supplier, r.document, parcelValue(r.parcel), r.category, r.sub, r.value, dateValue(r.due), dateValue(r.extended), r.paid, r.open, r.state, dateValue(r.lastPay), r.boletoNumber], (r) => [...consultaCells(r), ...(r.search ?? [])]);
 }
 
 /** Agrupa por documento (fornecedor+documento): soma valores, pago e aberto das parcelas. */
@@ -90,7 +90,7 @@ export function groupByDocument(rows: ConsultaRow[]): ConsultaRow[] {
     const first = [...g].sort((a, b) => (a.effective ?? "").localeCompare(b.effective ?? ""))[0];
     if (!first) throw new Error("Grupo vazio");
     const pays = g.flatMap((r) => r.payments).sort((a, b) => a.date.localeCompare(b.date));
-    return { ...first, search: g.flatMap((r) => [...consultaCells(r), ...(r.search ?? [])]), key: "doc:" + k, parcel: `${g.length} parcela(s)`, value, paid, open, state: paid <= 0 ? "Em aberto" : open > 0 ? "Parcialmente pago" : "Pago", lastPay: pays.at(-1)?.date ?? null, payments: pays, history: g.flatMap((r) => r.history), extended: g.some((r) => r.extended) ? first.extended ?? g.find((r) => r.extended)?.extended ?? null : null };
+    return { ...first, boletoNumber: g.map(r=>r.boletoNumber).filter(Boolean).join("; ") || null, search: g.flatMap((r) => [...consultaCells(r), ...(r.search ?? [])]), key: "doc:" + k, parcel: `${g.length} parcela(s)`, value, paid, open, state: paid <= 0 ? "Em aberto" : open > 0 ? "Parcialmente pago" : "Pago", lastPay: pays.at(-1)?.date ?? null, payments: pays, history: g.flatMap((r) => r.history), extended: g.some((r) => r.extended) ? first.extended ?? g.find((r) => r.extended)?.extended ?? null : null };
   });
 }
 
@@ -102,8 +102,8 @@ export function Consultas({ d, onManage }: { d: ScenarioData; onManage?: ((ref: 
   </div>;
 }
 const cT = (label: string, type: FilterCol["type"] = "text"): FilterCol => ({ label, type });
-const C_COLS = [cT("Fornecedor"), cT("Documento"), cT("Parcela"), cT("Categoria"), cT("Subgrupo"), cT("Valor", "money"), cT("Vencimento", "date"), cT("Prorrogado para", "date"), cT("Pago", "money"), cT("Saldo", "money"), cT("Situação"), cT("Última baixa", "date")];
-const cVals = (r: ConsultaRow) => [r.supplier, r.document, r.parcel, r.category, r.sub, r.value, dateValue(r.due), dateValue(r.extended), r.paid, r.open, r.state, dateValue(r.lastPay)];
+const C_COLS = [cT("Fornecedor"), cT("Documento"), cT("Parcela"), cT("Categoria"), cT("Subgrupo"), cT("Valor", "money"), cT("Vencimento", "date"), cT("Prorrogado para", "date"), cT("Pago", "money"), cT("Saldo", "money"), cT("Situação"), cT("Última baixa", "date"), cT("Número do boleto")];
+const cVals = (r: ConsultaRow) => [r.supplier, r.document, r.parcel, r.category, r.sub, r.value, dateValue(r.due), dateValue(r.extended), r.paid, r.open, r.state, dateValue(r.lastPay), r.boletoNumber];
 function ConsultaBoletos({ d, onManage }: { d: ScenarioData; onManage?: ((ref: LaunchRef) => void) | undefined }) {
   const all = useMemo(() => buildConsulta(d), [d]);
   const [f, setF] = useState<ConsultaFilter>(EMPTY_FILTER);
@@ -128,7 +128,8 @@ function ConsultaBoletos({ d, onManage }: { d: ScenarioData; onManage?: ((ref: L
     const w = window.open("", "_blank");
     if (!w) return;
     const th = HEAD.map((h) => `<th>${h}</th>`).join("");
-    const tb = rows.map((r) => `<tr>${consultaCells(r).map((c, i) => `<td class="${[5, 8, 9].includes(i) ? "n" : ""}">${c}</td>`).join("")}</tr>`).join("");
+    const escapeHtml = (s: string) => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c);
+    const tb = rows.map((r) => `<tr>${consultaCells(r).map((c, i) => `<td class="${[5, 8, 9].includes(i) ? "n" : ""}">${escapeHtml(c)}</td>`).join("")}</tr>`).join("");
     w.document.write(`<html><head><title>Consulta de boletos e pagamentos</title><style>@page{size:A4 landscape;margin:10mm}body{font:9px sans-serif}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:2px 4px;text-align:left}.n{text-align:right}</style></head><body><h3>Consulta de boletos e pagamentos</h3><p>Títulos ${fmtBRL(tot.v)} · Pago ${fmtBRL(tot.p)} · Em aberto ${fmtBRL(tot.o)} · ${rows.length} linhas</p><table><thead><tr>${th}</tr></thead><tbody>${tb}</tbody></table></body></html>`);
     w.document.close();
     w.focus();
@@ -157,8 +158,8 @@ function ConsultaBoletos({ d, onManage }: { d: ScenarioData; onManage?: ((ref: L
         <span className="text-muted-foreground">{rows.length} {byDoc ? "documentos" : "parcelas"}</span>
       </div>
       <div className="card overflow-auto">
-        <table className="tbl"><thead><tr>{HEAD.map((h, i) => <SortHead key={h} label={h} column={i} sort={report.sort} onSort={report.toggle} numeric={[5, 8, 9].includes(i)} />)}</tr></thead>
-          <tbody>{pager.slice(rows).map((r) => <tr key={r.key} className="cursor-pointer hover:bg-muted" onClick={() => { if (onManage && r.launch) onManage(r.launch); else setSel(r); }}>{consultaCells(r).map((c, i) => <td key={i} className={[5, 8, 9].includes(i) ? "num" : ""}>{c}</td>)}</tr>)}
+        <table className="tbl"><thead><tr>{[0,1,12,2,3,4,5,6,7,8,9,10,11].map((i) => <SortHead key={HEAD[i]} label={HEAD[i] ?? ""} column={i} sort={report.sort} onSort={report.toggle} numeric={[5, 8, 9].includes(i)} />)}</tr></thead>
+          <tbody>{pager.slice(rows).map((r) => <tr key={r.key} className="cursor-pointer hover:bg-muted" onClick={() => { if (onManage && r.launch) onManage(r.launch); else setSel(r); }}>{[0,1,12,2,3,4,5,6,7,8,9,10,11].map(i => <td key={i} className={[5,8,9].includes(i) ? "num" : ""}>{consultaCells(r)[i]}</td>)}</tr>)}
             {!rows.length && <tr><td colSpan={HEAD.length} className="text-center text-muted-foreground">Nenhum resultado para os filtros informados</td></tr>}</tbody></table><Pager pager={pager} />
       </div>
       {sel && (
@@ -166,7 +167,7 @@ function ConsultaBoletos({ d, onManage }: { d: ScenarioData; onManage?: ((ref: L
           <div className="h-full w-[min(560px,95vw)] overflow-auto bg-background p-4 shadow-xl">
             <div className="mb-3 flex items-start justify-between"><div><div className="text-sm font-semibold">{sel.supplier} — {sel.document || "sem documento"}</div><div className="text-xs text-muted-foreground">Parcela {sel.parcel} · {sel.category} / {sel.sub}{sel.supplierId.startsWith("pending:") && " · vínculo pendente"}</div></div><button className="btn" onClick={() => setSel(null)}>Fechar</button></div>
             <table className="tbl mb-3"><tbody>
-              {[["Valor da parcela", fmtBRL(sel.value)], ["Vencimento", sel.due ? fmtDate(sel.due) : "—"], ["Prorrogado para", sel.extended ? fmtDate(sel.extended) : "—"], ["Valor pago", fmtBRL(sel.paid)], ["Saldo em aberto", fmtBRL(sel.open)], ["Situação", sel.state]].map(([k, v]) => <tr key={k}><td className="lbl">{k}</td><td className="num">{v}</td></tr>)}
+              {[["Número do boleto", sel.boletoNumber || "Não informado"], ["Valor da parcela", fmtBRL(sel.value)], ["Vencimento", sel.due ? fmtDate(sel.due) : "—"], ["Prorrogado para", sel.extended ? fmtDate(sel.extended) : "—"], ["Valor pago", fmtBRL(sel.paid)], ["Saldo em aberto", fmtBRL(sel.open)], ["Situação", sel.state]].map(([k, v]) => <tr key={k}><td className="lbl">{k}</td><td className="num">{v}</td></tr>)}
             </tbody></table>
             <div className="mb-1 text-xs font-semibold">Pagamentos</div>
             <DetailReport rows={sel.payments} head={["Data", "Valor", "Observação"]} values={(p) => [dateValue(p.date), p.amount, p.note]} cells={(p) => [fmtDate(p.date), fmtBRL(p.amount), p.note || "—"]} rowKey={(p) => p.id} />

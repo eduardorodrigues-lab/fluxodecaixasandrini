@@ -1,5 +1,9 @@
 # Roadmap
 
+## Número do boleto por parcela — autorizado 17/11/2026
+- [x] Metadado opcional, formulários/efetivação/Gerenciar, busca/consultas/exportação e histórico sem mudança financeira
+- [x] 8 testes novos + regressões; navegador fixture 1366/1536 criação/revisão/salvar/Gerenciar/busca/CSV/reload/limpar paga; baixa preservada, zero chamadas oficiais. Persistência hospedada e efetivação parcial no navegador não verificadas (parcial coberta em teste puro); nada publicado
+
 ## Aba principal Planejado × Efetivado — autorizado 17/11/2026
 - [x] Reutilizar relatório, acesso /lancamentos?tab=pva, retorno preserva filtros, categoria/subgrupo, KPIs comparáveis e cobertura/exportação integral
 - [x] 40 testes focados; navegador fixture 1366/1536/768/390: filtros, cobertura, ausência, notas, CSV, troca de abas e reload; zero chamadas de escrita

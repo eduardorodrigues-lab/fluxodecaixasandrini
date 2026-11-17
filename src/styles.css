@@ -269,10 +269,11 @@
 .launch-manager input[type=checkbox] { width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--primary); }
 .launch-manager .launch-parcels col:nth-child(1) { width: 44px; }
 .launch-manager .launch-parcels col:nth-child(2) { width: 13%; }
-.launch-manager .launch-parcels col:nth-child(3) { width: 12%; }
-.launch-manager .launch-parcels col:nth-child(4),.launch-manager .launch-parcels col:nth-child(5) { width: 17%; }
-.launch-manager .launch-parcels col:nth-child(6) { width: 10%; }
-.launch-manager .launch-parcels col:nth-child(7) { width: 11%; }
+.launch-manager .launch-parcels col:nth-child(3) { width: 16%; }
+.launch-manager .launch-parcels col:nth-child(4) { width: 11%; }
+.launch-manager .launch-parcels col:nth-child(5),.launch-manager .launch-parcels col:nth-child(6) { width: 15%; }
+.launch-manager .launch-parcels col:nth-child(7) { width: 8%; }
+.launch-manager .launch-parcels col:nth-child(8) { width: 9%; }
 .launch-manager .launch-parcels td:last-child button { white-space: normal; height: auto; min-height: 34px; width: 100%; }
 .launch-manager .launch-focus td { background: var(--warning-soft); }
 .launch-manager .launch-selected td { box-shadow: inset 0 -2px var(--primary); }

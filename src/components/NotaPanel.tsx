@@ -178,7 +178,7 @@ export function NovaNota({ d, isBase, onCancel, onConfirm, onManagePlanned, savi
     ? <><button className="btn" disabled={saving} onClick={() => { setReview(false); setChecked(false); }}>Voltar</button><button className="btn btn-primary" disabled={saving || (stage === "committed" && !checked)} title={stage === "committed" && !checked ? "Confirme a conferência dos valores e vencimentos" : ""} onClick={() => onConfirm(n, saveAs)}>{saving ? "Salvando…" : isBase ? "Confirmar e salvar" : "Confirmar na simulação"}</button></>
     : <><button className="btn" onClick={backToType}>Trocar tipo</button><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" onClick={next}>Revisar e confirmar</button></>;
   return (
-    <SidePanel centered={review} wide title={title} sub={isBase ? "Grava no fluxo real ao confirmar" : "Simulação — não altera o fluxo real"} onClose={onCancel} dirty={chosen} footer={footer}>
+    <SidePanel expanded centered={review} wide title={title} sub={isBase ? "Grava no fluxo real ao confirmar" : "Simulação — não altera o fluxo real"} onClose={onCancel} dirty={chosen} footer={footer}>
       {saveError && <p role="alert" className="text-destructive">{saveError}</p>}
       {!chosen ? (
         <Section n={1} title="Tipo de lançamento">
@@ -254,9 +254,9 @@ export function NovaNota({ d, isBase, onCancel, onConfirm, onManagePlanned, savi
         )}
         <Section n={4} title={stage === "planned" ? "Parcelas previstas" : "Parcelas efetivas"}>
           <div className="overflow-auto rounded-lg border border-border">
-            <table className="tbl"><thead><tr><th>Parcela</th><th className="num">{stage === "committed" ? "Valor real" : "Valor"}</th><th>{stage === "committed" ? "Vencimento real" : "Vencimento"}</th><th>Prorrogar para</th><th /></tr></thead>
-              <tbody>{n.parcels.map((p, i) => <tr key={i}><td>{i + 1}/{n.parcels.length}</td><td className="num"><MoneyInput value={p.amount} onChange={(v) => setP(i, { amount: v ?? 0 })} /></td><td><DateInput value={p.date} onChange={(v) => setP(i, { date: v })} /></td><td><DateInput allowEmpty value={p.ext} onChange={(v) => setP(i, { ext: v })} /></td><td><button className="btn btn-danger" aria-label={`Remover parcela ${i + 1}`} onClick={() => up({ parcels: n.parcels.filter((_, k) => k !== i) })}>Remover</button></td></tr>)}
-                {!n.parcels.length && <tr><td colSpan={5} className="text-center text-muted-foreground">{stage === "committed" ? "Escolha como informar os valores reais e gere as linhas." : "Gere as parcelas pela condição ou adicione manualmente."}</td></tr>}</tbody></table>
+            <table className="tbl"><thead><tr><th>Parcela</th><th>Número do boleto</th><th className="num">{stage === "committed" ? "Valor real" : "Valor"}</th><th>{stage === "committed" ? "Vencimento real" : "Vencimento"}</th><th>Prorrogar para</th><th /></tr></thead>
+              <tbody>{n.parcels.map((p, i) => <tr key={i}><td>{i + 1}/{n.parcels.length}</td><td><input className="inp w-full" aria-label={`Número do boleto parcela ${i+1}`} value={p.boletoNumber ?? ""} onChange={e=>setP(i,{boletoNumber:e.target.value || null})}/></td><td className="num"><MoneyInput value={p.amount} onChange={(v) => setP(i, { amount: v ?? 0 })} /></td><td><DateInput value={p.date} onChange={(v) => setP(i, { date: v })} /></td><td><DateInput allowEmpty value={p.ext} onChange={(v) => setP(i, { ext: v })} /></td><td><button className="btn btn-danger" aria-label={`Remover parcela ${i + 1}`} onClick={() => up({ parcels: n.parcels.filter((_, k) => k !== i) })}>Remover</button></td></tr>)}
+                {!n.parcels.length && <tr><td colSpan={6} className="text-center text-muted-foreground">{stage === "committed" ? "Escolha como informar os valores reais e gere as linhas." : "Gere as parcelas pela condição ou adicione manualmente."}</td></tr>}</tbody></table>
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button className="btn" onClick={() => up({ parcels: [...n.parcels, { amount: 0, date: n.parcels.at(-1)?.date ?? n.baseDate, ext: null }] })}>+ Adicionar parcela</button>
@@ -276,8 +276,8 @@ export function NovaNota({ d, isBase, onCancel, onConfirm, onManagePlanned, savi
   );
 }
 function ParcelTable({ parcels, real }: { parcels: DraftParcel[]; real?: boolean }) {
-  return <div className="overflow-auto rounded-lg border border-border"><table className="tbl"><thead><tr><th>Parcela</th><th className="num">{real ? "Valor real" : "Valor"}</th><th>{real ? "Vencimento real" : "Vencimento"}</th><th>Prorrogar para</th></tr></thead>
-    <tbody>{parcels.map((p, i) => <tr key={i}><td>{i + 1}/{parcels.length}</td><td className="num">{fmtBRL(p.amount)}</td><td>{fmtDate(p.date)}</td><td>{p.ext ? fmtDate(p.ext) : "—"}</td></tr>)}
+  return <div className="overflow-auto rounded-lg border border-border"><table className="tbl"><thead><tr><th>Parcela</th><th>Número do boleto</th><th className="num">{real ? "Valor real" : "Valor"}</th><th>{real ? "Vencimento real" : "Vencimento"}</th><th>Prorrogar para</th></tr></thead>
+    <tbody>{parcels.map((p, i) => <tr key={i}><td>{i + 1}/{parcels.length}</td><td>{p.boletoNumber || "Não informado"}</td><td className="num">{fmtBRL(p.amount)}</td><td>{fmtDate(p.date)}</td><td>{p.ext ? fmtDate(p.ext) : "—"}</td></tr>)}
       <tr className="font-semibold"><td>Total</td><td className="num">{fmtBRL(parcelsTotal(parcels))}</td><td colSpan={2} /></tr></tbody></table></div>;
 }
 

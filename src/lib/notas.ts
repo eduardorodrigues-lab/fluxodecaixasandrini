@@ -7,7 +7,7 @@ import type { CategoryKind, Committed, ExtensionEvent, ScenarioData, Supplier, S
 import { addDays } from "@/lib/dates";
 import { supplierActive, validateSupplierNames } from "./fornecedores";
 
-export interface DraftParcel { amount: number; date: string | null; ext: string | null }
+export interface DraftParcel { amount: number; date: string | null; ext: string | null; boletoNumber?: string | null | undefined }
 export interface NoteDraft {
   stage: "planned" | "committed"; kind: CategoryKind; categoryId: string; supplierId: string;
   purchaseCode: string; document: string; description: string; total: number | null; baseDate: string | null;
@@ -47,6 +47,7 @@ export function validateNote(n: NoteDraft): string[] {
   if (!n.parcels.length) e.push("Gere ou adicione as parcelas.");
   if (n.parcels.some((p) => !p.date)) e.push("Toda parcela precisa de vencimento.");
   if (n.parcels.some((p) => !(p.amount > 0))) e.push("Toda parcela precisa de valor positivo.");
+  if (n.parcels.some(p => p.boletoNumber !== undefined && p.boletoNumber !== null && typeof p.boletoNumber !== "string")) e.push("Número do boleto deve ser texto.");
   if (n.parcels.some((p) => p.ext && p.date && p.ext < p.date)) e.push("Prorrogação anterior ao vencimento.");
   if (n.total && parcelsTotal(n.parcels) !== n.total) e.push("Total das parcelas difere do valor da nota.");
   return e;
@@ -61,7 +62,7 @@ export function applyNote(d: ScenarioData, n: NoteDraft, ids: { id: () => string
   if (!n.plannedId && (!supplier || !supplierActive(supplier, ids.at.slice(0, 10)))) throw new Error("Fornecedor inativo: selecione um fornecedor ativo para novo lançamento.");
   const sorted = [...n.parcels];
   if (n.stage === "planned") {
-    d.planned.push({ id: ids.id(), supplierId: n.supplierId, purchaseCode: n.purchaseCode, document: n.document, value: n.total!, baseDate: n.baseDate!, categoryId: n.categoryId, notes: n.description, status: "ativo", remainingOverride: null, condition: n.condition ?? null, installments: sorted.map((p) => ({ amount: p.amount, date: p.date!, extensionDate: p.ext, extensionHistory: extHist(p, ids.at) })) });
+    d.planned.push({ id: ids.id(), supplierId: n.supplierId, purchaseCode: n.purchaseCode, document: n.document, value: n.total!, baseDate: n.baseDate!, categoryId: n.categoryId, notes: n.description, status: "ativo", remainingOverride: null, condition: n.condition ?? null, installments: sorted.map((p) => ({ amount: p.amount, date: p.date!, extensionDate: p.ext, extensionHistory: extHist(p, ids.at), ...(p.boletoNumber !== undefined ? { boletoNumber: p.boletoNumber } : {}) })) });
     return;
   }
   if (n.plannedId) {
@@ -72,11 +73,11 @@ export function applyNote(d: ScenarioData, n: NoteDraft, ids: { id: () => string
     effectivate(d, { id: effId, plannedId: n.plannedId, at: ids.at, kind: n.closeRest || rest === 0 ? "concluida" : "parcial",
       installments: sorted.map((p) => ({ value: p.amount, date: p.date!, document: n.document })),
       remaining: n.closeRest || rest === 0 ? null : { value: rest, dates: r.dates }, condition: n.condition ?? null });
-    sorted.forEach((p, i) => { const c = d.committed.find((x) => x.id === `${effId}-${i + 1}`)!; Object.assign(c, { noteId: effId, parcelNo: i + 1, parcelCount: sorted.length, extensionDate: p.ext, extensionHistory: extHist(p, ids.at), ...(n.description ? { notes: n.description } : {}) }); });
+    sorted.forEach((p, i) => { const c = d.committed.find((x) => x.id === `${effId}-${i + 1}`); if (!c) throw new Error("Parcela não criada"); Object.assign(c, { noteId: effId, parcelNo: i + 1, parcelCount: sorted.length, extensionDate: p.ext, extensionHistory: extHist(p, ids.at), ...(p.boletoNumber !== undefined ? { boletoNumber: p.boletoNumber } : {}), ...(n.description ? { notes: n.description } : {}) }); });
     return;
   }
   const noteId = ids.id();
-  sorted.forEach((p, i) => d.committed.push({ id: ids.id(), supplierId: n.supplierId, purchaseCode: n.purchaseCode, document: n.document, value: p.amount, dueDate: p.date!, extensionDate: p.ext, extensionHistory: extHist(p, ids.at), extensionInfo: "", legacyAbatement: null, origin: "manual", plannedId: null, effectivationId: null, categoryId: n.categoryId, notes: n.description, status: "ativo", condition: n.condition ?? null, noteId, parcelNo: i + 1, parcelCount: sorted.length }));
+  sorted.forEach((p, i) => d.committed.push({ id: ids.id(), supplierId: n.supplierId, purchaseCode: n.purchaseCode, document: n.document, value: p.amount, dueDate: p.date!, extensionDate: p.ext, extensionHistory: extHist(p, ids.at), extensionInfo: "", legacyAbatement: null, origin: "manual", plannedId: null, effectivationId: null, categoryId: n.categoryId, notes: n.description, status: "ativo", condition: n.condition ?? null, noteId, parcelNo: i + 1, parcelCount: sorted.length, ...(p.boletoNumber !== undefined ? { boletoNumber: p.boletoNumber } : {}) }));
 }
 
 /** Condições do fornecedor; cadastro antigo sem lista vira "Condição original" (prazos atuais). */

@@ -105,7 +105,7 @@ export const commitOps = createServerFn({ method: "POST" })
     const email = typeof context.claims?.email === "string" ? context.claims.email : null;
     const { data: res, error: e2 } = await supabaseAdmin.rpc("commit_official", {
       _org: m.org_id, _user: context.userId, _email: email ?? "", _expected: cur.version,
-      _data: r.data as never, _request: input.requestId, _summary: summary, _changes: r.applied as never,
+      _data: normalizeData(r.data) as never, _request: input.requestId, _summary: summary, _changes: r.applied as never,
     });
     if (e2) { console.error(e2); throw new Error("Falha ao gravar."); }
     const x = res as { status: "ok" | "conflict" | "duplicate" | "forbidden"; version: number };

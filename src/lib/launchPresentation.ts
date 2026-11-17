@@ -41,9 +41,9 @@ export function createLaunchPresentation(d: ScenarioData, audit: LaunchAudit[] =
     return parts.map((pc, i) => ({ p, r, pc, i, n: parts.length, it: inst && pc ? inst[pc.idx ?? i] ?? null : null, idx: pc?.idx ?? i }));
   });
   const plannedValues = ({ p, r, pc, i, n, it }: (typeof plannedSource)[number]) => [kindL(p.categoryId), catOf(p.categoryId)?.name, (supplierIdentity(d, p).name), p.purchaseCode, p.document, p.notes, pc ? i + 1 : null, pc?.amount, dateValue(it?.date ?? pc?.date), dateValue(it?.extensionDate), p.status === "encerrado" ? "Encerrada" : p.status === "cancelado" ? "Cancelada" : r.effectivated > 0 ? "Efetivada parcialmente" : "Prevista"];
-    return indexReport(plannedSource, plannedValues, (row) => [...plannedValues(row), ...(sup(row.p.supplierId)?.aliases ?? []), row.pc ? `${row.i + 1}/${row.n}` : "", row.pc ? fmtBRL(row.pc.amount) : "", fmtDate(row.it?.date ?? row.pc?.date ?? null), fmtDate(row.it?.extensionDate ?? null), row.r.health !== "ok" ? "conciliação pendente" : ""]).map(r => {
+    return indexReport(plannedSource, plannedValues, (row) => [...plannedValues(row), ...(sup(row.p.supplierId)?.aliases ?? []), row.pc ? `${row.i + 1}/${row.n}` : "", row.pc ? fmtBRL(row.pc.amount) : "", fmtDate(row.it?.date ?? row.pc?.date ?? null), fmtDate(row.it?.extensionDate ?? null), row.r.health !== "ok" ? "conciliação pendente" : "", row.p.boletoNumbers?.[row.p.remainingOverride?.items?.[row.i]?.id ?? `${row.p.id}#${row.idx}`] ?? row.p.remainingOverride?.items?.[row.i]?.boletoNumber ?? row.it?.boletoNumber]).map(r => {
       const key = r.row.p.remainingOverride?.items?.[r.row.i]?.id ?? `${r.row.p.id}#${r.row.idx}`;
-      const log = [...(r.row.p.editLog ?? [])].reverse().find(l => l.parcel === key);
+      const log = [...(r.row.p.editLog ?? [])].reverse().find(l => l.parcel === key && !l.note.startsWith("Número do boleto"));
       const extended = log?.note.includes('prorrogação') ? log.after.date : r.row.it?.extensionDate ?? null;
       return { ...r, facets: facets('planned', r.row.p, key, extended ? log?.before.date ?? r.row.it?.date ?? r.row.pc?.date ?? null : r.row.it?.date ?? r.row.pc?.date ?? null, extended, r.row.p.document, r.row.idx) };
     });
@@ -58,7 +58,7 @@ export function createLaunchPresentation(d: ScenarioData, audit: LaunchAudit[] =
     const t = row.t === "committed" ? row.c : row.e;
     const ts = titleStatus(t.value, t.status, paymentsFor(d, row.t, t.id));
     const due = row.t === "committed" ? row.c.dueDate : row.e.termDays != null ? addDays(row.e.baseDate, row.e.termDays) : null;
-    return [kindL(t.categoryId, row.t === "expense" ? "despesa" : "compra"), catOf(t.categoryId)?.name, (supplierIdentity(d, t).name), row.t === "committed" ? row.c.purchaseCode : null, row.t === "committed" ? groups.byId.get(t.id)?.document ?? t.document : t.document, t.notes, parcelValue(labels.get(t.id) ?? "1/1"), t.value, dateValue(due), dateValue(t.extensionDate), t.status === "cancelado" ? "Cancelado" : row.t === "committed" && row.c.origin === "efetivacao" ? "Efetivado (previsão)" : row.t === "committed" && row.c.origin === "legado" ? "Efetivado (histórico)" : "Efetivado", ts.state === "Parcial" ? "Parcialmente pago" : ts.state, ts.paid, Math.max(0, ts.open)];
+    return [kindL(t.categoryId, row.t === "expense" ? "despesa" : "compra"), catOf(t.categoryId)?.name, (supplierIdentity(d, t).name), row.t === "committed" ? row.c.purchaseCode : null, row.t === "committed" ? groups.byId.get(t.id)?.document ?? t.document : t.document, t.notes, parcelValue(labels.get(t.id) ?? "1/1"), t.value, dateValue(due), dateValue(t.extensionDate), t.status === "cancelado" ? "Cancelado" : row.t === "committed" && row.c.origin === "efetivacao" ? "Efetivado (previsão)" : row.t === "committed" && row.c.origin === "legado" ? "Efetivado (histórico)" : "Efetivado", ts.state === "Parcial" ? "Parcialmente pago" : ts.state, ts.paid, Math.max(0, ts.open), t.boletoNumber ?? ""];
   };
     return indexReport(committedSource, committedValues, (row) => {
     const t = row.t === "committed" ? row.c : row.e;
@@ -80,7 +80,7 @@ export function createLaunchPresentation(d: ScenarioData, audit: LaunchAudit[] =
   };
     return indexReport(d.payments, paymentValues, (p) => {
     const t = titles[p.titleKind].get(p.titleId);
-    return [...paymentValues(p), ...(sup(t?.supplierId ?? "")?.aliases ?? []), t?.notes, t?.categoryId ? catOf(t.categoryId)?.name : "", fmtDate(p.date), fmtBRL(p.amount)];
+    return [...paymentValues(p), ...(sup(t?.supplierId ?? "")?.aliases ?? []), t?.notes, t?.boletoNumber, t?.categoryId ? catOf(t.categoryId)?.name : "", fmtDate(p.date), fmtBRL(p.amount)];
   });
   };
   let planned: ReturnType<typeof buildPlanned> | undefined;

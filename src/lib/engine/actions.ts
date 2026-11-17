@@ -43,6 +43,13 @@ export function normalizeData(raw: unknown): ScenarioData {
     c.legacyAbatement ??= null;
   }
   for (const e of d.expenses) e.extensionHistory ??= e.extensionDate ? [{ from: null, to: e.extensionDate, at: "", note: "prorrogação existente antes do histórico" }] : [];
+  // Optional identification: validate without coercion, inference or backfill.
+  const validateBoleto = (v: unknown) => { if (v !== undefined && v !== null && typeof v !== "string") throw new Error("Número do boleto deve ser texto."); };
+  for (const r of [...d.committed, ...d.expenses]) validateBoleto(r.boletoNumber);
+  for (const p of d.planned) {
+    for (const i of [...(p.installments ?? []), ...(p.remainingOverride?.items ?? [])]) validateBoleto(i.boletoNumber);
+    if (p.boletoNumbers !== undefined) { if (!p.boletoNumbers || typeof p.boletoNumbers !== "object" || Array.isArray(p.boletoNumbers)) throw new Error("Identificações de parcelas inválidas."); for (const v of Object.values(p.boletoNumbers)) validateBoleto(v); }
+  }
   return d as ScenarioData;
 }
 
@@ -52,7 +59,7 @@ export function emptyData(): ScenarioData { return normalizeData({}); }
 export interface EffectivateInput {
   id: string; // idempotência: mesmo id não efetiva duas vezes
   plannedId: string; kind: "parcial" | "concluida"; at: string;
-  installments: { value: number; date: string; document: string }[];
+  installments: { value: number; date: string; document: string; boletoNumber?: string | null | undefined }[];
   condition?: { name: string; terms: (number | null)[] } | null; // condição real desta efetivação (não altera fornecedor nem restante)
   remaining?: { value: number; dates: string[] } | null; // parcial: restante confirmado/ajustado pelo usuário
   substituted?: number; // parte da previsão substituída (pode diferir do valor efetivado); padrão = valor efetivado
@@ -96,6 +103,7 @@ export function effectivate(d: ScenarioData, inp: EffectivateInput): ScenarioDat
       id, supplierId: pl.supplierId, purchaseCode: pl.purchaseCode, document: i.document || `${pl.purchaseCode}/${n + 1}`, value: i.value,
       dueDate: i.date, extensionDate: null, extensionHistory: [], extensionInfo: "", legacyAbatement: null,
       origin: "efetivacao", plannedId: pl.id, effectivationId: inp.id, categoryId: cat, notes: `Efetivação ${inp.kind} da previsão ${pl.purchaseCode}`, status: "ativo", condition: inp.condition ?? null,
+      ...(i.boletoNumber !== undefined ? { boletoNumber: i.boletoNumber } : {}),
     };
     d.committed.push(c);
   });

@@ -30,8 +30,9 @@ export interface Origin { file: string; sheet: string; row: number; raw?: unknow
 export interface ExtensionEvent { from: string | null; to: string | null; at: string; note: string }
 
 // PLANEJADO = previsão. Não é compra nem pagamento.
-export interface EditLog { at: string; by: string; note: string; parcel?: string; before: { amount: number; date: string | null }; after: { amount: number; date: string | null } }
+export interface EditLog { at: string; by: string; note: string; parcel?: string; before: { amount: number; date: string | null; boletoNumber?: string | null | undefined }; after: { amount: number; date: string | null; boletoNumber?: string | null | undefined } }
 export interface Planned {
+  boletoNumbers?: Record<string, string | null>; // identificação por chave estável, sem materializar/recalcular parcelas
   editLog?: EditLog[]; // justificativas de alteração de valor/vencimento (antes/depois, autor, horário)
   id: string; supplierId: string; purchaseCode: string; document: string; value: number;
   baseDate: string; categoryId: string; notes: string;
@@ -43,12 +44,13 @@ export interface Planned {
   sourceSupplier?: string; // nome do fornecedor na fonte (sem vínculo cadastral)
   installments?: PlannedInstallment[] | null; // parcelas próprias (painel Nova nota); null = prazos
 }
-export interface RemainingItem { id: string; amount: number; date: string }
-export interface PlannedInstallment { amount: number; date: string; extensionDate: string | null; extensionHistory: ExtensionEvent[] }
+export interface RemainingItem { id: string; amount: number; date: string; boletoNumber?: string | null | undefined }
+export interface PlannedInstallment { amount: number; date: string; extensionDate: string | null; extensionHistory: ExtensionEvent[]; boletoNumber?: string | null | undefined }
 export interface NoteRef { noteId?: string; parcelNo?: number; parcelCount?: number }
 // EFETIVADO/REALIZADO = compra real ou pedido. NÃO é pagamento (ver payments).
 export type CommittedOrigin = "legado" | "efetivacao" | "manual";
 export interface Committed {
+  boletoNumber?: string | null | undefined;
   editLog?: EditLog[]; // justificativas de alteração de valor/vencimento (antes/depois, autor, horário)
   id: string; supplierId: string; purchaseCode: string; document: string; value: number;
   dueDate: string; // vencimento original (preservado)
@@ -64,6 +66,7 @@ export interface Committed {
   sourceSupplier?: string;
 }
 export interface Expense {
+  boletoNumber?: string | null | undefined;
   editLog?: EditLog[]; // justificativas de alteração de valor/vencimento (antes/depois, autor, horário)
   id: string; supplierId: string; document: string; value: number; baseDate: string;
   termDays: number | null; // G: vazio = não distribui; 0 = data base

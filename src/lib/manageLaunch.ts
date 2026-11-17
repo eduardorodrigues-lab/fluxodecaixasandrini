@@ -5,7 +5,7 @@ import { confirmExtension } from "./engine/actions";
 import { parseBRDate, addDays } from "./dates";
 
 export interface LaunchRef { kind: "planned" | "committed" | "expense"; id: string; parcel?: string | undefined }
-export interface ManagedParcel { key: string; id: string; label: string; original: number; amount: number | null; date: string | null; extension: string | null; status: string; paid: number }
+export interface ManagedParcel { key: string; id: string; label: string; original: number; amount: number | null; date: string | null; extension: string | null; status: string; paid: number; boletoNumber?: string | null | undefined }
 export interface DocumentFields { supplierId: string; categoryId: string; purchaseCode: string; document: string; notes: string }
 export function managedDocument(d: ScenarioData, ref: LaunchRef) {
   const record = ref.kind === "planned" ? d.planned.find((x) => x.id === ref.id) : ref.kind === "committed" ? d.committed.find((x) => x.id === ref.id) : d.expenses.find((x) => x.id === ref.id);
@@ -25,11 +25,11 @@ export function managedDocument(d: ScenarioData, ref: LaunchRef) {
     const first = (record.editLog ?? []).find(l => l.parcel === key);
     const originalAmount = first?.before.date ? first.before.amount : installment?.amount ?? cancelled?.before.amount ?? p.amount;
     const originalIndex = key.startsWith(`${ref.id}#`) ? Number(key.split("#").at(-1)) + 1 : i + 1;
-    return { key, id: ref.id, label: `${originalIndex}/${Math.max(all.length, pl?.installments?.length ?? 0)}`, original: originalAmount, amount: p.amount, date: ext ? extensionLog?.before.date ?? installment?.date ?? p.date : p.date, extension: ext, status: cancelled || record.status === "cancelado" ? "cancelado" : record.status, paid: 0 };
+    return { key, id: ref.id, label: `${originalIndex}/${Math.max(all.length, pl?.installments?.length ?? 0)}`, original: originalAmount, amount: p.amount, date: ext ? extensionLog?.before.date ?? installment?.date ?? p.date : p.date, extension: ext, status: cancelled || record.status === "cancelado" ? "cancelado" : record.status, paid: 0, boletoNumber: pl?.boletoNumbers && key in pl.boletoNumbers ? pl.boletoNumbers[key] : pl?.remainingOverride?.items?.[i]?.boletoNumber ?? installment?.boletoNumber ?? null };
   }) : records.map((r) => {
     const ts = titleStatus(r.value, r.status, paymentsFor(d, ref.kind === "expense" ? "expense" : "committed", r.id));
     const date = "dueDate" in r ? r.dueDate : "termDays" in r ? r.termDays === null ? null : addDays(r.baseDate, r.termDays) : null;
-    return { key: r.id, id: r.id, label: group?.labels.get(r.id) ?? "1/1", original: r.value, amount: r.value, date, extension: "extensionDate" in r ? r.extensionDate : null, status: r.status, paid: ts.paid };
+    return { key: r.id, id: r.id, label: group?.labels.get(r.id) ?? "1/1", original: r.value, amount: r.value, date, extension: "extensionDate" in r ? r.extensionDate : null, status: r.status, paid: ts.paid, boletoNumber: "boletoNumber" in r ? r.boletoNumber ?? null : null };
   });
   const fields: DocumentFields = { supplierId: record.supplierId, categoryId: record.categoryId, purchaseCode: record.purchaseCode ?? "", document: group?.document ?? record.document, notes: record.notes };
   return { record, records, parcels, fields };
@@ -44,13 +44,16 @@ export function applyManaged(d: ScenarioData, input: ManageInput) {
   if (ref.kind === "planned" && (before.some((b) => !parcels.some((p) => p.key === b.key)) || new Set(parcels.map((p) => p.key)).size !== parcels.length)) throw new Error("Conserve os IDs existentes; cancele a parcela em vez de removê-la.");
   if (JSON.stringify(current.records) !== JSON.stringify(input.beforeRecords ?? current.records)) throw new Error("O documento mudou. Seu rascunho foi preservado; confira as alterações concorrentes.");
   const changed = parcels.filter((p) => JSON.stringify(p) !== JSON.stringify(before.find((b) => b.key === p.key)));
-  if (changed.length && ref.kind === "planned" && current.record.status !== "ativo") throw new Error("Previsão encerrada ou cancelada está protegida.");
-  if (changed.length && ref.kind === "planned") {
+  const metadataOnly = (p: ManagedParcel) => { const b = before.find(b => b.key === p.key); return !!b && JSON.stringify({ ...p, boletoNumber: null }) === JSON.stringify({ ...b, boletoNumber: null }); };
+  const financial = changed.filter(p => !metadataOnly(p));
+  for (const p of changed) if (p.boletoNumber !== null && p.boletoNumber !== undefined && typeof p.boletoNumber !== "string") throw new Error("Número do boleto deve ser texto.");
+  if (financial.length && ref.kind === "planned" && current.record.status !== "ativo") throw new Error("Previsão encerrada ou cancelada está protegida.");
+  if (financial.length && ref.kind === "planned") {
     const pl = d.planned.find((p) => p.id === ref.id);
     if (pl && distributePlanned(pl, d.suppliers.find((s) => s.id === pl.supplierId), d.committed, d.params.profile, d.effectivations).health !== "ok") throw new Error("Previsão com abatimento pendente: confira os vínculos antes de alterar parcelas.");
   }
-  if (changed.length && !reason.trim()) throw new Error("Informe a justificativa.");
-  for (const p of changed) {
+  if (financial.length && !reason.trim()) throw new Error("Informe a justificativa.");
+  for (const p of financial) {
     const b = before.find((x) => x.key === p.key);
     if (!b && ((ref.kind !== "planned" && ref.kind !== "committed") || (ref.kind === "planned" ? p.id !== ref.id : p.id !== p.key || d.committed.some(c=>c.id===p.id)) || p.paid !== 0 || p.original !== 0)) throw new Error("Nova parcela inválida.");
     if (b && (b.paid > 0 || b.status === "cancelado")) throw new Error("Parcela com pagamento protegida ou cancelada. Confira o estorno próprio do pagamento antes de alterar.");
@@ -68,11 +71,11 @@ export function applyManaged(d: ScenarioData, input: ManageInput) {
       }
       pl.baseDate = input.plannedBaseDate;
     }
-    if (changed.length) {
-      const items = parcels.map((p) => ({ id: p.key, amount: p.status === "cancelado" ? 0 : p.amount ?? 0, date: p.extension ?? p.date ?? "" }));
+    if (financial.length) {
+      const items = parcels.map((p) => ({ id: p.key, amount: p.status === "cancelado" ? 0 : p.amount ?? 0, date: p.extension ?? p.date ?? "", boletoNumber: p.boletoNumber }));
       pl.remainingOverride = { value: items.reduce((s, p) => s + p.amount, 0), dates: items.map((p) => p.date), items };
       if (parcels.every((p) => p.status === "cancelado")) pl.status = "cancelado";
-      for (const p of changed) { const b = before.find((x) => x.key === p.key); (pl.editLog ??= []).push({ at, by, note: `${reason} · ${b?.status ?? "Nova parcela"} → ${p.status}${p.extension ? ` · prorrogação ${p.extension}; original ${p.date}` : ""}`, parcel: p.key, before: { amount: b?.amount ?? 0, date: b?.date ?? null }, after: { amount: p.status === "cancelado" ? 0 : p.amount ?? 0, date: p.extension ?? p.date } }); }
+      for (const p of financial) { const b = before.find((x) => x.key === p.key); (pl.editLog ??= []).push({ at, by, note: `${reason} · ${b?.status ?? "Nova parcela"} → ${p.status}${p.extension ? ` · prorrogação ${p.extension}; original ${p.date}` : ""}`, parcel: p.key, before: { amount: b?.amount ?? 0, date: b?.date ?? null }, after: { amount: p.status === "cancelado" ? 0 : p.amount ?? 0, date: p.extension ?? p.date } }); }
     }
   } else {
     if(ref.kind === "committed" && newRows.length) {
@@ -85,7 +88,7 @@ export function applyManaged(d: ScenarioData, input: ManageInput) {
       }
       // Existing parcel numbers/counts and payments remain untouched, including paid history.
     }
-    for (const p of changed) {
+    for (const p of financial) {
       if(newRows.some(n=>n.key===p.key))continue;
       const r = ref.kind === "committed" ? d.committed.find((c) => c.id === p.id) : d.expenses.find((e) => e.id === p.id);
       const b = before.find((x) => x.key === p.key); if (!r || !b || !p.date || p.amount === null) throw new Error("Parcela inexistente.");
@@ -94,6 +97,15 @@ export function applyManaged(d: ScenarioData, input: ManageInput) {
       if (p.extension !== b.extension) confirmExtension(d, ref.kind, p.id, p.extension, reason, at);
       (r.editLog ??= []).push({ at, by, note: `${reason} · ${b.status} → ${p.status}`, parcel: p.key, before: { amount: b.original, date: b.date }, after: { amount: p.status === "cancelado" ? 0 : p.amount, date: p.extension ?? p.date } });
     }
+  }
+  for (const p of changed) {
+    const b = before.find(b => b.key === p.key);
+    if ((b?.boletoNumber ?? null) === (p.boletoNumber ?? null)) continue;
+    const r = ref.kind === "planned" ? d.planned.find(r => r.id === ref.id) : ref.kind === "committed" ? d.committed.find(r => r.id === p.id) : d.expenses.find(r => r.id === p.id);
+    if (!r) throw new Error("Parcela inexistente.");
+    if (ref.kind === "planned" && "baseDate" in r && "remainingOverride" in r) (r.boletoNumbers ??= {})[p.key] = p.boletoNumber ?? null;
+    else Object.assign(r, { boletoNumber: p.boletoNumber ?? null });
+    (r.editLog ??= []).push({ at, by, note: `Número do boleto · ${reason || "Identificação da parcela"}`, parcel: p.key, before: { amount: b?.amount ?? 0, date: b?.date ?? null, boletoNumber: b?.boletoNumber ?? null }, after: { amount: p.amount ?? 0, date: p.date, boletoNumber: p.boletoNumber ?? null } });
   }
   for (const source of current.records) {
     const r = ref.kind === "planned" ? d.planned.find((x) => x.id === source.id) : ref.kind === "committed" ? d.committed.find((x) => x.id === source.id) : d.expenses.find((x) => x.id === source.id);

@@ -15,7 +15,7 @@ const signed = (v: number | null) => (v === null ? "Não comparável" : `${v > 0
 const pct = (r: Pick<PvaRow, "pct" | "pctNote">) => r.pctNote ?? (r.pct === null ? "Não comparável" : `${r.pct > 0 ? "+" : r.pct < 0 ? "−" : ""}${Math.abs(r.pct * 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`);
 export const PVA_HEAD = ["Pedido", "Fornecedor", "Planejado de referência", "Efetivado acumulado", "Restante previsto confirmado", "Total atual", "Diferença R$", "Diferença %", "Comparação", "Situação", "Motivo / referência", "Notas vinculadas"];
 export const pvaCells = (r: PvaRow) => [r.purchaseCode || "Não informado", r.supplier, money(r.baseline), fmtBRL(r.effective), r.remaining === null ? "Não confirmado" : fmtBRL(r.remaining), money(r.total), signed(r.diff), pct(r), r.comparison, r.situation, r.reason ?? r.baselineSource,
-  r.notes.map((n) => `${n.document || "sem documento"} ${n.parcel} ${fmtBRL(n.value)} ${n.status}`).join("; ")];
+  r.notes.map((n) => `${n.document || "sem documento"} ${n.parcel} boleto ${n.boletoNumber || "Não informado"} ${fmtBRL(n.value)} ${n.status}`).join("; ")];
 const tone = (r: PvaRow) => (r.comparison === "Acima" ? "bg-warning-soft text-warning-foreground" : r.comparison === "Não comparável" ? "text-muted-foreground" : "");
 
 /** Export keeps all filtered rows, with the same comparable-only indicator scope. */
@@ -31,11 +31,11 @@ export function PvaDetail({ r }: { r: PvaRow }) {
     <p><b>Referência:</b> {r.baselineSource}. <b>Restante:</b> {r.remainingSource}. Total atual é compromisso do pedido, não saldo de caixa.</p>
     {r.cancelledValue > 0 && <p>Notas canceladas vinculadas: {fmtBRL(r.cancelledValue)} (fora do efetivado; não tratado como economia).</p>}
     {docs.map((doc) => <div key={doc} className="rounded border border-border p-2"><p className="font-semibold">Nota / documento: {doc}</p>
-      <table className="tbl"><thead><tr><th>Parcela</th><th>Valor</th><th>Vencimento</th><th>Prorrogado</th><th>Pago</th><th>Situação</th><th>Efetivado em</th></tr></thead><tbody>
-        {r.notes.filter((n) => (n.document || "Sem documento") === doc).map((n) => <tr key={n.id}><td>{n.parcel}</td><td>{fmtBRL(n.value)}</td><td>{fmtDate(n.due)}</td><td>{n.extension ? fmtDate(n.extension) : "Não informado"}</td><td>{fmtBRL(n.paid)}</td><td>{n.status}</td><td>{n.effectivationAt ? fmtDate(n.effectivationAt.slice(0, 10)) : NA}</td></tr>)}
+      <table className="tbl"><thead><tr><th>Parcela</th><th>Número do boleto</th><th>Valor</th><th>Vencimento</th><th>Prorrogado</th><th>Pago</th><th>Situação</th><th>Efetivado em</th></tr></thead><tbody>
+        {r.notes.filter((n) => (n.document || "Sem documento") === doc).map((n) => <tr key={n.id}><td>{n.parcel}</td><td>{n.boletoNumber || "Não informado"}</td><td>{fmtBRL(n.value)}</td><td>{fmtDate(n.due)}</td><td>{n.extension ? fmtDate(n.extension) : "Não informado"}</td><td>{fmtBRL(n.paid)}</td><td>{n.status}</td><td>{n.effectivationAt ? fmtDate(n.effectivationAt.slice(0, 10)) : NA}</td></tr>)}
       </tbody></table></div>)}
     <p><b>Justificativa:</b> {r.justification.length ? r.justification.join(" · ") : NA}. <b>Responsável pela efetivação:</b> {NA} (não registrado no evento).</p>
-    <div><b>Histórico antes/depois:</b> {r.history.length ? r.history.map((h, i) => <p key={i}>{fmtDate(h.at.slice(0, 10))} {h.at.slice(11, 16)} · {h.by || NA} · {h.scope} · {fmtBRL(h.before.amount)} → {fmtBRL(h.after.amount)} · {h.note || "sem justificativa"}</p>) : NA}</div>
+    <div><b>Histórico antes/depois:</b> {r.history.length ? r.history.map((h, i) => <p key={i}>{fmtDate(h.at.slice(0, 10))} {h.at.slice(11, 16)} · {h.by || NA} · {h.scope} · {h.note.startsWith("Número do boleto") ? `Número do boleto: ${h.before.boletoNumber || "Não informado"} → ${h.after.boletoNumber || "Não informado"}` : ""} · {fmtBRL(h.before.amount)} → {fmtBRL(h.after.amount)} · {h.note || "sem justificativa"}</p>) : NA}</div>
   </div>;
 }
 

@@ -3,9 +3,9 @@
 import type { Committed, RemainingItem, ScenarioData } from "@/lib/engine/types";
 import { distributePlanned, splitCents } from "@/lib/engine/engine";
 
-export interface Parcel { key: string; amount: number; date: string } // parcela atual planejada, chave estável
-export interface EffLine { amount: number | null; date: string | null }
-export interface RestLine { id: string; amount: number | null; date: string | null; origin: string | null } // origin = key da parcela atual (null = nova)
+export interface Parcel { key: string; amount: number; date: string; boletoNumber?: string | null | undefined } // parcela atual planejada, chave estável
+export interface EffLine { amount: number | null; date: string | null; boletoNumber?: string | null | undefined }
+export interface RestLine { id: string; amount: number | null; date: string | null; origin: string | null; boletoNumber?: string | null | undefined } // origin = key da parcela atual (null = nova)
 export type Suggestion = "manter" | "igualar" | "diferenca" | "total";
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -15,16 +15,16 @@ export function currentParcels(d: ScenarioData, plannedId: string): Parcel[] {
   const pl = d.planned.find((p) => p.id === plannedId);
   if (!pl || pl.status !== "ativo") return [];
   const items = pl.remainingOverride?.items;
-  if (items?.length) return items.map((i) => ({ key: i.id, amount: i.amount, date: i.date }));
+  if (items?.length) return items.map((i) => ({ key: i.id, amount: i.amount, date: i.date, boletoNumber: pl.boletoNumbers && i.id in pl.boletoNumbers ? pl.boletoNumbers[i.id] : i.boletoNumber }));
   const r = distributePlanned(pl, d.suppliers.find((s) => s.id === pl.supplierId), d.committed, d.params.profile, d.effectivations);
-  return r.parcels.map((p, i) => ({ key: `${pl.id}#${p.idx ?? i}`, amount: p.amount, date: p.date }));
+  return r.parcels.map((p, i) => { const key = `${pl.id}#${p.idx ?? i}`; return { key, amount: p.amount, date: p.date, boletoNumber: pl.boletoNumbers && key in pl.boletoNumbers ? pl.boletoNumbers[key] : pl.installments?.[p.idx ?? i]?.boletoNumber }; });
 }
 
 export function initDraft(parcels: Parcel[], selected: string[]) {
   const sel = parcels.filter((p) => selected.includes(p.key));
   return {
-    eff: sel.map((p): EffLine => ({ amount: p.amount, date: p.date })),
-    rest: parcels.filter((p) => !selected.includes(p.key)).map((p): RestLine => ({ id: p.key, amount: p.amount, date: p.date, origin: p.key })),
+    eff: sel.map((p): EffLine => ({ amount: p.amount, date: p.date, boletoNumber: p.boletoNumber })),
+    rest: parcels.filter((p) => !selected.includes(p.key)).map((p): RestLine => ({ id: p.key, amount: p.amount, date: p.date, origin: p.key, boletoNumber: p.boletoNumber })),
   };
 }
 
@@ -53,6 +53,7 @@ export function draftTotals(eff: EffLine[], rest: RestLine[], parcels: Parcel[])
 
 export function validateDraft(eff: EffLine[], rest: RestLine[], substituted: number | null, selectedTotal: number, effectiveDate: string | null): string[] {
   const e: string[] = [];
+  if ([...eff, ...rest].some(p => p.boletoNumber !== undefined && p.boletoNumber !== null && typeof p.boletoNumber !== "string")) e.push("Número do boleto deve ser texto.");
   if (!effectiveDate || !ISO.test(effectiveDate)) e.push("Informe a data da efetivação.");
   if (eff.length && eff.some((l) => !(l.amount !== null && Number.isInteger(l.amount) && l.amount > 0))) e.push("Toda linha efetivada precisa de valor positivo.");
   if (eff.some((l) => !l.date || !ISO.test(l.date))) e.push("Toda linha efetivada precisa de vencimento.");
@@ -79,7 +80,7 @@ export function diffParcels(parcels: Parcel[], selected: string[], rest: RestLin
 
 export interface ManualEffInput {
   id: string; plannedId: string; at: string; effectiveDate: string; document: string; purchaseCode: string;
-  selected: string[]; eff: { amount: number; date: string }[]; rest: { id: string; amount: number; date: string }[];
+  selected: string[]; eff: { amount: number; date: string; boletoNumber?: string | null | undefined }[]; rest: { id: string; amount: number; date: string; boletoNumber?: string | null | undefined }[];
   substituted: number; rule: string;
 }
 /** Aplicação ATÔMICA (sobre rascunho): cria títulos efetivados e redefine o restante por parcela com IDs estáveis. Não paga. */
@@ -100,11 +101,12 @@ export function effectivateManual(d: ScenarioData, inp: ManualEffInput): void {
       dueDate: l.date, extensionDate: null, extensionHistory: [], extensionInfo: "", legacyAbatement: null,
       origin: "efetivacao", plannedId: pl.id, effectivationId: inp.id, categoryId: pl.categoryId, notes: `Efetivada em ${inp.effectiveDate.split("-").reverse().join("/")}`, status: "ativo", condition: null,
       noteId: inp.id, parcelNo: n + 1, parcelCount: inp.eff.length,
+      ...(l.boletoNumber !== undefined ? { boletoNumber: l.boletoNumber } : {}),
     };
     d.committed.push(c);
   });
-  const before: RemainingItem[] = parcels.map((p) => ({ id: p.key, amount: p.amount, date: p.date }));
-  const after: RemainingItem[] = inp.rest.map((x) => ({ id: x.id, amount: x.amount, date: x.date }));
+  const before: RemainingItem[] = parcels.map((p) => ({ id: p.key, amount: p.amount, date: p.date, ...(p.boletoNumber !== undefined ? { boletoNumber: p.boletoNumber } : {}) }));
+  const after: RemainingItem[] = inp.rest.map((x) => ({ id: x.id, amount: x.amount, date: x.date, ...(x.boletoNumber !== undefined ? { boletoNumber: x.boletoNumber } : {}) }));
   const value = inp.eff.reduce((a, x) => a + x.amount, 0);
   d.effectivations.push({ id: inp.id, plannedId: pl.id, at: inp.at, kind: after.length ? "parcial" : "concluida", value, substituted: inp.substituted, committedIds: ids,
     prev: { status: pl.status, remainingOverride: pl.remainingOverride ? structuredClone(pl.remainingOverride) : null }, manual: { effectiveDate: inp.effectiveDate, before, after, selected: [...inp.selected], rule: inp.rule }, reversedAt: null, reversalNote: "" });
@@ -113,12 +115,12 @@ export function effectivateManual(d: ScenarioData, inp: ManualEffInput): void {
 }
 
 /** "Ajustar planejamento": redefine as parcelas ainda planejadas (valores/datas/quantidade), sem efetivar. */
-export function adjustPlanned(d: ScenarioData, plannedId: string, rest: { id: string; amount: number; date: string }[]): void {
+export function adjustPlanned(d: ScenarioData, plannedId: string, rest: { id: string; amount: number; date: string; boletoNumber?: string | null | undefined }[]): void {
   const pl = d.planned.find((p) => p.id === plannedId);
   if (!pl || pl.status !== "ativo") throw new Error("Previsão não está ativa.");
   if (!rest.length) throw new Error("Mantenha ao menos uma parcela ou use Encerrar restante.");
   const errs = validateDraft([], rest.map((x) => ({ ...x, origin: null })), 0, 0, "2000-01-01");
   if (errs.length) throw new Error(errs[0]);
-  const items = rest.map((x) => ({ id: x.id, amount: x.amount, date: x.date }));
+  const items = rest.map((x) => ({ ...x }));
   pl.remainingOverride = { value: items.reduce((a, x) => a + x.amount, 0), dates: items.map((x) => x.date), items };
 }
