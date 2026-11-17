@@ -8,7 +8,7 @@ import { dateValue, parcelValue, queryReport, reportCSV } from "@/lib/reportTabl
 import { PagamentosDia } from "@/components/PagamentosDia";
 import { useMemo, useState } from "react";
 import { DateInput } from "@/components/kit";
-import { paymentsFor, titleStatus } from "@/lib/engine/engine";
+import { distributePlanned, paymentsFor, titleStatus } from "@/lib/engine/engine";
 import type { ExtensionEvent, Payment, ScenarioData } from "@/lib/engine/types";
 import { addDays, fmtDate } from "@/lib/dates";
 import { SupplierSearch } from "@/components/NotaPanel";
@@ -52,6 +52,16 @@ export function buildConsulta(d: ScenarioData): ConsultaRow[] {
     const t = d.committed.find((c) => c.id === titleId) ?? d.expenses.find((e) => e.id === titleId);
     r.search = [t?.boletoNumber ?? "", t?.document ?? "",...(d.suppliers.find((s) => s.id === r.supplierId)?.aliases ?? []), t?.notes ?? "", t && "purchaseCode" in t ? t.purchaseCode : ""];
   }
+  for(const p of d.planned ?? []){
+    const dist=distributePlanned(p,d.suppliers.find(s=>s.id===p.supplierId),d.committed,d.params.profile,d.effectivations);
+    const identity=supplierIdentity(d,p), category=cat(p.categoryId);
+    dist.parcels.forEach((part,i)=>{
+      const item=p.remainingOverride?.items?.[i], own=p.installments?.[part.idx??i];
+      const key=item?.id??`${p.id}#${part.idx??i}`, note=item?.note;
+      const document=note?.document??p.document, due=note?.dueDate??own?.date??part.date, extended=note?.extension??own?.extensionDate??null;
+      rows.push({launch:{kind:"planned",id:p.id,parcel:key},key:`planned:${key}|planned:${p.id}:${note?.noteId??"saldo"}`,supplierId:identity.key,supplier:identity.name,document,boletoNumber:p.boletoNumbers?.[key]??item?.boletoNumber??own?.boletoNumber??null,parcel:note?`${note.parcelNo}/${note.parcelCount}`:`${i+1}/${dist.parcels.length}`,category:category?.kind==="despesa"?"Despesa":"Compra",sub:category?.name??"—",value:part.amount,due,extended,effective:extended??due,paid:0,open:0,state:"Planejada",lastPay:null,payments:[],history:[],search:[document,p.purchaseCode,p.notes,...(d.suppliers.find(s=>s.id===p.supplierId)?.aliases??[])]});
+    });
+  }
   return rows;
 }
 
@@ -90,7 +100,7 @@ export function groupByDocument(rows: ConsultaRow[]): ConsultaRow[] {
     const first = [...g].sort((a, b) => (a.effective ?? "").localeCompare(b.effective ?? ""))[0];
     if (!first) throw new Error("Grupo vazio");
     const pays = g.flatMap((r) => r.payments).sort((a, b) => a.date.localeCompare(b.date));
-    return { ...first, boletoNumber: g.map(r=>r.boletoNumber).filter(Boolean).join("; ") || null, search: g.flatMap((r) => [...consultaCells(r), ...(r.search ?? [])]), key: "doc:" + k, parcel: `${g.length} parcela(s)`, value, paid, open, state: paid <= 0 ? "Em aberto" : open > 0 ? "Parcialmente pago" : "Pago", lastPay: pays.at(-1)?.date ?? null, payments: pays, history: g.flatMap((r) => r.history), extended: g.some((r) => r.extended) ? first.extended ?? g.find((r) => r.extended)?.extended ?? null : null };
+    return { ...first, boletoNumber: g.map(r=>r.boletoNumber).filter(Boolean).join("; ") || null, search: g.flatMap((r) => [...consultaCells(r), ...(r.search ?? [])]), key: "doc:" + k, parcel: `${g.length} parcela(s)`, value, paid, open, state: g.every(r=>r.state==="Planejada") ? "Planejada" : paid <= 0 ? "Em aberto" : open > 0 ? "Parcialmente pago" : "Pago", lastPay: pays.at(-1)?.date ?? null, payments: pays, history: g.flatMap((r) => r.history), extended: g.some((r) => r.extended) ? first.extended ?? g.find((r) => r.extended)?.extended ?? null : null };
   });
 }
 

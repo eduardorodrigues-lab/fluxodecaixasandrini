@@ -6,12 +6,14 @@ import { effectivate, plannedRemaining } from "@/lib/engine/actions";
 import type { CategoryKind, Committed, ExtensionEvent, ScenarioData, Supplier, SupplierCondition } from "@/lib/engine/types";
 import { addDays } from "@/lib/dates";
 import { supplierActive, validateSupplierNames } from "./fornecedores";
+import type { BatchNote } from "./efetivacao";
 
 export interface DraftParcel { amount: number; date: string | null; ext: string | null; boletoNumber?: string | null | undefined }
 export interface NoteDraft {
   stage: "planned" | "committed"; kind: CategoryKind; categoryId: string; supplierId: string;
   purchaseCode: string; document: string; description: string; total: number | null; baseDate: string | null;
   parcels: DraftParcel[];
+  plannedNotes?: BatchNote[];
   plannedId?: string | null; // Efetivado vinculado a uma previsão existente
   closeRest?: boolean;
   condition?: { name: string; terms: (number | null)[] } | null; // condição escolhida/informada (não altera o fornecedor) // vinculado: true = encerra o restante da previsão; false = restante continua planejado
@@ -44,12 +46,19 @@ export function validateNote(n: NoteDraft): string[] {
   if (n.stage === "committed" && !n.document.trim()) e.push("Informe o documento.");
   if (!n.total || n.total <= 0) e.push("Informe o valor total.");
   if (!n.baseDate) e.push("Informe a data base.");
-  if (!n.parcels.length) e.push("Gere ou adicione as parcelas.");
+  if (!n.parcels.length && !n.plannedNotes?.length) e.push("Gere ou adicione as parcelas.");
   if (n.parcels.some((p) => !p.date)) e.push("Toda parcela precisa de vencimento.");
   if (n.parcels.some((p) => !(p.amount > 0))) e.push("Toda parcela precisa de valor positivo.");
   if (n.parcels.some(p => p.boletoNumber !== undefined && p.boletoNumber !== null && typeof p.boletoNumber !== "string")) e.push("Número do boleto deve ser texto.");
   if (n.parcels.some((p) => p.ext && p.date && p.ext < p.date)) e.push("Prorrogação anterior ao vencimento.");
-  if (n.total && parcelsTotal(n.parcels) !== n.total) e.push("Total das parcelas difere do valor da nota.");
+  const notes=n.plannedNotes??[];
+  for(const note of notes){
+    if(!note.document.trim() || note.total===null || !note.baseDate || !note.parcels.length) e.push("Confira documento, total, data base e parcelas de cada nota.");
+    if(note.parcels.some(p=>p.amount===null || p.amount<=0 || !p.date || (p.extension && p.date && p.extension<p.date))) e.push("Confira valores e datas das notas planejadas.");
+    if(note.total!==note.parcels.reduce((s,p)=>s+(p.amount??0),0))e.push(`Parcelas da nota ${note.document} diferem do total.`);
+  }
+  if(new Set(notes.flatMap(note=>note.parcels.map(p=>p.id))).size!==notes.flatMap(note=>note.parcels).length)e.push("Parcela de nota duplicada.");
+  if (n.total && parcelsTotal(n.parcels)+notes.reduce((s,n)=>s+(n.total??0),0) !== n.total) e.push(notes.length ? "Total das parcelas e notas difere do valor previsto; informe o saldo sem nota com vencimentos ou revise o total expressamente." : "Total das parcelas difere do valor da nota.");
   return e;
 }
 const extHist = (p: DraftParcel, at: string): ExtensionEvent[] => (p.ext ? [{ from: null, to: p.ext, at, note: "Prorrogação informada na criação" }] : []);
@@ -62,7 +71,11 @@ export function applyNote(d: ScenarioData, n: NoteDraft, ids: { id: () => string
   if (!n.plannedId && (!supplier || !supplierActive(supplier, ids.at.slice(0, 10)))) throw new Error("Fornecedor inativo: selecione um fornecedor ativo para novo lançamento.");
   const sorted = [...n.parcels];
   if (n.stage === "planned") {
-    d.planned.push({ id: ids.id(), supplierId: n.supplierId, purchaseCode: n.purchaseCode, document: n.document, value: n.total!, baseDate: n.baseDate!, categoryId: n.categoryId, notes: n.description, status: "ativo", remainingOverride: null, condition: n.condition ?? null, installments: sorted.map((p) => ({ amount: p.amount, date: p.date!, extensionDate: p.ext, extensionHistory: extHist(p, ids.at), ...(p.boletoNumber !== undefined ? { boletoNumber: p.boletoNumber } : {}) })) });
+    const plannedId=ids.id();
+    const items=(n.plannedNotes??[]).flatMap(note=>note.parcels.map((p,i)=>({id:p.id,amount:p.amount??0,date:p.extension??p.date??"",boletoNumber:p.boletoNumber,note:{noteId:note.id,document:note.document,total:note.total??0,effectiveDate:note.effectiveDate,baseDate:note.baseDate,condition:note.condition,parcelNo:p.parcelNo??i+1,parcelCount:p.parcelCount??note.parcels.length,dueDate:p.date??"",extension:p.extension}})));
+    if(items.length)sorted.forEach((p,i)=>items.push({id:`${plannedId}#${i}`,amount:p.amount,date:p.ext??p.date??"",boletoNumber:p.boletoNumber} as typeof items[number]));
+    if(n.total===null || !n.baseDate)throw new Error("Informe valor e data base.");
+    d.planned.push({ id: plannedId, supplierId: n.supplierId, purchaseCode: n.purchaseCode, document: n.document, value: n.total, baseDate: n.baseDate, categoryId: n.categoryId, notes: n.description, status: "ativo", remainingOverride: items.length ? {value:n.total,dates:items.map(p=>p.date),items} : null, condition: n.condition ?? null, installments: sorted.map((p) => ({ amount: p.amount, date: p.date??"", extensionDate: p.ext, extensionHistory: extHist(p, ids.at), ...(p.boletoNumber !== undefined ? { boletoNumber: p.boletoNumber } : {}) })) });
     return;
   }
   if (n.plannedId) {

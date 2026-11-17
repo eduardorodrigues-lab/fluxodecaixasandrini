@@ -139,7 +139,7 @@ export interface BatchInput {
   id: string; plannedId: string; at: string; by: string; selected: string[]; notes: BatchNote[];
   rest: RestLine[]; remaining: number | null; confirmed: boolean; reason: string;
   scopeConfirmed: boolean; duplicateConfirmed: boolean;
-  /** Valor de referência do pedido no rascunho; só preenche previsão salva com valor 0 (nunca reescreve uma referência existente). */
+  /** Current reviewed budget; historical reference is frozen separately on the first new effectivation. */
   reference?: number | null;
 }
 /** Prévia do saldo: referência − efetivado anterior comprovado − novo selecionado. Negativo vira excedente separado, nunca previsão negativa. */
@@ -185,7 +185,7 @@ export function effectivateBatch(d: ScenarioData, input: BatchInput): void {
   const scope = [...input.selected, ...effHeld];
   const restHasNotes = input.rest.some(p => p.note);
   if ((!input.notes.length && !restHasNotes) || !input.reason.trim()) throw new Error("Informe notas e justificativa.");
-  const reference = pl.value > 0 ? pl.value : input.reference ?? null;
+  const reference = input.reference ?? (pl.value > 0 ? pl.value : null);
   if (reference !== null && (!Number.isInteger(reference) || reference < 0)) throw new Error("Valor de referência inválido.");
   const prior = d.committed.filter(c => c.status !== "cancelado" && (c.plannedId === pl.id || d.effectivations.some(e => e.plannedId === pl.id && !e.reversedAt && e.committedIds.includes(c.id)))).reduce((s,c) => s+c.value,0);
   const newTotal = input.notes.reduce((s,n) => s+(n.total ?? 0),0);
@@ -212,8 +212,10 @@ export function effectivateBatch(d: ScenarioData, input: BatchInput): void {
   // Linhas genéricas R$ 0,00 que não seguem no restante: substituídas pelo detalhamento das notas (sem obrigação); ficam no histórico do evento/editLog.
   const replacedZero = origins.filter(o => !scope.includes(o.key) && !after.some(a => a.id === o.key) && o.amount === 0);
   const event: ScenarioData["effectivations"][number] = {id:input.id,plannedId:pl.id,at:input.at,kind:after.length ? "parcial" : "concluida",value:titles.reduce((s,p) => s+p.value,0),substituted,committedIds:titles.map(p => p.id),prev:{status:pl.status,remainingOverride:structuredClone(pl.remainingOverride)},manual:{effectiveDate:input.notes[0]?.effectiveDate ?? "",before:origins.map(p => ({id:p.key,amount:p.amount,date:p.date,boletoNumber:p.boletoNumber})),after,selected:[...input.selected],rule:input.reason,notes:input.notes.map(n => ({id:n.id,document:n.document,total:n.total ?? 0,effectiveDate:n.effectiveDate ?? "",baseDate:n.baseDate ?? ""}))},reversedAt:null,reversalNote:""};
+  // Evidence starts with NEW confirmations only; later revisions never overwrite the first evidence.
+  if (titles.length && reference !== null && !d.effectivations.some(e=>e.plannedId===pl.id)) event.referenceEvidence={value:reference,source:"Referência conferida na primeira efetivação",at:input.at,by:input.by,plannedId:pl.id,beforeValue:pl.value,afterValue:reference};
   d.committed.push(...titles); if (titles.length) d.effectivations.push(event);
-  if (pl.value === 0 && reference !== null && reference > 0) { (pl.editLog ??= []).push({at:input.at,by:input.by,note:`Valor de referência informado no rascunho do pedido`,before:{amount:0,date:pl.baseDate},after:{amount:reference,date:pl.baseDate}}); pl.value = reference; }
+  if (reference !== null && pl.value !== reference) { (pl.editLog ??= []).push({at:input.at,by:input.by,note:`Valor previsto conferido no rascunho do pedido`,before:{amount:pl.value,date:pl.baseDate},after:{amount:reference,date:pl.baseDate}}); pl.value = reference; }
   pl.status = after.length ? "ativo" : "encerrado";
   pl.remainingOverride = after.length ? {value:input.remaining,dates:after.map(p => p.date),items:after} : null;
   if (pl.boletoNumbers) for (const p of after) pl.boletoNumbers[p.id] = p.boletoNumber ?? null;

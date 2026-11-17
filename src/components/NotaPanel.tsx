@@ -15,6 +15,8 @@ import { addSupplier, adjustLast, currentCondition, generateParcels, manualParce
 import { filterSuppliers, supplierActive } from "@/lib/fornecedores";
 import { todaySP } from "@/lib/engine/actions";
 import { plannedRemaining } from "@/lib/engine/actions";
+import { EffectivationNotes } from "@/components/EffectivationNotes";
+import { useFormDraft } from "@/components/useFormDraft";
 
 /** Pede confirmação antes de descartar alterações não salvas. */
 export const guardClose = (dirty: boolean, close: () => void) => async () => {
@@ -139,18 +141,23 @@ const parseTerms = (s: string) => s.split(/[,;\s]+/).filter(Boolean).map(Number)
 
 export function NovaNota({ d, isBase, onCancel, onConfirm, onManagePlanned, saving = false, saveError }: { d: ScenarioData; stage?: "planned" | "committed"; isBase: boolean; onCancel: () => void; onConfirm: (n: NoteDraft, saveAs: SaveAs | null) => boolean | Promise<boolean>; saving?: boolean; saveError?: string; onManagePlanned?: (id: string) => void }) {
   const [chosen, setChosen] = useState(false);
-  const [n, setN] = useState<NoteDraft>({ stage: "planned", kind: "compra", categoryId: "", supplierId: "", purchaseCode: "", document: "", description: "", total: null, baseDate: null, parcels: [], plannedId: null, closeRest: false });
+  const app = useApp();
+  const [draftId] = useState(() => { try { const k=`fluxo:new-id:${app.user?.id}:${app.official.orgId}:${app.active.id}`; const v=sessionStorage.getItem(k) ?? `novo-${uid()}`; sessionStorage.setItem(k,v); return v; } catch { return `novo-${uid()}`; } });
+  const [n, setN] = useState<NoteDraft>({ stage: "planned", kind: "compra", categoryId: "", supplierId: "", purchaseCode: "", document: "", description: "", total: null, baseDate: null, parcels: [], plannedNotes: [], plannedId: null, closeRest: false });
   const [saveAs, setSaveAs] = useState<SaveAs | null>(null);
   const [review, setReview] = useState(false);
   const [tried, setTried] = useState(false);
   const [how, setHow] = useState<"manual" | "condicao" | null>(null); // Efetivado: forma de informar valores reais
   const [qty, setQty] = useState(1);
   const [checked, setChecked] = useState(false);
-  const up = (p: Partial<NoteDraft>) => setN({ ...n, ...p });
+  const up = (p: Partial<NoteDraft>) => { setN({ ...n, ...p }); setChecked(false); };
+  const protection = useFormDraft({user:app.user?.id??"",org:app.official.orgId,mode:app.active.id,form:"novo-lancamento",record:draftId},{chosen,n,saveAs,how,qty},v=>{setChosen(v.chosen);setN(v.n);setSaveAs(v.saveAs);setHow(v.how);setQty(v.qty);setReview(false);setChecked(false);});
+  const done = async (ok:boolean|Promise<boolean>) => { if(await ok){protection.clear();try{sessionStorage.removeItem(`fluxo:new-id:${app.user?.id}:${app.official.orgId}:${app.active.id}`);}catch{/* local apenas */}} return ok; };
+  const discard = async () => { if(!chosen || await askConfirm("Descartar este preenchimento? Nada será salvo.",{title:"Descartar rascunho?",action:"Descartar",destructive:true})){ if(protection.clear()){try{sessionStorage.removeItem(`fluxo:new-id:${app.user?.id}:${app.official.orgId}:${app.active.id}`);}catch{/* local apenas */} onCancel();} } };
   const stage = n.stage;
   const sup = d.suppliers.find((s) => s.id === n.supplierId);
   const setP = (i: number, p: Partial<DraftParcel>) => up({ parcels: n.parcels.map((x, k) => (k === i ? { ...x, ...p } : x)) });
-  const tot = parcelsTotal(n.parcels);
+  const tot = parcelsTotal(n.parcels) + (n.plannedNotes ?? []).reduce((s,x)=>s+(x.total??0),0);
   const diff = (n.total ?? 0) - tot;
   const errs = validateNote(n);
   const sub = d.categories.find((c) => c.id === n.categoryId)?.name ?? "—";
@@ -172,13 +179,14 @@ export function NovaNota({ d, isBase, onCancel, onConfirm, onManagePlanned, savi
   };
   const next = () => { setTried(true); if (!errs.length) setReview(true); };
   const err = (m: string) => tried && errs.includes(m) ? <span className="text-[11px] text-destructive">{m}</span> : null;
-  const title = !chosen ? "Novo lançamento" : review ? `Revisar · Novo lançamento · ${stageL}` : `Novo lançamento · ${stageL}`;
-  const cancel = guardClose(chosen, onCancel);
-  const footer = !chosen ? <button className="btn" onClick={onCancel}>Cancelar</button> : review
-    ? <><button className="btn" disabled={saving} onClick={() => { setReview(false); setChecked(false); }}>Voltar</button><button className="btn btn-primary" disabled={saving || (stage === "committed" && !checked)} title={stage === "committed" && !checked ? "Confirme a conferência dos valores e vencimentos" : ""} onClick={() => onConfirm(n, saveAs)}>{saving ? "Salvando…" : isBase ? "Confirmar e salvar" : "Confirmar na simulação"}</button></>
+  const title = chosen && stage === "planned" ? review ? "Revisar novo planejamento" : "Novo planejamento" : !chosen ? "Novo lançamento" : review ? `Revisar · Novo lançamento · ${stageL}` : `Novo lançamento · ${stageL}`;
+  const cancel = () => void discard();
+  const footer = !chosen ? <button className="btn" onClick={cancel}>Cancelar</button> : review
+    ? <><button className="btn" disabled={saving} onClick={() => { setReview(false); setChecked(false); }}>Voltar</button><button className="btn btn-primary" disabled={saving || (stage === "committed" && !checked)} title={stage === "committed" && !checked ? "Confirme a conferência dos valores e vencimentos" : ""} onClick={() => void done(onConfirm(n, saveAs))}>{saving ? "Salvando…" : isBase ? "Confirmar e salvar" : "Confirmar na simulação"}</button></>
     : <><button className="btn" onClick={backToType}>Trocar tipo</button><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" onClick={next}>Revisar e confirmar</button></>;
   return (
-    <SidePanel expanded centered={review} wide title={title} sub={isBase ? "Grava no fluxo real ao confirmar" : "Simulação — não altera o fluxo real"} onClose={onCancel} dirty={chosen} footer={footer}>
+    <SidePanel expanded centered={review} wide title={title} sub={isBase ? "Grava no fluxo real ao confirmar" : "Simulação — não altera o fluxo real"} onClose={cancel} dirty={false} footer={footer}>
+      {protection.recovered && <p role="status">Preenchimento local recuperado · revise antes de salvar.</p>}{protection.warning && <p role="alert" className="text-destructive">{protection.warning}</p>}
       {saveError && <p role="alert" className="text-destructive">{saveError}</p>}
       {!chosen ? (
         <Section n={1} title="Tipo de lançamento">
@@ -194,8 +202,9 @@ export function NovaNota({ d, isBase, onCancel, onConfirm, onManagePlanned, savi
             {[["Tipo", stageL], ["Categoria", n.kind === "compra" ? "Compra" : "Despesa"], ["Subgrupo", sub], ["Fornecedor", sup?.name ?? "—"], ["Código do pedido", n.purchaseCode || "—"], ["Documento", n.document || "—"], ["Descrição", n.description || "—"], ["Valor total", fmtBRL(n.total)], ["Data base", fmtDate(n.baseDate)]].map(([k, v]) => <div key={k}><div className="lbl">{k}</div><div className="font-medium">{v}</div></div>)}
           </div>
           {link && <p className="rounded-lg border border-primary/20 bg-primary/5 p-3">Substitui {fmtBRL(Math.min(link.rem, n.total ?? 0))} da previsão {link.p.purchaseCode || link.p.document || "sem código"} (pendente {fmtBRL(link.rem)}). {n.closeRest || rest === 0 ? "O restante será encerrado." : `Restante de ${fmtBRL(rest)} continua planejado.`}</p>}
-          <ParcelTable parcels={n.parcels} real={stage === "committed"} />
-          {n.total !== parcelsTotal(n.parcels) ? <p className="text-destructive">A soma das parcelas difere do valor total.</p> : <p className="text-primary">Soma das parcelas confere com o valor total ({fmtBRL(n.total)}).</p>}
+          {!!n.parcels.length && <ParcelTable parcels={n.parcels} real={stage === "committed"} />}
+          {(n.plannedNotes ?? []).map(note=><Section key={note.id} title={`NF ${note.document} · ${fmtBRL(note.total)} · planejada`}><ParcelTable parcels={note.parcels.map(p=>({amount:p.amount??0,date:p.date,ext:p.extension,boletoNumber:p.boletoNumber}))} /></Section>)}
+          {n.total !== tot ? <p className="text-destructive">A soma das parcelas difere do valor total.</p> : <p className="text-primary">Soma das parcelas confere com o valor total ({fmtBRL(n.total)}).</p>}
           {stage === "committed" && <label className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3 font-medium"><input type="checkbox" className="mt-0.5" checked={checked} onChange={(e) => setChecked(e.target.checked)} />Conferi os valores e vencimentos com o documento ou a negociação desta operação.</label>}
           {stage === "committed" && <p className="text-muted-foreground">Efetivado é uma obrigação real confirmada; não significa que foi paga. As condições desta operação não alteram o cadastro do fornecedor nem outros lançamentos.</p>}
           {n.condition && <p className="text-muted-foreground">Condição: {n.condition.name} ({termsTxt(n.condition.terms)} dias) {saveAs ? `— será salva como nova condição do fornecedor "${saveAs.name}" (anteriores preservadas).` : "— usada só neste lançamento; o padrão do fornecedor não muda."}</p>}
@@ -260,14 +269,15 @@ export function NovaNota({ d, isBase, onCancel, onConfirm, onManagePlanned, savi
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button className="btn" onClick={() => up({ parcels: [...n.parcels, { amount: 0, date: n.parcels.at(-1)?.date ?? n.baseDate, ext: null }] })}>+ Adicionar parcela</button>
-            <button className="btn" disabled={!n.parcels.length || !diff} onClick={() => up({ parcels: adjustLast(n.parcels, n.total ?? 0) })}>Ajustar diferença na última parcela</button>
+            <button className="btn" disabled={!n.parcels.length || !diff} onClick={() => up({ parcels: adjustLast(n.parcels, (n.total ?? 0)-(n.plannedNotes??[]).reduce((s,n)=>s+(n.total??0),0)) })}>Ajustar diferença na última parcela</button>
           </div>
         </Section>
+        {stage === "planned" && <Section title="Notas fiscais conhecidas (opcional)"><p className="mb-2 text-muted-foreground">Cadastrar nota não efetiva. As notas ficam planejadas; o saldo sem nota continua nas parcelas acima.</p>{n.plannedNotes?.length ? <EffectivationNotes planning d={d} supplierId={n.supplierId} purchaseCode={n.purchaseCode} notes={n.plannedNotes} disabled={false} onChange={plannedNotes=>up({plannedNotes})} onAdd={()=>up({plannedNotes:[...(n.plannedNotes??[]),{id:`note-${uid()}`,document:"",total:null,effectiveDate:null,baseDate:n.baseDate??todaySP(),condition:null,parcels:[]}]})}/> : <button className="btn" onClick={()=>up({plannedNotes:[{id:`note-${uid()}`,document:n.document,total:n.total,effectiveDate:null,baseDate:n.baseDate??todaySP(),condition:n.condition??null,parcels:n.parcels.map(p=>({id:`title-${uid()}`,amount:p.amount,date:p.date,extension:p.ext,boletoNumber:p.boletoNumber}))}],parcels:[]})}>+ Adicionar nota fiscal</button>}</Section>}
         <Section n={5} title="Resumo">
           <div className="grid grid-cols-3 gap-3 rounded-lg border border-border bg-card p-4">
-            <div><div className="lbl">Total da nota</div><div className="num text-sm font-semibold">{fmtBRL(n.total ?? 0)}</div></div>
-            <div><div className="lbl">Total das parcelas</div><div className="num text-sm font-semibold">{fmtBRL(tot)}</div></div>
-            <div><div className="lbl">Diferença</div><div className={`num text-sm font-semibold ${diff ? "text-destructive" : "text-primary"}`}>{fmtBRL(diff)}</div></div>
+            <div><div className="lbl">Total previsto</div><div className="num text-sm font-semibold">{n.total===null ? "Não informado" : fmtBRL(n.total)}</div></div>
+            <div><div className="lbl">Notas + saldo sem nota</div><div className="num text-sm font-semibold">{fmtBRL(tot)}</div></div>
+            <div><div className="lbl">Diferença</div><div className={`num text-sm font-semibold ${diff ? "text-destructive" : "text-primary"}`}>{n.total===null ? "Não disponível" : fmtBRL(diff)}</div></div>
           </div>
           {tried && errs.length > 0 && <ul className="mt-2 list-disc pl-5 text-destructive">{errs.map((e) => <li key={e}>{e}</li>)}</ul>}
         </Section>

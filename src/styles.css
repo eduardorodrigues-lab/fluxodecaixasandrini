@@ -321,3 +321,13 @@
 .eff-note-tbl td > .inp,.eff-note-tbl td > input.inp{width:8rem}
 .eff-note-tbl td > .inp,.eff-note-tbl td > input.inp{width:6.75rem}
 .eff-note{flex-basis:min(100%,840px);min-width:min(100%,840px)}
+.finance-panel .vertical-parcels{min-width:1000px;table-layout:auto}
+.finance-panel .vertical-parcels th{white-space:normal;overflow-wrap:normal;word-break:normal}
+.finance-panel .vertical-parcels td:nth-child(3){min-width:160px}
+.finance-panel .vertical-parcels td span.inline-flex{min-width:164px}
+.eff-note{flex-basis:920px;min-width:920px;overflow:visible}
+.eff-note-tbl{min-width:100%;width:100%}
+.eff-note-tbl th{overflow-wrap:normal!important;word-break:normal}
+.eff-selected{background:var(--accent)}
+.tag-plan{background:var(--muted);color:var(--muted-foreground)}
+.tag-draft{background:var(--warning-soft);color:var(--warning-foreground);border:1px dashed var(--border)}

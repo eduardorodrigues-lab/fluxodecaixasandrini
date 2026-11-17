@@ -55,6 +55,8 @@ export function planVsActual(d: ScenarioData): PvaRow[] {
     let reason: string | null = null;
     if (revisedAfter) { baseline = null; baselineSource = "Não disponível: previsão revisada após a efetivação sem fotografia anterior"; }
     else if (!Number.isFinite(p.value)) { baseline = null; baselineSource = "Não disponível"; }
+    const evidence = effs[0]?.referenceEvidence;
+    if(evidence && evidence.plannedId===p.id && Number.isFinite(evidence.value)) {baseline=evidence.value;baselineSource=`${evidence.source} · ${evidence.at.slice(0,10)} · ${evidence.by}`;}
     let remaining: number | null = null, remainingSource = "Restante não confirmado";
     if (p.status === "encerrado") { remaining = 0; remainingSource = "Restante encerrado (confirmado)"; }
     else if (p.remainingOverride) { remaining = p.remainingOverride.value; remainingSource = "Restante previsto confirmado"; }

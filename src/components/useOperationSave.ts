@@ -23,7 +23,8 @@ export function useOperationSave() {
         const e = app.saveSimulationOperation(before, ops);
         if (e) throw new Error(e);
       } else {
-        request.current ??= { scope: context.current.scope, orgId: app.official.orgId, requestId: crypto.randomUUID(), ops: diffData(before, after), dependencies:operationDependencies(before,diffData(before,after)) };
+        const ops=diffData(before,after);
+        request.current ??= { scope: context.current.scope, orgId: app.official.orgId, requestId: crypto.randomUUID(), ops, dependencies:operationDependencies(before,ops) };
         await app.saveOperation(request.current);
       }
       request.current = null; mutation.current = null; return true;

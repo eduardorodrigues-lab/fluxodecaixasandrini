@@ -1,5 +1,13 @@
 # Roadmap
 
+## Planejamento simples e múltiplas notas — autorizado 17/11/2026 18:45
+- [x] Proteção local do preenchimento por contexto, recuperação sem autorização antiga e descarte explícito
+- [x] Cadastro com notas opcionais, edição compatível, valor previsto revisado e saldo coberto por datas
+- [x] Consultas e busca com NF planejada; evidência histórica em novas primeiras efetivações
+- [x] 89 testes; browser fixture simples/save/reopen/edit/reload, 5 notas, 4+saldo datado, 7×4+zeros/seletiva/segunda/parcial, falha/retry e duas abas; datas 1366/1920.
+- [ ] Auditoria/concorrência hospedada, retry após reload entre envio/resposta e cobertura individual dos acessos legados: não verificados nesta rodada; somente testes fictícios autorizados.
+- [ ] Persistência/concorrência hospedada real não testada: gravações reais não autorizadas
+
 ## Várias notas no mesmo pedido — autorizado 17/11/2026
 - [x] Lote atômico com notas independentes, escopo único substituído, restante manual e revisão no formulário vertical existente
 - [x] 112 testes focados (14 novos); navegador 1366/1536 uma nota + duas posteriores/revisão/save/reload/busca/CSV: 1 pedido, 3 notas, 12 títulos, 0 baixas/calls oficiais. Sem migração/publicação

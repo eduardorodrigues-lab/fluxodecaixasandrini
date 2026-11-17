@@ -40,12 +40,12 @@ export function createLaunchPresentation(d: ScenarioData, audit: LaunchAudit[] =
     const parts = r.parcels.length ? r.parcels : [null];
     return parts.map((pc, i) => ({ p, r, pc, i, n: parts.length, it: inst && pc ? inst[pc.idx ?? i] ?? null : null, idx: pc?.idx ?? i }));
   });
-  const plannedValues = ({ p, r, pc, i, n, it }: (typeof plannedSource)[number]) => [kindL(p.categoryId), catOf(p.categoryId)?.name, (supplierIdentity(d, p).name), p.purchaseCode, p.document, p.notes, pc ? i + 1 : null, pc?.amount, dateValue(it?.date ?? pc?.date), dateValue(it?.extensionDate), p.status === "encerrado" ? "Encerrada" : p.status === "cancelado" ? "Cancelada" : r.effectivated > 0 ? "Efetivada parcialmente" : "Prevista"];
+  const plannedValues = ({ p, r, pc, i, n, it }: (typeof plannedSource)[number]) => [kindL(p.categoryId), catOf(p.categoryId)?.name, (supplierIdentity(d, p).name), p.purchaseCode, p.remainingOverride?.items?.[i]?.note?.document || p.document, p.notes, pc ? i + 1 : null, pc?.amount, dateValue(it?.date ?? pc?.date), dateValue(it?.extensionDate), p.status === "encerrado" ? "Encerrada" : p.status === "cancelado" ? "Cancelada" : r.effectivated > 0 ? "Efetivada parcialmente" : "Prevista"];
     return indexReport(plannedSource, plannedValues, (row) => [...plannedValues(row), ...(sup(row.p.supplierId)?.aliases ?? []), row.pc ? `${row.i + 1}/${row.n}` : "", row.pc ? fmtBRL(row.pc.amount) : "", fmtDate(row.it?.date ?? row.pc?.date ?? null), fmtDate(row.it?.extensionDate ?? null), row.r.health !== "ok" ? "conciliação pendente" : "", row.p.boletoNumbers?.[row.p.remainingOverride?.items?.[row.i]?.id ?? `${row.p.id}#${row.idx}`] ?? row.p.remainingOverride?.items?.[row.i]?.boletoNumber ?? row.it?.boletoNumber]).map(r => {
       const key = r.row.p.remainingOverride?.items?.[r.row.i]?.id ?? `${r.row.p.id}#${r.row.idx}`;
       const log = [...(r.row.p.editLog ?? [])].reverse().find(l => l.parcel === key && !l.note.startsWith("Número do boleto"));
       const extended = log?.note.includes('prorrogação') ? log.after.date : r.row.it?.extensionDate ?? null;
-      return { ...r, facets: facets('planned', r.row.p, key, extended ? log?.before.date ?? r.row.it?.date ?? r.row.pc?.date ?? null : r.row.it?.date ?? r.row.pc?.date ?? null, extended, r.row.p.document, r.row.idx) };
+      return { ...r, facets: facets('planned', r.row.p, key, extended ? log?.before.date ?? r.row.it?.date ?? r.row.pc?.date ?? null : r.row.it?.date ?? r.row.pc?.date ?? null, extended, [r.row.p.remainingOverride?.items?.[r.row.i]?.note?.document, r.row.p.document].filter(Boolean).join(' '), r.row.idx) };
     });
   };
   const buildCommitted = () => {

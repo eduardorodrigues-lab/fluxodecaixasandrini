@@ -83,6 +83,7 @@ export interface Expense {
   invoiceOf?: { cardId: string; month: string } | null; // esta despesa É a fatura do cartão (saída bancária na baixa)
 }
 export interface Effectivation {
+  referenceEvidence?: { value: number; source: string; at: string; by: string; plannedId: string; beforeValue: number; afterValue: number };
   id: string; plannedId: string; at: string; kind: "parcial" | "concluida"; value: number;
   substituted?: number; // parte da previsão substituída (pode diferir de value); ausente em registros antigos = value
   committedIds: string[];
