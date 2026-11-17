@@ -278,3 +278,10 @@ Fonte: FLUXO_DE_CAIXA_ORIGINAL.xlsm + Despesas_corrigidas.xlsx. Recebimento impo
 
 ### Efetivação com notas lado a lado (nov/2026)
 Notas do rascunho aparecem em painéis laterais com rolagem horizontal; cada nota tem documento, total, datas, condição e parcelas próprias. O restante do pedido fica em bloco compartilhado abaixo, com confirmação manual única; o resumo fixo mostra "Não confirmado"/"Aguardando confirmação" até a conferência. Notas já efetivadas aparecem recolhidas, só consulta. Regras financeiras inalteradas.
+
+## Pedido com várias notas — referência e prévia (17/11/2026)
+- Causa do "Planejado antes 0,00": o cabeçalho somava as parcelas salvas (todas 0 quando a previsão foi importada com valor 0) e ignorava o "Valor total previsto" digitado no rascunho; a referência vinha do valor salvo (0), gerando diferença negativa.
+- Agora a referência é o valor salvo quando positivo; se o salvo for 0, usa o valor digitado no rascunho e o grava na confirmação, com histórico 0 → valor. Referência positiva salva nunca é reescrita pela efetivação.
+- Prévia do restante = referência − efetivado anterior vinculado − selecionado agora; abaixo de zero aparece como Excedente separado e exige confirmação. A prévia não redistribui nada: "Usar prévia" e "Distribuir prévia nas restantes (datas mantidas)" só por clique; o restante continua confirmado manualmente e precisa igualar a soma das parcelas restantes.
+- Notas e parcelas têm seleção (cabeçalho com estado parcial e por parcela), em Cards ou Lista completa sobre o mesmo rascunho. Parcelas de nota não selecionadas entram no restante planejado (sem o número da nota, limitação atual).
+- Voltar à edição do planejamento mantém notas e valores no rascunho.

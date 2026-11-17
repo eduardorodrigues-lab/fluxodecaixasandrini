@@ -129,12 +129,20 @@ export function adjustPlanned(d: ScenarioData, plannedId: string, rest: { id: st
 export interface BatchNote {
   id: string; document: string; total: number | null; effectiveDate: string | null; baseDate: string | null;
   condition: Committed["condition"];
-  parcels: (EffLine & { id: string; extension: string | null })[];
+  parcels: (EffLine & { id: string; extension: string | null; selected?: boolean })[];
 }
 export interface BatchInput {
   id: string; plannedId: string; at: string; by: string; selected: string[]; notes: BatchNote[];
   rest: RestLine[]; remaining: number | null; confirmed: boolean; reason: string;
   scopeConfirmed: boolean; duplicateConfirmed: boolean;
+  /** Valor de referência do pedido no rascunho; só preenche previsão salva com valor 0 (nunca reescreve uma referência existente). */
+  reference?: number | null;
+}
+/** Prévia do saldo: referência − efetivado anterior comprovado − novo selecionado. Negativo vira excedente separado, nunca previsão negativa. */
+export function batchPreview(reference: number | null, prior: number, selectedNew: number) {
+  if (reference === null) return { remaining: null, excess: null };
+  const r = reference - prior - selectedNew;
+  return { remaining: Math.max(0, r), excess: Math.max(0, -r) };
 }
 const documentKey = (s: string) => s.trim().toLocaleLowerCase("pt-BR");
 export function duplicateBatchDocuments(d: ScenarioData, plannedId: string, notes: BatchNote[]): string[] {
@@ -149,11 +157,16 @@ export function effectivateBatch(d: ScenarioData, input: BatchInput): void {
   if (d.effectivations.some(e => e.id === input.id)) return;
   const pl = d.planned.find(p => p.id === input.plannedId);
   if (!pl || pl.status === "cancelado") throw new Error("Pedido inexistente ou cancelado.");
-  const origins = currentParcels(d, pl.id).filter(p => p.amount > 0);
+  const origins = currentParcels(d, pl.id).filter(p => p.amount >= 0);
   if (distributePlanned(pl, d.suppliers.find(s => s.id === pl.supplierId), d.committed, d.params.profile, d.effectivations).health !== "ok") throw new Error("Conciliação pendente neste pedido.");
   if (new Set(input.selected).size !== input.selected.length || input.selected.some(id => !origins.some(p => p.key === id))) throw new Error("Previsão selecionada mudou; confira o escopo.");
   if (!input.notes.length || !input.reason.trim()) throw new Error("Informe notas e justificativa.");
-  if ((!input.selected.length || pl.status === "encerrado") && !input.scopeConfirmed) throw new Error("Confirme a ampliação do escopo deste pedido.");
+  const reference = pl.value > 0 ? pl.value : input.reference ?? null;
+  if (reference !== null && (!Number.isInteger(reference) || reference < 0)) throw new Error("Valor de referência inválido.");
+  const prior = d.committed.filter(c => c.status !== "cancelado" && (c.plannedId === pl.id || d.effectivations.some(e => e.plannedId === pl.id && !e.reversedAt && e.committedIds.includes(c.id)))).reduce((s,c) => s+c.value,0);
+  const newTotal = input.notes.reduce((s,n) => s+(n.total ?? 0),0);
+  const exceeds = reference === null ? !input.selected.length : prior + newTotal > reference;
+  if ((exceeds || pl.status === "encerrado") && !input.scopeConfirmed) throw new Error("Confirme a ampliação do escopo deste pedido.");
   if (duplicateBatchDocuments(d, pl.id, input.notes).length && !input.duplicateConfirmed) throw new Error("Confira o documento potencialmente duplicado neste fornecedor.");
   if (input.remaining === null || !Number.isInteger(input.remaining) || input.remaining < 0 || !input.confirmed) throw new Error("Informe e confirme o restante manual; vazio não é zero.");
   const substituted = origins.filter(p => input.selected.includes(p.key)).reduce((s,p) => s+p.amount,0);
@@ -174,6 +187,7 @@ export function effectivateBatch(d: ScenarioData, input: BatchInput): void {
   const after = input.rest.map(p => ({id:p.id,amount:p.amount ?? 0,date:p.date ?? "",boletoNumber:p.boletoNumber}));
   const event: ScenarioData["effectivations"][number] = {id:input.id,plannedId:pl.id,at:input.at,kind:after.length ? "parcial" : "concluida",value:titles.reduce((s,p) => s+p.value,0),substituted,committedIds:titles.map(p => p.id),prev:{status:pl.status,remainingOverride:structuredClone(pl.remainingOverride)},manual:{effectiveDate:input.notes[0]?.effectiveDate ?? "",before:origins.map(p => ({id:p.key,amount:p.amount,date:p.date,boletoNumber:p.boletoNumber})),after,selected:[...input.selected],rule:input.reason,notes:input.notes.map(n => ({id:n.id,document:n.document,total:n.total ?? 0,effectiveDate:n.effectiveDate ?? "",baseDate:n.baseDate ?? ""}))},reversedAt:null,reversalNote:""};
   d.committed.push(...titles); d.effectivations.push(event);
+  if (pl.value === 0 && reference !== null && reference > 0) { (pl.editLog ??= []).push({at:input.at,by:input.by,note:`Valor de referência informado no rascunho do pedido`,before:{amount:0,date:pl.baseDate},after:{amount:reference,date:pl.baseDate}}); pl.value = reference; }
   pl.status = after.length ? "ativo" : "encerrado";
   pl.remainingOverride = after.length ? {value:input.remaining,dates:after.map(p => p.date),items:after} : null;
   if (pl.boletoNumbers) for (const p of after) pl.boletoNumbers[p.id] = p.boletoNumber ?? null;
