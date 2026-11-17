@@ -342,7 +342,7 @@ export function DadosNotaPanel({ d, init, siblings, onCancel, onSave, saving=fal
 export interface SaveAs { name: string; terms: (number | null)[]; from: string | null }
 /** Escolha da condição: sugere a última vigente, permite outra cadastrada ou uma específica. Parcelas só após confirmar.
  *  "Salvar como nova condição do fornecedor" é opção separada e exige confirmação. */
-export function ConditionPicker({ d, supplierId, hint, disabled, disabledHint, onConfirm, baseDate }: { d: ScenarioData; supplierId: string; baseDate?: string | null | undefined; hint?: string | undefined; disabled?: boolean; disabledHint?: string; onConfirm: (c: { name: string; terms: (number | null)[] }, saveAs: SaveAs | null) => void }) {
+export function ConditionPicker({ d, supplierId, hint, disabled, disabledHint, onConfirm, baseDate, allowSave = true }: { d: ScenarioData; supplierId: string; baseDate?: string | null | undefined; hint?: string | undefined; disabled?: boolean; disabledHint?: string; allowSave?: boolean; onConfirm: (c: { name: string; terms: (number | null)[] }, saveAs: SaveAs | null) => void }) {
   const s = d.suppliers.find((x) => x.id === supplierId)!;
   const list = supplierConditions(s).filter((c) => !c.cancelled);
   const cur = currentCondition(s, baseDate || new Date().toISOString().slice(0, 10));
@@ -366,7 +366,7 @@ export function ConditionPicker({ d, supplierId, hint, disabled, disabledHint, o
       </div>
       {!isEsp && splitOrigin(list.find((x) => x.id === sel)?.note).text && <p className="rounded bg-muted p-2">Observação da condição: {splitOrigin(list.find((x) => x.id === sel)?.note).text}</p>}
       {isEsp && <TermsEditor terms={espT} onChange={setEspT} />}
-      {isEsp && <div className="flex flex-wrap items-center gap-2">
+      {isEsp && allowSave && <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-1"><input type="checkbox" checked={save} onChange={async (e) => { const checked = e.target.checked; if (checked && !await askConfirm("Esta condição será salva como nova condição do fornecedor. As condições anteriores serão preservadas.", { title: "Salvar nova condição?", action: "Salvar condição" })) return; setSave(checked); }} /> Salvar como nova condição do fornecedor</label>
         {save && <input className="inp h-8 w-48" placeholder="Nome da condição" value={saveName} onChange={(e) => setSaveName(e.target.value)} />}
         {!save && <span className="text-muted-foreground">Usada só neste lançamento; o padrão do fornecedor não muda.</span>}

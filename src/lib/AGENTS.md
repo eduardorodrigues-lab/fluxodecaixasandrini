@@ -1,0 +1,1 @@
+- Multi-note planned effectivation uses effectivateBatch in efetivacao.ts, validates before mutation, and records one event/remaining snapshot per operation — prevents repeated abatement and partial batches while retaining the existing isolated save and reversal paths.

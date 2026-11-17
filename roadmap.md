@@ -1,5 +1,10 @@
 # Roadmap
 
+## Várias notas no mesmo pedido — autorizado 17/11/2026
+- [x] Lote atômico com notas independentes, escopo único substituído, restante manual e revisão no formulário vertical existente
+- [x] 112 testes focados (14 novos); navegador 1366/1536 uma nota + duas posteriores/revisão/save/reload/busca/CSV: 1 pedido, 3 notas, 12 títulos, 0 baixas/calls oficiais. Sem migração/publicação
+- [ ] Persistência/auditoria hospedadas e concorrência multiusuário real: não verificadas, gravações reais de teste não autorizadas
+
 ## Número do boleto por parcela — autorizado 17/11/2026
 - [x] Metadado opcional, formulários/efetivação/Gerenciar, busca/consultas/exportação e histórico sem mudança financeira
 - [x] 8 testes novos + regressões; navegador fixture 1366/1536 criação/revisão/salvar/Gerenciar/busca/CSV/reload/limpar paga; baixa preservada, zero chamadas oficiais. Persistência hospedada e efetivação parcial no navegador não verificadas (parcial coberta em teste puro); nada publicado

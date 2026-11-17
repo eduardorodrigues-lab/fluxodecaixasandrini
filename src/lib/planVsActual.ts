@@ -33,7 +33,7 @@ export function planVsActual(d: ScenarioData): PvaRow[] {
   for (const c of d.committed) if (c.plannedId) claim(c.id, c.plannedId);
   for (const [pid, es] of effsByPlan) for (const e of es) for (const id of e.committedIds) claim(id, pid);
   const byId = new Map(d.committed.map((c) => [c.id, c]));
-  const effOf = new Map<string, string>(); for (const es of effsByPlan.values()) for (const e of es) for (const id of e.committedIds) effOf.set(id, e.at);
+  const effOf = new Map<string, string>(); for (const es of effsByPlan.values()) for (const e of es) for (const id of e.committedIds) effOf.set(id, byId.get(id)?.effectiveDate ?? e.at);
   const rows: PvaRow[] = [];
   for (const p of d.planned) {
     const effs = [...(effsByPlan.get(p.id) ?? [])].sort((a, b) => a.at.localeCompare(b.at));
@@ -68,7 +68,7 @@ export function planVsActual(d: ScenarioData): PvaRow[] {
     const pct = diff === null || baseline === null || baseline === 0 ? null : diff / baseline;
     const pctNote = diff !== null && baseline === 0 ? "Não aplicável" : null;
     const comparison: Comparison = diff === null ? "Não comparável" : eq(diff, 0) ? "Sem diferença" : diff > 0 ? "Acima" : "Abaixo";
-    const effDates = effs.map((e) => e.at.slice(0, 10));
+    const effDates = effs.flatMap((e) => e.manual?.notes?.map(n => n.effectiveDate) ?? [e.at.slice(0, 10)]);
     const identity = supplierIdentity(d, p as Planned);
     const category = categories.get(p.categoryId);
     rows.push({ plannedId: p.id, purchaseCode: p.purchaseCode, document: p.document, supplierKey: identity.key, supplier: identity.name, category: category?.kind ?? "", subgroupId: p.categoryId, subgroup: category?.name ?? "Não disponível", baseline, baselineSource, effective, remaining, remainingSource,

@@ -50,6 +50,7 @@ export interface NoteRef { noteId?: string; parcelNo?: number; parcelCount?: num
 // EFETIVADO/REALIZADO = compra real ou pedido. NÃO é pagamento (ver payments).
 export type CommittedOrigin = "legado" | "efetivacao" | "manual";
 export interface Committed {
+  effectiveDate?: string; baseDate?: string; // datas próprias da nota, não recalculadas pelo fornecedor
   boletoNumber?: string | null | undefined;
   editLog?: EditLog[]; // justificativas de alteração de valor/vencimento (antes/depois, autor, horário)
   id: string; supplierId: string; purchaseCode: string; document: string; value: number;
@@ -85,7 +86,7 @@ export interface Effectivation {
   committedIds: string[];
   linkedLegacy?: boolean; // efetivação que reclassificou um título legado existente (sem criar novo)
   prev: { status: Planned["status"]; remainingOverride: Planned["remainingOverride"] };
-  manual?: { effectiveDate: string; before: RemainingItem[]; after: RemainingItem[]; selected: string[]; rule: string } | null; // efetivação com edição manual (antes/depois por parcela)
+  manual?: { effectiveDate: string; before: RemainingItem[]; after: RemainingItem[]; selected: string[]; rule: string; notes?: { id: string; document: string; total: number; effectiveDate: string; baseDate: string }[] } | null; // lote: escopo substituído e restante confirmados uma única vez
   reversedAt: string | null; reversalNote: string;
 }
 // Baixa = registro de pagamento realizado (NÃO é transferência bancária).
