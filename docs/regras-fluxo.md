@@ -256,3 +256,7 @@ Fonte: FLUXO_DE_CAIXA_ORIGINAL.xlsm + Despesas_corrigidas.xlsx. Recebimento impo
 - Referência = valor da previsão (a efetivação não altera `Planned.value`); revisão de valor após a 1ª efetivação torna a referência Não disponível. Não há fotografia dedicada gravada: lacuna para cobertura futura.
 - Total atual = efetivado ativo + restante confirmado (encerrado=0, `remainingOverride`); sem restante confirmado = Não comparável. Pago não soma; cancelados à parte, não são economia. % Não aplicável com referência 0.
 - Período filtra por data da efetivação; colunas acumuladas. Responsável da efetivação não é registrado no evento (Não disponível).
+
+- Aba principal de Lançamentos reutiliza este relatório; Consultas oferece atalho. Categoria/subgrupo são os da previsão vinculada, sem inferir vínculos.
+- KPIs usam somente os pedidos comparáveis do conjunto filtrado completo, antes de paginar (50 pedidos). Cobertura informa comparáveis/filtrados, motivos e exclusão por falta de data quando há período. Nenhum comparável = Não disponível, não zero.
+- Percentual agregado = (soma total atual − soma referência) / soma referência; referência agregada zero = Não aplicável. Exportação inclui todos os pedidos filtrados e as mesmas definições/indicadores de cobertura; acumulados integrais, não valores restritos ao mês.

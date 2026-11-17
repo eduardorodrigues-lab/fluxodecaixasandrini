@@ -287,3 +287,10 @@
 .launch-manager .vertical-parcels th:first-child { width: 9%; }
 .launch-manager .vertical-parcels th:last-child { width: 18%; }
 .launch-manager .vertical-parcels button { white-space: normal; height: auto; min-height: 36px; }
+
+/* Comparison report: wrap headers and identities, keep full monetary values legible. */
+.pva-report .pva-table { table-layout: fixed; }
+.pva-report .pva-table th,.pva-report .pva-table td { white-space: normal; overflow-wrap: anywhere; padding: 9px 6px; }
+.pva-report .pva-table th:first-child,.pva-report .pva-table th:nth-child(2) { width: 12%; }
+.pva-report .pva-table td.num { overflow-wrap: normal; }
+@media(max-width:1100px) { .pva-report .pva-table { min-width: 1050px; } }

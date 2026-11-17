@@ -12,8 +12,8 @@ import { Button } from "@/components/ui/button";
 import { askConfirm, askText, showMessage } from "@/lib/decisions";
 import { BaixasList, PagamentoPanel } from "@/components/BancoPanels";
 import { accountName, NO_ACCOUNT, registerPaymentBatch, coverTitleWithCard } from "@/lib/engine/banco";
-import { createFileRoute } from "@tanstack/react-router";
-import { Children, cloneElement, isValidElement, useMemo, memo, useState, type ReactElement, type ReactNode } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { Children, cloneElement, isValidElement, useMemo, memo, useState, useEffect, type ReactElement, type ReactNode } from "react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { DateInput, MoneyInput, PageHeader } from "@/components/kit";
 import { ConditionPicker, DadosNotaPanel, Field, guardClose, NovaNota, ParcelaPanel, ProrrogarPanel, Section, SidePanel, type NoteFields } from "@/components/NotaPanel";
@@ -26,6 +26,7 @@ import { fmtBRL } from "@/lib/money";
 import { uid, useApp } from "@/lib/store";
 import { adjustPlanned, applySuggestion, currentParcels, diffParcels, draftTotals, effectivateManual, initDraft, validateDraft, type EffLine, type RestLine, type Suggestion } from "@/lib/efetivacao";
 import { Consultas } from "@/components/Consultas";
+import { PlanVsActual } from "@/components/PlanVsActual";
 import { pendingSearch } from "@/lib/pendencias";
 import { usePendingFocus } from "@/components/PendingFocus";
 
@@ -49,8 +50,8 @@ const T = (label: string, type: FilterCol["type"] = "text"): FilterCol => ({ lab
 const PLANNED_COLS = [T("Categoria"), T("Subgrupo"), T("Fornecedor"), T("Código do pedido"), T("Documento"), T("Descrição"), T("Parcela"), T("Valor da parcela", "money"), T("Vencimento", "date"), T("Prorrogar para", "date"), T("Situação do lançamento")];
 const COMMITTED_COLS = [...PLANNED_COLS.slice(0, 10), T("Situação do lançamento"), T("Situação do pagamento"), T("Pago", "money"), T("Saldo em aberto", "money")];
 const PAYMENT_COLS = [T("Data", "date"), T("Título"), T("Conta"), T("Valor", "money"), T("Obs."), T("Situação")];
-type Tab = "planned" | "committed" | "payments" | "consultas";
-const TABS: { k: Tab; l: string }[] = [{ k: "planned", l: "Planejada" }, { k: "committed", l: "Efetivado" }, { k: "payments", l: "Pagamentos (baixas)" }, { k: "consultas", l: "Consultas" }];
+type Tab = "planned" | "committed" | "payments" | "consultas" | "pva";
+const TABS: { k: Tab; l: string }[] = [{ k: "planned", l: "Planejada" }, { k: "committed", l: "Efetivado" }, { k: "payments", l: "Pagamentos (baixas)" }, { k: "consultas", l: "Consultas" }, { k: "pva", l: "Planejado × Efetivado" }];
 const now = () => new Date().toISOString();
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
 
@@ -81,6 +82,7 @@ function Acoes({ children }: { children: ReactNode }) {
 }
 
 const CachedConsultas = memo(Consultas);
+const CachedPva = memo(PlanVsActual);
 const EMPTY_ROWS: never[] = [];
 const EMPTY_GROUPS = { byId: new Map(), ambiguous: [] };
 const AmbiguousDocuments = memo(function AmbiguousDocuments({ d, groups, onManage }: { d: ScenarioData; groups: ReturnType<typeof createLaunchPresentation>["groups"]; onManage: (ref: LaunchRef) => void }) {
@@ -94,7 +96,9 @@ function Page() {
   const { active, update, changes, user, audit, allSims, official } = useApp();
   const operation = useOperationSave();
   const d = active.data;
-  const [tab, setTab] = useState<Tab>(TABS.find((t) => t.k === target.tab)?.k ?? "planned");
+  const tab = TABS.find((t) => t.k === target.tab)?.k ?? "planned";
+  const [pvaVisited, setPvaVisited] = useState(tab === "pva");
+  useEffect(() => { if (tab === "pva") setPvaVisited(true); }, [tab]);
   usePendingFocus(target.focus, tab);
   const [err, setErr] = useState("");
   const [kinds, setKinds] = useState<Record<string, "" | CategoryKind>>({ planned: "", committed: "" });
@@ -165,12 +169,13 @@ function Page() {
       </PageHeader>
       {operation.error && <p role="alert" className="text-destructive">{operation.error}</p>}
       {err && <div className="mb-2 rounded border border-destructive p-2 text-xs text-destructive">{err}</div>}
-      <div className="mb-2 flex overflow-x-auto border-b border-border">{TABS.map((t) => <button key={t.k} className={`tab whitespace-nowrap ${tab === t.k ? "tab-on" : ""}`} onClick={() => setTab(t.k)}>{t.l} {t.k === "consultas" ? "" : `(${t.k === "committed" ? d.committed.length + d.expenses.length : (d[t.k] as unknown[]).length})`}</button>)}</div>
+      <div className="mb-2 flex flex-wrap border-b border-border" aria-label="Abas de Lançamentos">{TABS.map((t) => <Link key={t.k} to="/lancamentos" search={(prev) => ({ ...prev, tab: t.k })} resetScroll={false} className={`tab whitespace-nowrap ${tab === t.k ? "tab-on" : ""}`} aria-current={tab === t.k ? "page" : undefined}>{t.l} {t.k === "consultas" || t.k === "pva" ? "" : `(${t.k === "committed" ? d.committed.length + d.expenses.length : d[t.k].length})`}</Link>)}</div>
       {(tab === "planned" || tab === "committed") && <LaunchFilterPanel key={tab} state={{ ...(tab === "planned" ? plannedFilters : committedFilters), setOrder: (v) => { (tab === "planned" ? plannedFilters : committedFilters).setOrder(v); report.setSort(null); }, clear: () => { (tab === "planned" ? plannedFilters : committedFilters).clear(); setFKind(""); cf.clear(); report.setQuery(""); } }} suppliers={supplierOptions} categories={d.categories} situations={situations} payments={tab === "committed" ? paymentSituations : undefined} count={tab === "planned" ? plannedRows.length : efetivados.length} total={(tab === "planned" ? plannedResult : committedResult).reduce((sum, r) => sum + (typeof r.values[7] === "number" ? r.values[7] : 0), 0)} onExport={exportFiltered} extra={<ColumnFilter cols={tab === "planned" ? PLANNED_COLS : COMMITTED_COLS} filter={cf} suggest={suggestions} />} />}
       {tab === "payments" && <div className="filter-bar"><ReportSearch value={report.query} onChange={report.setQuery} count={paymentRows.length} /><ColumnFilter cols={PAYMENT_COLS} filter={cf} suggest={suggestions} /><Button variant="outline" size="sm" onClick={() => { report.setQuery(""); cf.clear(); }}>Limpar filtros</Button></div>}
       <div hidden={tab !== "consultas"}><CachedConsultas d={d} onManage={setManaged} /></div>
+      {(pvaVisited || tab === "pva") && <div hidden={tab !== "pva"}><CachedPva key={`${official.orgId}:${active.id}`} d={d} /></div>}
       {tab === "committed" && <AmbiguousDocuments d={d} groups={model.groups} onManage={setManaged} />}
-      {tab === "consultas" ? null : <div className="card overflow-auto launch-table">
+      {tab === "consultas" || tab === "pva" ? null : <div className="card overflow-auto launch-table">
         {tab === "planned" && (
           <table className="tbl"><thead><tr><SortHead label="Categoria" column={0} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Subgrupo" column={1} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Fornecedor" column={2} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Código do pedido" column={3} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Documento" column={4} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Descrição" column={5} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Parcela" column={6} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Valor da parcela" column={7} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={true} /><SortHead label="Vencimento" column={8} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Prorrogar para" column={9} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><SortHead label="Situação do lançamento" column={10} sort={plannedReport.sort} onSort={plannedReport.toggle} numeric={false} /><th>Cadastrado em<br />(Brasília)</th><th>Última alteração<br />(Brasília)</th><th>Ações</th></tr></thead>
             <tbody>{plannedPager.slice(plannedRows).flatMap(({ p, r, pc, i, n, it, idx }) => {
@@ -257,7 +262,7 @@ function Page() {
         )}
       </div>}
       {tab === "planned" && <Pager pager={plannedPager} />}{tab === "committed" && <Pager pager={committedPager} />}{tab === "payments" && <Pager pager={paymentsPager} />}
-      <p className="mt-2 text-[11px] text-muted-foreground">Registrar pagamento é o registro de uma baixa já realizada (Pix, TED, DOC ou Boleto) — não executa transferência bancária. Boleto pago com cartão não debita conta: passa para a fatura.</p>
+      {tab !== "pva" && <p className="mt-2 text-[11px] text-muted-foreground">Registrar pagamento é o registro de uma baixa já realizada (Pix, TED, DOC ou Boleto) — não executa transferência bancária. Boleto pago com cartão não debita conta: passa para a fatura.</p>}
 
       {managed && <ManageLaunchPanel key={`${managed.kind}:${managed.id}`} launch={managed} onClose={() => setManaged(null)} />}
       {panel?.t === "pay" && <PagamentoPanel d={d} kind={panel.kind} titleId={panel.id} label={panel.label} saving={operation.saving} saveError={operation.error} saveLabel="Confirmar e salvar" onCancel={() => {if(!operation.saving){operation.reset();setPanel(null);}}} onConfirm={async (r) => { const ok = await operation.saveMutation(d,(x) => r.origin === "conta" ? registerPaymentBatch(x, { batchId: uid(), titleKind: panel.kind, titleId: panel.id, lines: r.lines, note: r.note, form: r.form }) : coverTitleWithCard(x, { id: uid(), at: now(), by: user?.email ?? "", titleKind: panel.kind, titleId: panel.id, cardId: r.cardId, date: r.date, amount: r.amount, fee: r.fee, installments: r.installments, form: "boleto" })); if (ok) setPanel(null); return ok; }} />}

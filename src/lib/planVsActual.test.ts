@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { emptyData } from "./engine/actions";
-import { filterPva, planVsActual } from "./planVsActual";
-import { pvaCells } from "@/components/PlanVsActual";
+import { EMPTY_PVA, filterPva, planVsActual, summarizePva, pvaUndated } from "./planVsActual";
+import { pvaCells, pvaExport } from "@/components/PlanVsActual";
 import type { Committed, Planned, ScenarioData } from "./engine/types";
 
 const P = (id: string, code: string, value: number, x: Partial<Planned> = {}): Planned => ({ id, supplierId: "s1", purchaseCode: code, document: "", value, baseDate: "2026-01-01", categoryId: "", notes: "", status: "ativo", remainingOverride: null, ...x });
@@ -60,5 +60,49 @@ describe("Planejado × Efetivado", () => {
   });
   it("é leitura pura: não altera os dados", () => {
     const d = fixture(); const before = JSON.stringify(d); planVsActual(d); expect(JSON.stringify(d)).toBe(before);
+  });
+  it("KPIs somam somente o mesmo escopo comparável, incluindo parcial; percentual não é média", () => {
+    const rows = planVsActual(fixture());
+    const k = summarizePva(rows);
+    expect([k.baseline, k.effective, k.remaining, k.total, k.diff, k.comparable]).toEqual([33232000, 36856000, 600000, 37456000, 4224000, 3]);
+    expect(k.pct).toBe(4224000 / 33232000);
+    const first = rows[0]; if (!first) throw new Error("Fixture sem pedido");
+    const unknown = { ...first, comparison: "Não comparável" as const, total: null, baseline: null, remaining: null };
+    expect(summarizePva([...rows, unknown]).baseline).toBe(33232000);
+    expect(summarizePva([...rows, unknown]).unavailable).toBe(1);
+  });
+  it("nenhum comparável não vira zero; referência agregada zero tem % indisponível", () => {
+    const unknown = planVsActual(fixture()).map(r => ({ ...r, comparison: "Não comparável" as const, total: null }));
+    expect(summarizePva(unknown)).toMatchObject({ comparable: 0, baseline: null, effective: null, remaining: null, total: null, diff: null, pct: null });
+    const d = fixture(); d.planned = d.planned.map(p => ({ ...p, value: 0 }));
+    expect(summarizePva(planVsActual(d))).toMatchObject({ baseline: 0, diff: 37456000, pct: null });
+  });
+  it("categoria/subgrupo combinam com período sem truncar vínculos; exclusão sem data explícita", () => {
+    const d = fixture();
+    d.categories = [{ id: "cat", name: "Mercadorias", kind: "compra", group: "" }];
+    d.planned = d.planned.map(p => ({ ...p, categoryId: "cat" }));
+    d.effectivations = d.effectivations.filter(e => e.plannedId !== "p2");
+    d.effectivations.push(E("late", "p1", "2026-06-01T00:00:00Z", []));
+    const f = { ...EMPTY_PVA, category: "compra", subgroup: "cat", from: "2026-06-01", to: "2026-06-30" };
+    const rows = filterPva(planVsActual(d), f);
+    expect(rows.map(r => r.plannedId)).toEqual(["p1"]);
+    expect(summarizePva(rows).effective).toBe(16800000);
+    expect(pvaUndated(planVsActual(d), f).map(r => r.plannedId)).toEqual(["p2"]);
+    expect(filterPva(planVsActual(d), { ...f, category: "despesa" })).toHaveLength(0);
+  });
+  it("exportação integral mantém células anteriores e cobertura, sem limite de 50", () => {
+    const rows = planVsActual(fixture());
+    const first = rows[0]; if (!first) throw new Error("Fixture sem pedido");
+    const many = Array.from({ length: 61 }, (_, i) => ({ ...first, plannedId: `x${i}`, purchaseCode: `PEDIDO-${i}` }));
+    const csv = pvaExport(many, 2);
+    expect(csv).toContain("PEDIDO-60"); expect(csv).toContain("61/61");
+    expect(csv.split("\n")).toHaveLength(62);
+    expect(filterPva(rows, EMPTY_PVA).map(pvaCells)).toEqual(rows.map(pvaCells));
+  });
+  it("novo snapshot/contexto recalcula cobertura sem reutilizar valores antigos", () => {
+    const d = fixture(), old = summarizePva(planVsActual(d));
+    const next = structuredClone(d); next.planned = next.planned.map(p => ({ ...p, remainingOverride: null, status: "ativo" }));
+    expect(summarizePva(planVsActual(next)).comparable).toBe(0);
+    expect(summarizePva(planVsActual(fixture()))).toEqual(old);
   });
 });

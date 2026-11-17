@@ -1,5 +1,10 @@
 # Roadmap
 
+## Aba principal Planejado × Efetivado — autorizado 17/11/2026
+- [x] Reutilizar relatório, acesso /lancamentos?tab=pva, retorno preserva filtros, categoria/subgrupo, KPIs comparáveis e cobertura/exportação integral
+- [x] 40 testes focados; navegador fixture 1366/1536/768/390: filtros, cobertura, ausência, notas, CSV, troca de abas e reload; zero chamadas de escrita
+- [x] Compilação automática OK; nenhuma escrita oficial ou publicação. Base real não homologada; sem fotografia dedicada/autor no evento, limitações existentes preservadas. Fixture injeta contexto apenas no cliente, causando aviso esperado de hidratação no teste, não prova de erro em produção.
+
 ## Salvamento da operação revisada — autorizado 16/11/2026
 - [x] Confirmar e salvar somente operação/dependências revisadas; pendências independentes preservadas, sobrepostas bloqueadas explicitamente
 - [x] Recuperação/idempotência, falhas/conflitos, reconciliação e edições durante espera; simulação isolada e viewer

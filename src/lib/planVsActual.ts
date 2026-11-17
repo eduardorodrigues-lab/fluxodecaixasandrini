@@ -14,6 +14,7 @@ export interface PvaNote { id: string; document: string; noteId: string | null; 
 export interface PvaHistory { at: string; by: string; note: string; scope: string; before: EditLog["before"]; after: EditLog["after"] }
 export interface PvaRow {
   plannedId: string; purchaseCode: string; document: string; supplierKey: string; supplier: string;
+  category: string; subgroupId: string; subgroup: string;
   baseline: number | null; baselineSource: string; effective: number; remaining: number | null; remainingSource: string;
   total: number | null; diff: number | null; pct: number | null; pctNote: string | null;
   comparison: Comparison; reason: string | null; situation: PvaSituation;
@@ -24,6 +25,7 @@ export interface PvaRow {
 const eq = (a: number, b: number) => Math.abs(a - b) < 0.5; // tolerância < meio centavo (valores importados podem ter fração)
 
 export function planVsActual(d: ScenarioData): PvaRow[] {
+  const categories = new Map(d.categories.map((c) => [c.id, c]));
   const effsByPlan = new Map<string, ScenarioData["effectivations"]>();
   for (const e of d.effectivations) if (!e.reversedAt) effsByPlan.set(e.plannedId, [...(effsByPlan.get(e.plannedId) ?? []), e]);
   const owners = new Map<string, Set<string>>(); // título → previsões que o reivindicam explicitamente
@@ -68,17 +70,31 @@ export function planVsActual(d: ScenarioData): PvaRow[] {
     const comparison: Comparison = diff === null ? "Não comparável" : eq(diff, 0) ? "Sem diferença" : diff > 0 ? "Acima" : "Abaixo";
     const effDates = effs.map((e) => e.at.slice(0, 10));
     const identity = supplierIdentity(d, p as Planned);
-    rows.push({ plannedId: p.id, purchaseCode: p.purchaseCode, document: p.document, supplierKey: identity.key, supplier: identity.name, baseline, baselineSource, effective, remaining, remainingSource,
+    const category = categories.get(p.categoryId);
+    rows.push({ plannedId: p.id, purchaseCode: p.purchaseCode, document: p.document, supplierKey: identity.key, supplier: identity.name, category: category?.kind ?? "", subgroupId: p.categoryId, subgroup: category?.name ?? "Não disponível", baseline, baselineSource, effective, remaining, remainingSource,
       total, diff, pct, pctNote, comparison, reason, situation, firstEffAt: firstAt, lastEffAt: effs.at(-1)?.at ?? null, effDates, notes, cancelledValue,
       justification: effs.map((e) => e.manual?.rule).filter((r): r is string => !!r), history });
   }
   return rows;
 }
 
-export interface PvaFilter { from: string | null; to: string | null; supplier: string; comparison: "" | Comparison; situation: "" | PvaSituation }
-export const EMPTY_PVA: PvaFilter = { from: null, to: null, supplier: "", comparison: "", situation: "" };
+export interface PvaFilter { from: string | null; to: string | null; supplier: string; comparison: "" | Comparison; situation: "" | PvaSituation; category?: string; subgroup?: string }
+export const EMPTY_PVA: PvaFilter = { from: null, to: null, supplier: "", comparison: "", situation: "", category: "", subgroup: "" };
 /** Período corta pelo evento de efetivação datado; colunas continuam acumuladas sobre todos os vínculos. */
 export function filterPva(rows: PvaRow[], f: PvaFilter) {
-  return rows.filter((r) => (!f.supplier || r.supplierKey === f.supplier) && (!f.comparison || r.comparison === f.comparison) && (!f.situation || r.situation === f.situation)
+  return rows.filter((r) => (!f.category || r.category === f.category) && (!f.subgroup || r.subgroupId === f.subgroup) && (!f.supplier || r.supplierKey === f.supplier) && (!f.comparison || r.comparison === f.comparison) && (!f.situation || r.situation === f.situation)
     && (!(f.from || f.to) || r.effDates.some((x) => (!f.from || x >= f.from) && (!f.to || x <= f.to))));
+}
+
+/** All comparison indicators share exactly the comparable subset, before pagination. */
+export function summarizePva(rows: PvaRow[]) {
+  const comparable = rows.filter((r) => r.comparison !== "Não comparável" && r.baseline !== null && r.total !== null && r.remaining !== null);
+  const sum = (key: "baseline" | "effective" | "remaining" | "total") => comparable.length ? comparable.reduce((a, r) => a + (r[key] ?? 0), 0) : null;
+  const baseline = sum("baseline"), total = sum("total");
+  const diff = baseline === null || total === null ? null : total - baseline;
+  return { filtered: rows.length, comparable: comparable.length, unavailable: rows.length - comparable.length, baseline, effective: sum("effective"), remaining: sum("remaining"), total, diff, pct: diff === null || baseline === null || baseline === 0 ? null : diff / baseline };
+}
+
+export function pvaUndated(rows: PvaRow[], f: PvaFilter) {
+  return f.from || f.to ? filterPva(rows, { ...f, from: null, to: null }).filter((r) => !r.effDates.length) : [];
 }
