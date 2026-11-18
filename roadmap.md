@@ -1,5 +1,11 @@
 # Roadmap
 
+## Fluxo sem recortes e recuperação acionável — autorizado 18/11/2026 17:24 UTC
+- [x] Remover filtros Fornecedor/Grupo do Fluxo e ignorar estado antigo sem limpar preferências de outros módulos
+- [x] Consulta manual read-only independente de rejected, estados/motivos claros, pacote desconhecido bloqueado, exportação legada e conflito revisável; captura recusada arquivada
+- [x] 37 testes, nove cenários browser de recuperação + regressão global/isolado + Fluxo com URL legada; compilação OK; docs/fluxo-recuperacao-2026-11-18.md; sem escrita real
+- [ ] Incidente real e status definitivo de envios sem auditoria não comprovados; contrato atual só informa confirmação/ausência, sem autorização para concluir registro real
+
 ## Entradas clicáveis e revisão de lançamentos — autorizado 18/11/2026 17:08 UTC
 - [x] Detalhamento somente visual do mesmo motor: diário/período, contas ausentes, saldo bancário separado, estimativas e transferências/estornos
 - [x] Quadro atualizado por leitura em Files: pedido 1852, NF 017766350, aportes/Geral, M&S/Mococa; sem aplicação de lote

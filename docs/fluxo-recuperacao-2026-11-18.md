@@ -1,0 +1,27 @@
+# Fluxo geral e recuperação acionável — 18/11/2026
+
+## Causa comprovada por caminho
+- `AppShell`: “Conferir confirmação” desabilitava por `pendingOperation.rejected`, enquanto “Liberar para nova revisão” habilitava por esse mesmo booleano. Marca legada de recusa podia coexistir com fase UNKNOWN. Reproduzido com captura fictícia restaurada `phase: unknown, rejected: true`: botão de consulta desabilitado no código anterior e acionável no corrigido.
+- `store.checkPendingOperation`: chamava `saveOperation(op)` como ação compartilhada, cujo guard rejeitava qualquer `rejected`, antes de consultar. Nova ação consulta explicitamente `checkCommitRequest` (GET) e só entra na reconciliação com versão confirmada. Nenhuma escrita nessa ação, mesmo em pacote nunca enviado/legado.
+- Propagação ao formulário: na falha de atualização após confirmação, a captura persistida tinha confirmação mas o objeto de origem só recebia fase/recusa/conflitos. Agora também recebe confirmação; mensagem distingue gravação confirmada de resultado desconhecido. Reproduzido com readback abortado em fixture.
+- Fluxo consumia `ui.supplierId/group` compartilhados; dashboard ainda pode definir fornecedor. Remover apenas os controles deixaria recorte invisível. `generalFlow` não recebe filtros: datas somente; estado de dashboard e demais módulos não é limpo.
+
+## Alterações focadas
+- Topo Fluxo sem Fornecedor/Grupo; período, apresentação de saídas, ajustes e vertical/CEO mantidos. URL/storage/estado antigos não entram no cálculo dessa página. Classificação/colunas agrupadoras e filtros de outras páginas intactos.
+- Recuperação: “Consultar resultado” habilitado com sessão/contexto autorizado e sem consulta/envio simultâneo. Um GET manual limitado a 5s; automático existente mantém até três leituras com backoff, nunca repete escrita.
+- Offline, contexto indisponível, consulta em andamento e requestId inválido têm motivo e ação explícitos. Sem sessão, portão de entrada continua bloqueando dados/consulta; storage preservado.
+- Resultado ausente/falha: banner explica incerteza, nova consulta e navegação segura; pacote imutável preservado. Ausência na auditoria não autoriza envio/revisão. UNKNOWN não exibe ação de liberação.
+- Confirmação: reconciliação versionada existente; readback não reduz versão, preserva edições posteriores/independentes. Falha após commit mantém confirmação persistida; consulta seguinte atualiza sem escrever.
+- Nova revisão somente por `rejected && (phase failed/conflict) && !confirmation`. “Revisar conflito” / “Voltar à edição da alteração recusada” explicam ausência de gravação e preservação da auditoria. Captura recusada/requestId ficam arquivados localmente, não apagados para remover banner. Conflito mostra anterior→solicitado e atual→solicitado.
+- Exportação JSON local inclui captura/requestId/revisão para recuperação legada; não transmite dados ou cria identificadores.
+- Sem nova ação de retry de escrita: contrato atual não possui status hospedado de “não executada” ou “em andamento”. Ausência não permite provar nenhum dos dois. Recusa definitiva exige revisão explícita; nenhum retry real forçado.
+
+## Evidências executadas
+- 37 testes, seis arquivos: generalFlow (1), recoveryActions (6), saveRecovery (5), commitReceipt (4), operationSave (10), flowEntryDetail (11). Totais completos com dois fornecedores, período/preferências intactos, soma painéis/células; UNKNOWN/rejected não libera revisão, motivos de auth/contexto/offline/busy/legado, zero/vazio, rebase e versão exata.
+- `recovery-actions-isolado.py`: nove cenários desde pacote persistido: UNKNOWN com rejected legado, confirmado com resposta perdida, falha GET, ausência sem status definitivo, conflito, readback falhando após confirmação, legado sem ID/exportação, offline/reconexão, saída/sem sessão com pacote intacto. Duplo clique em consultar = um GET, zero commits; confirmação em versão 2 relida em versão 3; recebimento independente preservado. Captura/reload inspecionados. Screenshots de pacote/conflito examinadas.
+- `save-confirmation-isolado.py`: regressão global/isolado: revisão→voltar sem envio, confirmação única/duplo clique, resposta perdida, offline/reload, edição durante envio, conflito e nova revisão sem envio. Quatro commits apenas no servidor INTERCEPTADO fictício; zero chamadas não previstas/erros.
+- Entradas: navegador isolado com URL `supplierId=old-hidden&group=legacy`, único seletor restante na região do topo, 16 detalhes horizontais, vertical, simulação, 1366/1920/390, zero commits, composição intacta. Estado legado em memória coberto no teste `generalFlow`; não limpamos preferências de outros módulos.
+- Compilação automática verificada. Nenhuma publicação, importação, alteração financeira real, consulta ao incidente real ou recarga de navegador ativo.
+
+## Limites do incidente real
+Reprodução é fictícia: não lemos nem finalizamos o título de um centavo, não identificamos seu requestId, não comprovamos confirmação/rejeição hospedada. Pacote legado sem ID/captura válida exige recuperação por evidência; exportação não substitui auditoria. O GET existente só retorna confirmação auditada ou ausência; sem contrato de status definitivo não podemos afirmar “não executado” nem autorizar novo envio. Duas abas simultâneas e falhas reais de storage não exercitadas nesta rodada; locks existentes preservados. Não foram removidos snapshots, auditoria, proteções, organizações ou permissões.

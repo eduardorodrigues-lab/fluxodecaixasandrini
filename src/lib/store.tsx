@@ -16,6 +16,7 @@ import { migrateSims, purgeUser, scopeKey, type SimStore } from "./session";
 import { NORMALIZATION_REVISION, reconcileReceipt } from './commitReceipt';
 import { bounded, pollConfirmation, type OperationPhase } from './saveRecovery';
 import { operationReview } from './operationReview';
+import { confirmationBlockReason, definitiveRejection } from './recoveryActions';
 import { measureSavePhase } from './saveTiming';
 setAutoFreeze(false);
 // Rascunho do fluxo real = lista de alterações (antes/depois por registro); a tela aplica sobre a base atual.
@@ -56,7 +57,7 @@ interface Ctx {
   update: (fn: (d: ScenarioData) => void) => string | null;
   draft: ScenarioData | null; draftBaseVersion: number | null; baseMoved: boolean; changes: Change[]; discardDraft: () => void; commitDraft: () => Promise<void>;
   saveOperation: (op: ReviewedOperation) => Promise<void>; saveSimulationOperation: (before: ScenarioData, ops: Change[]) => string | null;
-  globalReview: ReviewedOperation | null; closeGlobalReview: () => void; checkPendingOperation: () => Promise<void>;
+  globalReview: ReviewedOperation | null; closeGlobalReview: () => void; checkPendingOperation: () => Promise<void>; confirmationChecking: boolean;
   pendingOperation: ReviewedOperation | null; abandonOperation: () => Promise<void>;
   reconcileReceiptDraft: () => Promise<boolean>;
   prepareReceiptOperation: () => ReturnType<typeof receiptOperation>;
@@ -84,6 +85,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [protectErr, setProtectErr] = useState("");
   const inflight = useRef(false);
+  const checkingRef = useRef(false);
+  const [confirmationChecking, setConfirmationChecking] = useState(false);
   const restored = useRef(new Set<string>());
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveMsg, setSaveMsg] = useState("");
@@ -310,11 +313,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const stored=await loadDraft<ReviewedOperation>('operation:'+scope);
       if(stored && stored.requestId!==op.requestId)throw new Error('Outra aba tem uma operação em confirmação. Preenchimento preservado; confira essa operação antes de enviar.');
       const captured=stored ?? operationRef.current ?? op;
-      if(captured.rejected)throw new Error('Envio recusado. Libere o pacote para nova revisão; nenhum reenvio.');
+      if(captured.rejected && confirmedVersion === undefined)throw new Error('Envio recusado. Consulte o resultado ou revise o conflito comprovado; nenhum reenvio.');
       if(stored && !stored.phase && !stored.confirmation)captured.phase='unknown';
       try { await runSaveOperation(captured,confirmedVersion); }
       finally { // Inform the originating form without modifying its immutable submitted payload.
         op.rejected=captured.rejected ?? false;
+        if(captured.confirmation)op.confirmation=captured.confirmation;
         if(captured.conflicts)op.conflicts=captured.conflicts;
         if(captured.phase)op.phase=captured.phase;
       }
@@ -329,15 +333,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const abandonOperation = async () => {
     if (!scope || inflight.current) return;
     const op=operationRef.current;
-    if(op && !op.rejected) {setSaveState('error');setSaveMsg('Resultado ainda desconhecido. Tente novamente a mesma operação para conferir antes de liberá-la.');return;}
+    if(op && !definitiveRejection(op)) {setSaveState('error');setSaveMsg('Resultado ainda desconhecido. Consulte o resultado antes de revisar; pacote e histórico preservados.');return;}
     if(op) {
       const current=sessionRef.current;
       const next:OpsSession={scope,baseVersion:official.version,requestId:uuid(),ops:mergeOps(op.ops,current?.scope===scope?current.ops:[]),submissionModel:'reviewed'};
+      // Retain the exact rejected capture/requestId even after moving edits back to review.
+      await saveDraftLocal('operation-archive:'+scope+':'+op.requestId,op);
       await saveDraftLocal('draft:'+scope,next);setSession(next);
     }
     await clearDraftLocal("operation:" + scope); operationRef.current = null; setPendingOperation(null);
     if(op?.conflicts)setConflicts(op.conflicts);
     void qc.invalidateQueries({ queryKey: ["official", user?.id, selOrg] });
+  };
+
+  // Manual recovery is a read, never saveOperation without a confirmed version.
+  const checkPendingOperation = async () => {
+    const op = operationRef.current;
+    if (!op) return;
+    const reason = confirmationBlockReason(op, { authenticated: !!user, authorized: official.status === 'ready' && op.orgId === official.orgId && op.scope === `${user?.id}:${official.orgId}` && active.isBase && canEdit, busy: inflight.current || checkingRef.current, online: typeof navigator === 'undefined' || navigator.onLine });
+    if (reason) { setSaveMsg(reason); return; }
+    checkingRef.current = true; setConfirmationChecking(true);
+    try {
+      const result = op.confirmation ?? await bounded(checkRequest({ data: { orgId: op.orgId, requestId: op.requestId } }), 5000);
+      if (!result) {
+        setSaveState('error'); setSaveMsg('A consulta não encontrou confirmação. Isso não comprova que o envio terminou ou não ocorreu. Consulte novamente mais tarde; pacote e rascunho mantidos, sem novo envio.'); return;
+      }
+      // The same original request is reconciled, never a new ID or an old snapshot.
+      await saveOperation(op, result.version);
+    } catch (e) {
+      setSaveState('error');
+      setSaveMsg(op.confirmation ? 'Gravação confirmada; a atualização da tela falhou. Consulte novamente para atualizar sem reenviar.' : `Não foi possível consultar o resultado. Verifique a conexão ou entre novamente se o acesso expirou. ${(e as Error).message} Pacote e preenchimento preservados; nenhum novo envio.`);
+    } finally { checkingRef.current = false; setConfirmationChecking(false); }
   };
 
   // Global Save only captures a review. Submission shares the isolated authoritative path.
@@ -396,7 +422,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     base, active, sims, allSims, ui, canEdit,
     setUi: (p) => setUiS((u) => ({ ...u, ...p })),
     setActive: (id) => mutLocal((s) => { s.activeId = id; }),
-    globalReview, closeGlobalReview:()=>setGlobalReview(null), checkPendingOperation:async()=>{const op=operationRef.current;if(op)await saveOperation(op);},
+    globalReview, closeGlobalReview:()=>setGlobalReview(null), checkPendingOperation, confirmationChecking,
     saveOperation, saveSimulationOperation, pendingOperation: pendingOperation?.scope === `${user?.id}:${official.orgId}` ? pendingOperation : null, abandonOperation,
     update, draft, draftBaseVersion: cur?.baseVersion ?? null, baseMoved: !!cur && cur.baseVersion !== official.version, changes, discardDraft, commitDraft, saveState, saveMsg, conflicts, resolveConflict, protectErr,
     reloadOfficial: () => { qc.invalidateQueries({ queryKey: ["official"] }); },

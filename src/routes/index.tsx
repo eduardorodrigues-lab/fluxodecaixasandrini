@@ -1,6 +1,6 @@
 import { OriginNote } from "@/components/OriginNote";
 import { presentLabel } from "@/lib/originText";
-import { supplierIdentityOptions } from "@/lib/supplierIdentity";
+import { generalFlow } from "@/lib/generalFlow";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { DateInput, MoneyInput } from "@/components/kit";
@@ -31,7 +31,7 @@ export const Route = createFileRoute("/")({
 function FluxoPage() {
   const { active, ui, setUi, update } = useApp();
   const data = active.data;
-  const res = useMemo(() => computeFlow(data, { start: ui.start, end: ui.end, filter: { supplierId: ui.supplierId, group: ui.group } }), [data, ui.start, ui.end, ui.supplierId, ui.group]);
+  const res = useMemo(() => generalFlow(data, ui), [data, ui.start, ui.end]);
   const rows = useMemo(() => buildRows(res, data.categories, ui.flowMode), [res, data.categories, ui.flowMode]);
   const [open, setOpen] = useState<Set<string>>(new Set(["entradas", "saidas", "compras", "despesas"]));
   const [sel, setSel] = useState<{ row: Row; i: number } | null>(null);
@@ -45,7 +45,6 @@ function FluxoPage() {
   const visible = rows.filter((r) => { let p = r.parent; while (p) { if (!open.has(p)) return false; p = rows.find((x) => x.key === p)?.parent; } return true; });
   const hasKids = (k: string) => rows.some((r) => r.parent === k);
   const toggle = (k: string) => setOpen((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
-  const groups = [...new Set(data.suppliers.map((s) => s.group))];
   const k = res.kpis;
 
   return (
@@ -61,14 +60,11 @@ function FluxoPage() {
           </div>
         </div>
       </header>
-      <div aria-label="Filtros do fluxo" className="grid grid-cols-2 items-end gap-x-2 gap-y-1.5 lg:grid-cols-[9rem_9rem_minmax(10rem,1fr)_8rem_minmax(13rem,1fr)]">
+      <div aria-label="Filtros do fluxo" className="grid grid-cols-2 items-end gap-x-2 gap-y-1.5 lg:grid-cols-[9rem_9rem_minmax(13rem,24rem)]">
         <div><div className="lbl">De</div><DateInput value={ui.start} maxDate={ui.end} onChange={(v) => v && setUi({ start: v })} /></div>
         <div><div className="lbl">Até</div><DateInput value={ui.end} minDate={ui.start} onChange={(v) => v && setUi({ end: v })} /></div>
-        <div className="min-w-0"><div className="lbl">Fornecedor</div><select className="inp w-full" value={ui.supplierId} onChange={(e) => setUi({ supplierId: e.target.value })}><option value="">Todos</option>{supplierIdentityOptions(data).map((s) => <option key={s.key} value={s.key}>{s.name}{s.pending ? " · vínculo pendente" : ""}</option>)}</select></div>
-        <div className="min-w-0"><div className="lbl">Grupo</div><select className="inp w-full" value={ui.group} onChange={(e) => setUi({ group: e.target.value })}><option value="">Todos</option>{groups.map((g) => <option key={g}>{g}</option>)}</select></div>
         <div className="col-span-2 min-w-0 lg:col-span-1"><div className="lbl">Apresentação das saídas</div><select className="inp w-full" value={ui.flowMode} onChange={(e) => setUi({ flowMode: e.target.value as "consolidada" | "etapa" })}><option value="consolidada">Consolidada por subgrupo</option><option value="etapa">Separada por etapa (planejada/efetuada)</option></select></div>
-        {res.filtered && <span className="col-span-2 text-xs text-warning-foreground lg:col-span-5">Filtro ativo: saldos consideram só as saídas filtradas</span>}
-        {ui.start < data.params.startDate && <span className="col-span-2 text-xs text-warning-foreground lg:col-span-5">Fluxo começa em {fmtDate(data.params.startDate)}</span>}
+        {ui.start < data.params.startDate && <span className="col-span-2 text-xs text-warning-foreground lg:col-span-3">Fluxo começa em {fmtDate(data.params.startDate)}</span>}
       </div>
       <div aria-label="Indicadores do fluxo" className="mb-2 mt-2 grid grid-cols-2 gap-x-4 gap-y-1 border-y border-border py-1.5 md:grid-cols-4">
         <Kpi label="Saldo final do período" v={k.saldoFinal} />

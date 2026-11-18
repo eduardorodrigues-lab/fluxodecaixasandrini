@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { OperationReviewTable } from './OperationReviewTable';
 import { operationReview } from '@/lib/operationReview';
 import { operationPhaseLabel } from '@/lib/saveRecovery';
+import { confirmationBlockReason, definitiveRejection } from '@/lib/recoveryActions';
 
 const NAV = [
   { to: "/", label: "Fluxo", icon: Activity },
@@ -27,13 +28,21 @@ const NAV = [
 const NAV_KEY = "fluxo.nav.hidden";
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { orgs, user, authReady, signOut, official, base, active, sims, setActive, draft, saveState, saveMsg, canEdit, changes, commitDraft, discardDraft, conflicts, resolveConflict, protectErr, pendingOperation, saveOperation, abandonOperation, globalReview, closeGlobalReview, checkPendingOperation } = useApp();
+  const { orgs, user, authReady, signOut, official, base, active, sims, setActive, draft, saveState, saveMsg, canEdit, changes, commitDraft, discardDraft, conflicts, resolveConflict, protectErr, pendingOperation, saveOperation, abandonOperation, globalReview, closeGlobalReview, checkPendingOperation, confirmationChecking } = useApp();
   const [viewPacket,setViewPacket] = useState(false);
   const [confirming,setConfirming] = useState(false);
   const [reviewError,setReviewError] = useState('');
   const simMode = !active.isBase;
   const otherChanges=changes.filter(c=>c.entity!=='Recebimento');
   const receiptCount=changes.length-otherChanges.length;
+  const [online, setOnline] = useState(true);
+  useEffect(() => { const sync = () => setOnline(navigator.onLine); sync(); window.addEventListener('online',sync); window.addEventListener('offline',sync); return () => { window.removeEventListener('online',sync); window.removeEventListener('offline',sync); }; }, []);
+  const checkReason = pendingOperation ? confirmationBlockReason(pendingOperation, {authenticated:!!user, authorized:official.status==='ready' && canEdit && active.isBase && pendingOperation.orgId===official.orgId, busy:saveState==='saving' || confirmationChecking, online}) : '';
+  const exportPacket = () => {
+    if (!pendingOperation) return;
+    const url=URL.createObjectURL(new Blob([JSON.stringify(pendingOperation,null,2)],{type:'application/json'}));
+    const link=document.createElement('a');link.href=url;link.download='operacao-preservada.json';link.click();URL.revokeObjectURL(url);
+  };
   // Barra lateral ocultável: a preferência fica só neste navegador (não é dado da organização).
   const [navHidden, setNavHidden] = useState(false);
   useEffect(() => {
@@ -104,18 +113,24 @@ export function AppShell({ children }: { children: ReactNode }) {
         {active.isBase && pendingOperation && <div role="status" className="flex flex-wrap items-center gap-2 border-b border-border bg-card px-4 py-2 text-sm">
           <span>{operationPhaseLabel[pendingOperation.phase ?? 'unknown']}: {pendingOperation.ops.length} registro(s). Outras pendências continuam separadas.</span>
           <Button size="sm" variant="outline" onClick={()=>setViewPacket(true)}>Ver alterações</Button>
-          <Button size="sm" variant="outline" disabled={saveState === "saving" || !!pendingOperation.rejected} onClick={() => void checkPendingOperation().catch(() => {})}>Conferir confirmação</Button>
-          <Button size="sm" variant="outline" disabled={saveState === "saving" || !pendingOperation.rejected} title={!pendingOperation.rejected ? 'Resultado desconhecido não permite liberar nem descartar este pacote.' : undefined} onClick={async () => { if(await askConfirm("A operação rejeitada será preservada nas alterações não salvas para nova revisão. Nada será gravado; o formulário e outras pendências permanecem.", {title:"Revisar operação pendente?",action:"Liberar para nova revisão"})) await abandonOperation(); }}>Liberar para nova revisão</Button>
+          <Button size="sm" variant="outline" disabled={!!checkReason} onClick={() => void checkPendingOperation()}>{confirmationChecking ? 'Consultando resultado…' : 'Consultar resultado'}</Button>
+          {checkReason && <p className="basis-full text-xs">{checkReason}</p>}
+          {pendingOperation.legacyUncertain || !pendingOperation.ops.length ? <p className="basis-full text-xs">Pacote legado: faltam dados suficientes para comprovar o envio ou sua captura original. Exporte os dados preservados para recuperação; nenhuma nova gravação será autorizada por ausência de confirmação.</p> : null}
+          <Button size="sm" variant="outline" onClick={exportPacket}>Exportar pacote preservado</Button>
+          {definitiveRejection(pendingOperation) && <><Button size="sm" variant="outline" disabled={saveState === 'saving' || confirmationChecking} onClick={async () => { if(await askConfirm("O servidor recusou esta operação. As alterações serão mantidas no rascunho para comparar com o atual; a auditoria não será apagada. Nenhuma gravação ocorrerá agora.", {title:"Revisar operação recusada?",action:pendingOperation.phase==='conflict'?'Revisar conflito':'Voltar à edição da alteração recusada'})) await abandonOperation(); }}>{pendingOperation.phase==='conflict'?'Revisar conflito':'Voltar à edição da alteração recusada'}</Button><p className="basis-full text-xs">Somente a recusa comprovada permite nova revisão. O histórico permanece; rascunhos e outras pendências não são descartados.</p></>}
+          {!definitiveRejection(pendingOperation) && <p className="basis-full text-xs">Você pode continuar navegando. O pacote permanece protegido; nenhum descarte, nova revisão ou reenvio é permitido enquanto o resultado não for confirmado.</p>}
         </div>}
         {globalReview && !pendingOperation && <DecisionWindow wide title="Revisar alterações não salvas" description="Somente as alterações abaixo serão enviadas. Recebimentos e edições posteriores permanecem separados." footer={<>
           <Button variant="outline" disabled={confirming} onClick={closeGlobalReview}>Voltar à edição</Button>
           <Button disabled={confirming} onClick={async()=>{if(confirming)return;setConfirming(true);setReviewError('');try{await saveOperation(globalReview);}catch(e){setReviewError((e as Error).message);}finally{setConfirming(false);closeGlobalReview();}}}>Confirmar e salvar</Button>
         </>}><OperationReviewTable rows={globalReview.reviewRows ?? operationReview(globalReview.ops,active.data)} />{reviewError && <p role="alert">{reviewError}</p>}</DecisionWindow>}
-        {viewPacket && pendingOperation && <DecisionWindow wide title="Alterações do pacote enviado" description="Somente leitura. Este é o pacote capturado; abrir esta janela não envia nem altera informações." footer={<Button variant="outline" onClick={()=>setViewPacket(false)}>Fechar</Button>}><OperationReviewTable rows={pendingOperation.reviewRows ?? operationReview(pendingOperation.ops,active.data)} /></DecisionWindow>}
+        {viewPacket && pendingOperation && <DecisionWindow wide title="Alterações do pacote enviado" description="Somente leitura. Este é o pacote capturado; abrir esta janela não envia nem altera informações." footer={<><Button variant="outline" onClick={exportPacket}>Exportar pacote preservado</Button><Button variant="outline" onClick={()=>setViewPacket(false)}>Fechar</Button></>}><OperationReviewTable rows={pendingOperation.reviewRows ?? operationReview(pendingOperation.ops,active.data)} /></DecisionWindow>}
         {conflicts.length > 0 && <DecisionWindow wide title="Conflito na mesma informação" description="Outra pessoa salvou alterações nestes registros depois que você começou. Escolha, para cada um, qual versão manter. Nada foi sobrescrito." footer={<span className="text-xs text-muted-foreground">{conflicts.length} pendente(s)</span>}>
           {conflicts.map((c) => { return (
             <div key={c.change.entity + c.change.id} className="rounded border border-border p-2">
               <p className="mb-1 font-semibold">{c.change.entity}{c.server == null ? " · excluído por outra pessoa" : c.change.after == null ? " · você excluiu" : ""}</p>
+              <h3 className="font-semibold">Anterior → solicitado</h3><OperationReviewTable rows={operationReview([c.change],active.data)} />
+              <h3 className="font-semibold">Atual no banco → solicitado</h3>
               <OperationReviewTable rows={operationReview([{...c.change,before:c.server}],active.data)} />
               <div className="mt-1 flex justify-end gap-1"><button className="btn" disabled={!!pendingOperation} onClick={() => resolveConflict(c, "server")}>Manter a do banco</button><button className="btn btn-primary" disabled={!!pendingOperation} onClick={() => resolveConflict(c, "mine")}>Manter a minha</button></div>
             </div>); })}
