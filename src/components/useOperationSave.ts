@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { useApp } from '@/lib/store';
 import { diffData } from '@/lib/diff';
 import type { ScenarioData } from '@/lib/engine/types';
-import { operationDependencies, type ReviewedOperation } from '@/lib/operationSave';
+import { type ReviewedOperation } from '@/lib/operationSave';
 import { supplierOperation } from '@/lib/supplierOperation';
 import { askConfirm } from '@/lib/decisions';
 import { produce } from 'immer';
@@ -31,7 +31,7 @@ export function useOperationSave() {
           const started=performance.now();
           const prepared=supplierOperation(before,after,app.changes,supplierIds);
           measureSavePhase('prepare',started);
-          if(prepared.recovered.length && !await askConfirm(`Esta operação inclui somente o fornecedor e suas condições necessários: ${prepared.recovered.map(p=>{const s=after.suppliers.find(s=>s.id===p.id);return s?.name ?? p.id;}).join('; ')}. Outras pendências permanecem separadas. Valores e datas do lançamento não serão gerados novamente.`,{title:'Revisar cadastros necessários',action:'Confirmar cadastros e operação'})) return false;
+          if(prepared.recovered.length && !await askConfirm(`Esta operação inclui somente o fornecedor e suas condições necessários: ${prepared.recovered.map(p=>{const s=after.suppliers.find(s=>s.id===p.id);return s?.name ?? "Fornecedor não identificado";}).join('; ')}. Outras pendências permanecem separadas. Valores e datas do lançamento não serão gerados novamente.`,{title:'Revisar cadastros necessários',action:'Confirmar cadastros e operação'})) return false;
           request.current = { scope: context.current.scope, orgId: app.official.orgId, requestId: crypto.randomUUID(), ops:prepared.ops, recoveredPending:prepared.recovered, dependencies:prepared.dependencies };
         }
         await app.saveOperation(request.current);

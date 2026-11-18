@@ -27,3 +27,30 @@
 - Sem novo benchmark de volume ou comparação de performance; a garantia verificada é ausência de download obrigatório no caminho canônico e espera limitada nos caminhos excepcionais, não ganho de segundos no banco.
 - Duas abas simultâneas, falhas reais de IndexedDB, todos os módulos globais individualmente e login completo não exercitados nesta rodada. Locks/escopos conferidos por código; comportamento comum exercitado em global e isolado.
 - Pendência muito antiga produzida pelo caminho global antes de existir pacote persistido pode ter somente requestId e rascunho editável, sem prova do payload enviado. Auditoria confirmada pode reconciliar por ID; ausência não distingue "nunca enviado" de "ainda em andamento". Não é possível reconstruir pacote histórico exato nem provar resultado hospedado desse caso com os dados disponíveis; abertura de nova revisão bloqueada conservadoramente quando IDs legados não têm confirmação encontrada, sem apagar valores. Novos rascunhos recebem marcador do modelo revisado para não serem confundidos com esses legados. Nenhum snapshot é restaurado.
+
+## Varredura adicional dos acessos — leitura nesta continuação
+Regra: antes de enviar, mostrar o que será alterado; só informar salvo após confirmação; pacote desconhecido não vira novo envio nem descarte, preservando outras pendências.
+
+| Acesso lido | Situação |
+|---|---|
+| Barra global / AppShell / commitDraft | Revisão antes de envio, pacote protegido, resultado explícito; exercitado em navegador fictício. |
+| Recebimentos: grade, novo, contas, residual e exclusão | Alterações locais; revisão isolada compartilhada; navegador fictício cobriu Geral, envio/recuperação. |
+| Fluxo vertical, Histórico/restauração | `update()` cria rascunho; segue revisão Recebimentos/global; não afirma gravação imediata. |
+| Novo fornecedor / Gerenciar fornecedor e condições | Revisão própria e `useOperationSave`; compartilha limite e recuperação. Conferido por leitura, não repetido no navegador nesta continuação. |
+| Novo Planejado/Efetivado / NovaNota / notas múltiplas | Revisão própria, confirmação via `useOperationSave`; limpeza do formulário só após sucesso. |
+| Editar planejamento / efetivação seletiva / Gerenciar | Revisões próprias antes/depois; mesmo serviço protegido; sem efeito diário. |
+| Parcela / dados da nota / prorrogação / efetivação antiga | Revisões pontuais, mesma confirmação protegida. |
+| Pagamentos e estornos em Lançamentos / Gerenciar | Pagamento tem revisão; estorno solicita motivo/decisão antes de operação isolada. Usa mesma proteção e confirmação; nenhum pagamento existente modificado nesta rodada. |
+| Bancos: contas, cartões, transferências, faturas, saldos | Caminhos `update()` continuam rascunho/global; agora recebem revisão global antes da gravação. Não alterada regra bancária. |
+| Metas / categorias / plataformas / conta padrão | Confirmações locais criam rascunho; envio pelo global revisado. Mantidas telas/regras, sem efeito diário na revisão global. |
+| Consultas / Dashboard / PVA | Consulta ou abre gerenciamento compartilhado; não há commit próprio alternativo. |
+| Inline fornecedor/condição | Apenas formulário local; entra no lançamento revisado. |
+| Simulações | Local, não promovida nem enviada ao banco; regra de confirmação financeira oficial não se aplica. |
+| useOperationSave / supplierOperation / operationSave | RequestId estável, pendências seletivas, retry passa pelo pacote armazenado e consulta read-only; payload não regenerado. |
+| draftStore / store recuperação | Chaves existentes por usuário/org, pacote protegido; não limpa armazenamento global. Legado sem captura/resultado conhecido permanece bloqueado. |
+| getOfficial / listAudit / checkCommitRequest / commitOps | Autenticação e membership; antes/depois/dependências; consulta idempotente falha fechada; patch versionado. |
+| commitOfficial antigo | Sem chamador encontrado; servidor valida papel/versão. Nenhum novo acesso criado. |
+| SQL commit_official (migração 0000) | Lock, membership editor/owner, versão e requestId duplicado, audit_log com snapshot_before; definição lida, inalterada. |
+| Processos automáticos/importação | Busca por cron/schedule/commitOps/commitOfficial não encontrou job automático financeiro; importadores sem envio automático. Não importada planilha. |
+
+Esta varredura é leitura, não execução individual de cada formulário. Mantidos os limites acima: causa hospedada, duas abas simultâneas, armazenamento real e legado sem captura não comprovados. Nenhuma mutação de registros liquidados/enviados/encerrados ou de permissões/configurações.
