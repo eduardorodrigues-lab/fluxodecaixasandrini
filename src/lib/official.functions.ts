@@ -3,19 +3,20 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { normalizeData } from "./engine/actions";
 import { applyOps, diffData, summarize, type Change } from "./diff";
 import type { ScenarioData } from "./engine/types";
-import { pickOrg } from "./team";
+import { pickOrg, SHARED_ORG_ID } from "./team";
 import { dependenciesMatch, type ReviewedOperation } from './operationSave';
 
 // Base OFICIAL compartilhada: leitura sob RLS do próprio usuário; gravação apenas via servidor
 // (verifica papel, versão esperada, idempotência e grava auditoria antes/depois).
 // Organização escolhida EXPLICITAMENTE (orgId); sem escolha, só resolve se única ou a própria — nunca arbitrária.
 async function myOrg(sb: { from: (t: string) => any }, userId: string, orgId?: string | null) { // eslint-disable-line @typescript-eslint/no-explicit-any
+  if (orgId && orgId !== SHARED_ORG_ID) throw new Error("Este app utiliza somente a organização oficial. Rascunhos de outra organização não podem ser enviados aqui.");
   const { data, error } = await sb.from("org_members").select("org_id, role, organizations(name, created_by)").eq("user_id", userId);
   if (error) throw new Error("Falha ao ler organização.");
   const list = ((data ?? []) as { org_id: string; role: string; organizations: { name: string; created_by: string } | null }[]).map((m) => ({ ...m, created_by: m.organizations?.created_by ?? null }));
   const m = pickOrg(list, userId, orgId);
   if (m === "choose") throw new Error("Selecione a organização.");
-  if (!m) throw new Error(orgId ? "Sem acesso a esta organização." : "Usuário sem organização.");
+  if (!m) throw new Error("Sem acesso ao Grupo Sandrini oficial. Solicite acesso ou convite ao administrador.");
   return m;
 }
 const orgIn = (i: { orgId?: string | null } | undefined) => { const o = i?.orgId ?? null; if (o !== null && !/^[0-9a-f-]{36}$/i.test(o)) throw new Error("Entrada inválida."); return { orgId: o }; };

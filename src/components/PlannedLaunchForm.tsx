@@ -5,26 +5,28 @@ import { PlanVsActualDetail } from "@/components/PlanVsActual";
 import { useOperationSave } from "./useOperationSave";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { CatSubFields, ConditionPicker, Field, Section, SidePanel, SupplierSearch, guardClose } from "./NotaPanel";
+import { CatSubFields, ConditionPicker, Field, Section, SidePanel, SupplierSearch, guardClose, type SaveAs } from "./NotaPanel";
 import { DateInput, MoneyInput } from "./kit";
 import { useApp, uid } from "@/lib/store";
 import { applyManaged, managedDocument, flowImpact, validateManualRemaining, type LaunchRef, type ManagedParcel } from "@/lib/manageLaunch";
 import { eligiblePlanned } from "@/lib/manageLaunchPresentation";
 import { applySuggestion, batchPreview, effectivateBatch, duplicateBatchDocuments, heldNotes, type BatchNote, type RestLine, type Suggestion } from "@/lib/efetivacao";
 import { planVsActual } from "@/lib/planVsActual";
-import { generateParcels } from "@/lib/notas";
+import { generateParcels, saveSupplierCondition } from "@/lib/notas";
 import { supplierIdentity } from "@/lib/supplierIdentity";
 import { paymentsFor, splitCents, titleStatus } from "@/lib/engine/engine";
 import { fmtBRL } from "@/lib/money";
 import { fmtDate } from "@/lib/dates";
 import { todaySP } from "@/lib/engine/actions";
 import { HistoryView } from "./HistoryView";
-import type { ScenarioData } from "@/lib/engine/types";
+import type { ScenarioData, Supplier } from "@/lib/engine/types";
 
 export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onClose: () => void }) {
   const { active, official, canEdit, user, audit, allSims } = useApp();
   const saving = useOperationSave();
-  const d = active.data;
+  const [localSuppliers,setLocalSuppliers]=useState<Supplier[]>([]);
+  const [saveCondition,setSaveCondition]=useState<SaveAs|null>(null);
+  const d = useMemo(()=>({...active.data,suppliers:[...active.data.suppliers,...localSuppliers.filter(s=>!active.data.suppliers.some(x=>x.id===s.id))]}),[active.data,localSuppliers]);
   const [initial, setInitial] = useState(() => structuredClone(managedDocument(d, launch)));
   const [context, setContext] = useState({ id: active.id, base: active.isBase, org:official.orgId, version:official.version });
   // Known notes saved as planned keep their own panels/IDs; generic rows exclude them to avoid duplicated forecasts.
@@ -57,7 +59,9 @@ export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onCl
   const [review, setReview] = useState<{ before: ScenarioData; data: ScenarioData; impact: ReturnType<typeof flowImpact> } | null>(null);
   const [effId, setEffId] = useState(() => `ef-${uid()}`);
   const protection = useFormDraft({user:user?.id??"",org:official.orgId,mode:active.id,form:"planned",record:launch.id},
-    {initial,context,savedNotes,initialRows,rows,fields,total,baseDate,kind,selected,allNotes,showNotes,remaining,reason,mode,effId}, v=>{
+    {initial,context,savedNotes,initialRows,rows,fields,total,baseDate,kind,selected,allNotes,showNotes,remaining,reason,mode,effId,localSuppliers,saveCondition}, v=>{
+      setLocalSuppliers(v.localSuppliers??[]);
+      setSaveCondition(v.saveCondition??null);
       setInitial(v.initial);setContext(v.context);setSavedNotes(v.savedNotes);setHeldKeys(new Set(v.savedNotes.flatMap(n=>n.parcels.map(p=>p.id))));setInitialRows(v.initialRows);
       setRows(v.rows);setFields(v.fields);setTotal(v.total);setBaseDate(v.baseDate);setKind(v.kind);setSelected(v.selected);setNotes(v.allNotes);setShowNotes(v.showNotes);setRemaining(v.remaining);setReason(v.reason);setMode(v.mode);setEffId(v.effId);
       setChecked(false);setReview(null);setScopeConfirmed(false);setDuplicateConfirmed(false);
@@ -143,7 +147,7 @@ export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onCl
     effectivateBatch(next,{id:effId,plannedId:launch.id,at:new Date().toISOString(),by:user?.email??"",selected,notes:effNotes.map(n=>({...n,parcels:n.parcels.map(({selected:_s,...p})=>p)})),rest:restLines.map(({where:_w,...p})=>p),remaining,confirmed:checked,reason,scopeConfirmed,duplicateConfirmed,reference:refValue});
 
   };
-  const prepare = () => { try { const next=structuredClone(d); build(next); setReview({ before:d, data:next, impact:flowImpact(d,next) }); setError(""); } catch(e) { setError((e as Error).message); } };
+  const prepare = () => { try { const next=structuredClone(d); build(next); if(saveCondition)saveSupplierCondition(next,fields.supplierId,saveCondition.terms,new Date().toISOString(),saveCondition.name,user?.email??'',saveCondition.from); next.suppliers=next.suppliers.filter(s=>!localSuppliers.some(l=>l.id===s.id) || s.id===fields.supplierId); setReview({ before:active.data, data:next, impact:flowImpact(active.data,next) }); setError(""); } catch(e) { setError((e as Error).message); } };
   const table = (ps: ManagedParcel[], effective = false) => <table className="tbl vertical-parcels" aria-label={effective ? "Parcelas reais" : "Parcelas previstas"}><thead><tr>{!real && <th>Selecionar</th>}<th>Parcela</th><th>Número do boleto</th><th>Valor</th><th>Vencimento</th><th>Prorrogar para</th><th>Situação / ações</th></tr></thead><tbody>{ps.map(p => <tr key={p.key} className={p.key===launch.parcel ? "launch-focus" : ""}>
     {!real && <td><input type="checkbox" aria-label={`Selecionar parcela ${p.label}`} checked={selected.includes(p.key)} disabled={!canEdit || !eligible.some(e=>e.key===p.key)} onChange={e=>setSelected(e.target.checked ? [...selected,p.key] : selected.filter(k=>k!==p.key))}/></td>}
     <td>{p.label}<small className="block">{initialRows.some(b=>b.key===p.key) ? zeroGeneric.includes(p) ? "R$ 0,00 · substituída pelo detalhamento das notas" : "ID preservado" : "Nova linha"}</small></td>
@@ -161,6 +165,8 @@ export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onCl
     {error && <p ref={errRef} tabIndex={-1} role="alert" className="text-destructive">{error}</p>}
     {review ? <>
       <p>Pedido {fields.purchaseCode || "Não informado"} · Documento do planejamento <b>{fields.document || "Não informado"}</b></p>
+      {localSuppliers.filter(s=>s.id===fields.supplierId).map(s=><p key={s.id}>Cadastrar fornecedor <b>{s.name}</b> junto desta operação; cancelar não cria cadastro.</p>)}
+      {saveCondition && <p>Cadastrar condição <b>{saveCondition.name}</b> junto desta operação; lançamentos existentes preservados.</p>}
       <table className="tbl"><thead><tr><th>Parcela / escopo</th><th>Valor antes → depois</th><th>Data antes → depois</th><th>Número do boleto antes → depois</th><th>Ação</th></tr></thead><tbody>{rows.map(p=>{const b=initial.parcels.find(b=>b.key===p.key);return <tr key={p.key}><td>{p.label}</td><td>{fmtBRL(b?.amount)} → {fmtBRL(p.status==="cancelado" ? 0 : p.amount)}</td><td>{fmtDate(b?.extension??b?.date)} → {fmtDate(p.extension??p.date)}</td><td>{b?.boletoNumber || "Não informado"} → {p.boletoNumber || "Não informado"}</td><td>{real && selected.includes(p.key) ? "Substituída por nota efetivada" : zeroGeneric.includes(p) ? "Linha genérica R$ 0,00 substituída pelo detalhamento das notas (sem obrigação; histórico preservado)" : !b ? "Nova" : p.status==="cancelado" ? "Cancelada" : JSON.stringify(p)===JSON.stringify(b) ? "Não afetada" : "Alterada"}</td></tr>})}</tbody></table>
       {notes && <Section title="Resumo final da operação"><table className="tbl" aria-label="Resumo final"><tbody>
         <tr><td>Valor de referência</td><td>{refValue===null ? "Não informado" : fmtBRL(refValue)}</td></tr>
@@ -195,8 +201,8 @@ export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onCl
         </Section>
         <Button variant="outline" onClick={()=>{setShowNotes(false);setChecked(false);}}>Voltar à edição do planejamento (notas ficam no rascunho)</Button>
       </> : <>
-        <Section title="Dados gerais"><p className="mb-3 text-warning-foreground">Campos compartilhados afetam este planejamento e suas parcelas, não notas já efetivadas nem outras notas do pedido. Datas base e condição só geram novas datas por ação explícita.</p><fieldset disabled={!canEdit} className="grid gap-3 md:grid-cols-2"><CatSubFields d={d} kind={kind} categoryId={fields.categoryId} onChange={(kind,categoryId)=>{setKind(kind);setFields({...fields,categoryId});}}/><Field full l="Fornecedor"><SupplierSearch d={d} existing value={fields.supplierId} onChange={supplierId=>setFields({...fields,supplierId})}/></Field><Field l="Código do pedido"><input className="inp" value={fields.purchaseCode} onChange={e=>setFields({...fields,purchaseCode:e.target.value})}/></Field><Field l="Documento"><input className="inp" value={fields.document} onChange={e=>setFields({...fields,document:e.target.value})}/></Field><Field full l="Descrição"><input className="inp" value={fields.notes} onChange={e=>setFields({...fields,notes:e.target.value})}/></Field><Field l="Valor total previsto"><MoneyInput value={total} onChange={setTotal}/></Field><Field l="Data base para os prazos"><DateInput value={baseDate} onChange={setBaseDate}/></Field></fieldset></Section>
-        <Section title="Condição de pagamento"><details><summary>Condição de pagamento — aplicar somente por escolha explícita</summary>{d.suppliers.some(s=>s.id===fields.supplierId) ? <ConditionPicker d={d} supplierId={fields.supplierId} baseDate={baseDate} disabled={!baseDate || total===null || total<=0} onConfirm={c=>{if(total===null || !baseDate)return;const gen=generateParcels(total-priorTotal-sum(heldRows),baseDate,c.terms);const current=rows.filter(p=>p.status!=="cancelado");if(gen.length<current.length){setError("Cancele expressamente as parcelas excedentes antes de aplicar esta condição.");return;}setRows([...rows.map(p=>{const i=current.findIndex(r=>r.key===p.key),g=gen[i];return g ? {...p,amount:g.amount,date:g.date,extension:g.ext} : p;}),...gen.slice(current.length).map((p,i)=>({key:`new-${uid()}`,id:launch.id,label:`${rows.length+i+1} (nova)`,original:0,amount:p.amount,date:p.date,extension:p.ext,status:"ativo",paid:0}))]);setChecked(false);setError("");}}/> : <p>Sem fornecedor cadastrado vinculado; preencha manualmente.</p>}</details></Section>
+        <Section title="Dados gerais"><p className="mb-3 text-warning-foreground">Campos compartilhados afetam este planejamento e suas parcelas, não notas já efetivadas nem outras notas do pedido. Datas base e condição só geram novas datas por ação explícita.</p><fieldset disabled={!canEdit} className="grid gap-3 md:grid-cols-2"><CatSubFields d={d} kind={kind} categoryId={fields.categoryId} onChange={(kind,categoryId)=>{setKind(kind);setFields({...fields,categoryId});}}/><Field full l="Fornecedor"><SupplierSearch d={d} existing allowCreate onCreate={s=>setLocalSuppliers(xs=>[...xs,s])} value={fields.supplierId} onChange={supplierId=>setFields({...fields,supplierId})}/></Field><Field l="Código do pedido"><input className="inp" value={fields.purchaseCode} onChange={e=>setFields({...fields,purchaseCode:e.target.value})}/></Field><Field l="Documento"><input className="inp" value={fields.document} onChange={e=>setFields({...fields,document:e.target.value})}/></Field><Field full l="Descrição"><input className="inp" value={fields.notes} onChange={e=>setFields({...fields,notes:e.target.value})}/></Field><Field l="Valor total previsto"><MoneyInput value={total} onChange={setTotal}/></Field><Field l="Data base para os prazos"><DateInput value={baseDate} onChange={setBaseDate}/></Field></fieldset></Section>
+        <Section title="Condição de pagamento"><details><summary>Condição de pagamento — aplicar somente por escolha explícita</summary>{d.suppliers.some(s=>s.id===fields.supplierId) ? <ConditionPicker d={d} supplierId={fields.supplierId} baseDate={baseDate} disabled={!baseDate || total===null || total<=0} onConfirm={(c,save)=>{if(total===null || !baseDate)return;setSaveCondition(save);const gen=generateParcels(total-priorTotal-sum(heldRows),baseDate,c.terms);const current=rows.filter(p=>p.status!=="cancelado");if(gen.length<current.length){setError("Cancele expressamente as parcelas excedentes antes de aplicar esta condição.");return;}setRows([...rows.map(p=>{const i=current.findIndex(r=>r.key===p.key),g=gen[i];return g ? {...p,amount:g.amount,date:g.date,extension:g.ext} : p;}),...gen.slice(current.length).map((p,i)=>({key:`new-${uid()}`,id:launch.id,label:`${rows.length+i+1} (nova)`,original:0,amount:p.amount,date:p.date,extension:p.ext,status:"ativo",paid:0}))]);setChecked(false);setError("");}}/> : <p>Sem fornecedor cadastrado vinculado; preencha manualmente.</p>}</details></Section>
         <Button disabled={!canEdit || initial.record.status==="cancelado"} onClick={()=>start(fields.document ? rows.map(p=>p.key) : [],false)}>{allNotes?.length ? `Voltar às notas fiscais (${allNotes.length} no rascunho)` : "Adicionar nota fiscal a este pedido"}</Button>
         <Section title="Parcelas previstas"><div className="flex flex-wrap gap-2 mb-3"><Button variant="outline" onClick={()=>setSelected(eligible.map(p=>p.key))}>Selecionar todas as planejadas</Button><Button variant="outline" onClick={()=>setSelected([])}>Limpar seleção</Button><span>{selected.length}/{eligible.length} selecionadas</span><Button disabled={!canEdit || !selected.length} onClick={()=>start(selected,true)}>Efetivar {selected.length} parcela(s) selecionada(s)</Button><Button variant="outline" disabled={!canEdit || !eligible.length} onClick={()=>start(eligible.map(p=>p.key),true)}>Efetivar documento inteiro</Button></div>{table(rows)}<div className="flex flex-wrap gap-2 mt-3"><Button variant="outline" disabled={!canEdit} onClick={()=>add()}>+ Adicionar parcela</Button><Button variant="outline" disabled={!canEdit || total===null || !eligible.length} onClick={()=>{const last=eligible.at(-1);if(last && total!==null)patch(last.key,{amount:(last.amount??0)+total-priorTotal-plannedTotal});}}>Ajustar diferença na última parcela</Button><Button variant="destructive" disabled={!canEdit} onClick={()=>{setRows(ps=>ps.map(p=>({...p,status:"cancelado"})));setTotal(0);setChecked(false);}}>Cancelar planejamento</Button></div></Section>
         <Section title="Resumo"><p>Total previsto atual {fmtBRL(total)} · Já efetivado {fmtBRL(priorTotal)} · Ainda planejado {fmtBRL(plannedTotal)} · Diferença {fmtBRL(total===null ? null : total-priorTotal-plannedTotal)}</p></Section>

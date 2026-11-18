@@ -1,7 +1,7 @@
 import { diffData, opKey, type Change } from './diff';
 import type { ScenarioData } from './engine/types';
 
-export interface ReviewedOperation { scope: string; orgId: string; requestId: string; ops: Change[]; dependencies?: ReturnType<typeof operationDependencies>; rejected?: boolean }
+export interface ReviewedOperation { scope: string; orgId: string; requestId: string; ops: Change[]; recoveredPending?: Change[]; dependencies?: ReturnType<typeof operationDependencies>; rejected?: boolean }
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /** Read dependencies, including newly added payments, must remain unchanged until commit. */
@@ -47,13 +47,15 @@ export function isolateOperation(before: ScenarioData, after: ScenarioData, pend
 }
 
 /** Rebase only edits made locally while this isolated request was pending. */
-export function rebasePending(pending: Change[], sent: Change[]): Change[] {
+export function rebasePending(pending: Change[], sent: Change[], captured: Change[] = []): Change[] {
   return pending.map(p => {
     const saved = sent.find(s => opKey(s) === opKey(p));
     if (!saved) return p;
+    const acknowledged=captured.find(s=>opKey(s)===opKey(p));
+    if(equal(p.after,saved.after) || acknowledged && equal(p.after,acknowledged.after)) return {...p,before:saved.after,after:saved.after};
     if (p.before && p.after && saved.after && typeof p.after === 'object') {
       const after = { ...(saved.after as object) } as Record<string, unknown>;
-      const old = p.before as Record<string, unknown>, edited = p.after as Record<string, unknown>;
+      const old = (acknowledged?.after ?? p.before) as Record<string, unknown>, edited = p.after as Record<string, unknown>;
       for (const k of Object.keys({ ...old, ...edited })) if (!equal(old[k], edited[k])) {
         if (k in edited) after[k] = edited[k]; else delete after[k];
       }

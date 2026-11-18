@@ -23,11 +23,9 @@ export function canRemove(members: { userId: string; role: string }[], target: s
 export const SHARED_ORG_ID = "e197262e-1453-49b0-aad9-878e80602ee4";
 /** Membros da empresa compartilhada não voltam à organização pessoal por preferência antiga. */
 export function pickOrg<T extends { org_id: string; created_by?: string | null }>(list: T[], userId: string, orgId?: string | null): T | "choose" | null {
-  const shared = list.find((m) => m.org_id === SHARED_ORG_ID);
-  if (shared) return shared;
-  if (orgId) return list.find((m) => m.org_id === orgId) ?? null;
-  if (list.length === 1) return list[0] ?? null;
-  return list.find((m) => m.created_by === userId) ?? (list.length ? "choose" : null);
+  // Membership is the authority; names, personal ownership and saved preferences never grant access.
+  void userId; void orgId;
+  return list.find((m) => m.org_id === SHARED_ORG_ID) ?? null;
 }
 export const ACCEPT_MSG: Record<string, string> = {
   ok: "Convite aceito.", revoked: "Convite revogado.", used: "Convite já utilizado.", expired: "Convite expirado.",

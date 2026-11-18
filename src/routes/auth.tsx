@@ -1,9 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
-import { useServerFn } from "@tanstack/react-start";
-import { createFirstOwner, setupNeeded } from "@/lib/team.functions";
 import { useApp } from "@/lib/store";
 
 export const Route = createFileRoute("/auth")({
@@ -20,19 +17,16 @@ export const Route = createFileRoute("/auth")({
 function AuthPage() {
   const { user } = useApp();
   const nav = useNavigate();
-  const fSetup = useServerFn(setupNeeded), fFirst = useServerFn(createFirstOwner);
-  const setup = useQuery({ queryKey: ["setupNeeded"], queryFn: () => fSetup(), enabled: !user });
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   if (user) return <div className="card max-w-md p-4 text-sm">Conectado como <b>{user.email}</b>. <button className="btn btn-primary ml-2" onClick={() => nav({ to: "/" })}>Abrir fluxo de caixa</button></div>;
-  const first = setup.data?.needed === true;
+  const first = false;
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setMsg("");
     try {
-      if (first) { const r = await fFirst({ data: { name, email, password: pass } }); if (r.status !== "ok") { setMsg("Não foi possível criar o primeiro acesso."); return; } }
       const r = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password: pass });
       if (r.error) return setMsg("E-mail ou senha inválidos.");
       nav({ to: "/" });

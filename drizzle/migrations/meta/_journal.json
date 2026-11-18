@@ -29,6 +29,13 @@
       "when": 1794422587860,
       "tag": "0003_service_role_timeout_for_large_commit",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795005750797,
+      "tag": "0004_single_org_no_automatic_personal_org",
+      "breakpoints": true
     }
   ]
 }

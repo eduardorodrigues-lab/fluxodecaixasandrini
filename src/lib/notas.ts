@@ -14,6 +14,7 @@ export interface NoteDraft {
   purchaseCode: string; document: string; description: string; total: number | null; baseDate: string | null;
   parcels: DraftParcel[];
   plannedNotes?: BatchNote[];
+  localSuppliers?: Supplier[];
   plannedId?: string | null; // Efetivado vinculado a uma previsão existente
   closeRest?: boolean;
   condition?: { name: string; terms: (number | null)[] } | null; // condição escolhida/informada (não altera o fornecedor) // vinculado: true = encerra o restante da previsão; false = restante continua planejado
@@ -65,6 +66,10 @@ const extHist = (p: DraftParcel, at: string): ExtensionEvent[] => (p.ext ? [{ fr
 
 /** Grava a nota: Planejada = 1 previsão com parcelas próprias; Efetivado = 1 título por parcela (mesmo noteId). */
 export function applyNote(d: ScenarioData, n: NoteDraft, ids: { id: () => string; at: string }): void {
+  for (const s of n.localSuppliers ?? []) if(s.id===n.supplierId) {
+    if(d.suppliers.some(x=>x.id===s.id)) throw new Error("O fornecedor temporário já existe. Releia e revise antes de salvar; nenhum cadastro será sobrescrito.");
+    d.suppliers.push(structuredClone(s));
+  }
   const errs = validateNote(n);
   if (errs.length) throw new Error(errs.join(" "));
   const supplier = d.suppliers.find((s) => s.id === n.supplierId);

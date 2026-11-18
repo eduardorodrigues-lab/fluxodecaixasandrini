@@ -30,9 +30,9 @@ describe("Compartilhamento (regras espelhadas das funções do servidor)", () =>
   });
   it("organização: seleção explícita; não membro não resolve; múltiplas sem escolha não é arbitrário", () => {
     const l = [{ org_id: "A", created_by: "u" }, { org_id: "B", created_by: "z" }];
-    expect(pickOrg(l, "u", "B")).toEqual(l[1]);
+    expect(pickOrg(l, "u", "B")).toBeNull();
     expect(pickOrg(l, "u", "C")).toBeNull();
-    expect(pickOrg(l, "u")).toEqual(l[0]);
-    expect(pickOrg([{ org_id: "B", created_by: "z" }, { org_id: "C", created_by: "y" }], "u")).toBe("choose");
+    expect(pickOrg(l, "u")).toBeNull();
+    expect(pickOrg([{ org_id: "B", created_by: "z" }, { org_id: "C", created_by: "y" }], "u")).toBeNull();
   });
 });

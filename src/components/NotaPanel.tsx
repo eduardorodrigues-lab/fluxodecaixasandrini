@@ -7,7 +7,7 @@ import { createPortal } from "react-dom";
 import { TermsEditor } from "@/components/TermsEditor";
 import { Button } from "@/components/ui/button";
 import { DateInput, MoneyInput } from "@/components/kit";
-import type { CategoryKind, ScenarioData } from "@/lib/engine/types";
+import type { CategoryKind, ScenarioData, Supplier } from "@/lib/engine/types";
 import { fmtDate } from "@/lib/dates";
 import { fmtBRL } from "@/lib/money";
 import { useApp, uid } from "@/lib/store";
@@ -51,8 +51,7 @@ export const Field = ({ l, full, children }: { l: string; full?: boolean; childr
 /** Fornecedor com busca: clique abre a lista; digitar filtra por nome e apelidos (sem diferenciar
  *  maiúsculas/acentos). Só a seleção (clique ou Enter) vincula o cadastro — texto digitado não vale.
  *  A lista abre em portal acima do painel, sem cortá-lo nem fechá-lo. */
-export function SupplierSearch({ d, value, onChange, existing = false, allowAll = false, placeholder, allowCreate = false, historical = false }: { historical?: boolean; d: ScenarioData; value: string; onChange: (id: string) => void; existing?: boolean; allowAll?: boolean; placeholder?: string; allowCreate?: boolean }) {
-  const { update } = useApp();
+export function SupplierSearch({ d, value, onChange, onCreate, existing = false, allowAll = false, placeholder, allowCreate = false, historical = false }: { onCreate?:(s:Supplier)=>void; historical?: boolean; d: ScenarioData; value: string; onChange: (id: string) => void; existing?: boolean; allowAll?: boolean; placeholder?: string; allowCreate?: boolean }) {
   const [creating, setCreating] = useState<{ name: string; aliases: string; note: string; err: string } | null>(null);
   const cur = (historical ? supplierIdentityOptions(d).find((s) => s.key === value)?.name : d.suppliers.find((s) => s.id === value)?.name) ?? "";
   const [t, setT] = useState(cur);
@@ -85,8 +84,11 @@ export function SupplierSearch({ d, value, onChange, existing = false, allowAll 
   const create = () => {
     if (!creating) return;
     const id = uid(), name = creating.name.trim();
-    const e = update((x) => addSupplier(x, { id, name, note: creating.note.trim(), aliases: creating.aliases.split(",").map((a) => a.trim()).filter(Boolean) }));
-    if (e) { setCreating({ ...creating, err: e }); return; }
+    try {
+      if(!onCreate) throw new Error("Cadastre o fornecedor em Cadastros e confirme antes de selecionar.");
+      const local=structuredClone(d); addSupplier(local,{id,name,note:creating.note.trim(),aliases:creating.aliases.split(",").map(a=>a.trim()).filter(Boolean)});
+      const supplier=local.suppliers.find(s=>s.id===id); if(!supplier)throw new Error("Confira o nome do fornecedor."); onCreate(supplier);
+    } catch(e) {setCreating({...creating,err:(e as Error).message});return;}
     setCreating(null); setT(name); onChange(id);
   };
   return (
@@ -139,11 +141,12 @@ export function CatSubFields({ d, kind, categoryId, onChange }: { d: ScenarioDat
 const termsTxt = (t: (number | null)[]) => t.filter((x) => x !== null).join(", ");
 const parseTerms = (s: string) => s.split(/[,;\s]+/).filter(Boolean).map(Number).filter((n) => Number.isFinite(n));
 
-export function NovaNota({ d, isBase, onCancel, onConfirm, onManagePlanned, saving = false, saveError }: { d: ScenarioData; stage?: "planned" | "committed"; isBase: boolean; onCancel: () => void; onConfirm: (n: NoteDraft, saveAs: SaveAs | null) => boolean | Promise<boolean>; saving?: boolean; saveError?: string; onManagePlanned?: (id: string) => void }) {
+export function NovaNota({ d: source, isBase, onCancel, onConfirm, onManagePlanned, saving = false, saveError }: { d: ScenarioData; stage?: "planned" | "committed"; isBase: boolean; onCancel: () => void; onConfirm: (n: NoteDraft, saveAs: SaveAs | null) => boolean | Promise<boolean>; saving?: boolean; saveError?: string; onManagePlanned?: (id: string) => void }) {
   const [chosen, setChosen] = useState(false);
   const app = useApp();
   const [draftId] = useState(() => { try { const k=`fluxo:new-id:${app.user?.id}:${app.official.orgId}:${app.active.id}`; const v=sessionStorage.getItem(k) ?? `novo-${uid()}`; sessionStorage.setItem(k,v); return v; } catch { return `novo-${uid()}`; } });
   const [n, setN] = useState<NoteDraft>({ stage: "planned", kind: "compra", categoryId: "", supplierId: "", purchaseCode: "", document: "", description: "", total: null, baseDate: null, parcels: [], plannedNotes: [], plannedId: null, closeRest: false });
+  const d={...source,suppliers:[...source.suppliers,...(n.localSuppliers??[]).filter(s=>!source.suppliers.some(x=>x.id===s.id))]};
   const [saveAs, setSaveAs] = useState<SaveAs | null>(null);
   const [review, setReview] = useState(false);
   const [tried, setTried] = useState(false);
@@ -208,6 +211,7 @@ export function NovaNota({ d, isBase, onCancel, onConfirm, onManagePlanned, savi
           {stage === "committed" && <label className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3 font-medium"><input type="checkbox" className="mt-0.5" checked={checked} onChange={(e) => setChecked(e.target.checked)} />Conferi os valores e vencimentos com o documento ou a negociação desta operação.</label>}
           {stage === "committed" && <p className="text-muted-foreground">Efetivado é uma obrigação real confirmada; não significa que foi paga. As condições desta operação não alteram o cadastro do fornecedor nem outros lançamentos.</p>}
           {n.condition && <p className="text-muted-foreground">Condição: {n.condition.name} ({termsTxt(n.condition.terms)} dias) {saveAs ? `— será salva como nova condição do fornecedor "${saveAs.name}" (anteriores preservadas).` : "— usada só neste lançamento; o padrão do fornecedor não muda."}</p>}
+          {(n.localSuppliers??[]).filter(s=>s.id===n.supplierId).map(s=><p key={s.id}>Cadastrar fornecedor <b>{s.name}</b> junto deste lançamento. Cancelar não cria cadastro.</p>)}
         </div>
       ) : <>
         {stage === "committed" && (
@@ -225,7 +229,7 @@ export function NovaNota({ d, isBase, onCancel, onConfirm, onManagePlanned, savi
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <CatSubFields d={d} kind={n.kind} categoryId={n.categoryId} onChange={(kind, categoryId) => up({ kind, categoryId })} />
             {err("Selecione o subgrupo.")}
-            <Field l="Fornecedor" full><SupplierSearch d={d} allowCreate={!n.plannedId} existing={!!n.plannedId} value={n.supplierId} onChange={(supplierId) => { up({ supplierId, parcels: [], condition: null }); setSaveAs(null); }} />{err("Selecione o fornecedor.")}</Field>
+            <Field l="Fornecedor" full><SupplierSearch d={d} allowCreate={!n.plannedId} onCreate={s=>setN(n=>({...n,localSuppliers:[...(n.localSuppliers??[]),s]}))} existing={!!n.plannedId} value={n.supplierId} onChange={(supplierId) => { setN(n=>({...n,supplierId})); setChecked(false); setSaveAs(null); }} />{err("Selecione o fornecedor.")}</Field>
             <Field l={stage === "planned" ? "Código do pedido (opcional)" : "Código do pedido"}><input className="inp h-8" value={n.purchaseCode} onChange={(e) => up({ purchaseCode: e.target.value })} /></Field>
             <Field l={stage === "planned" ? "Documento (opcional)" : "Documento"}><input className="inp h-8" value={n.document} onChange={(e) => up({ document: e.target.value })} />{err("Informe o documento.")}</Field>
             <Field l="Descrição" full><input className="inp h-8" value={n.description} onChange={(e) => up({ description: e.target.value })} /></Field>

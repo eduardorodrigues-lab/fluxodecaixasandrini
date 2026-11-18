@@ -1,0 +1,1 @@
+CREATE OR REPLACE FUNCTION public.handle_new_user_org() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO public AS $$ BEGIN RETURN NEW; END; $$; REVOKE EXECUTE ON FUNCTION public.handle_new_user_org() FROM PUBLIC, anon, authenticated;

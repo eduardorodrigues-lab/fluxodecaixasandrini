@@ -9,7 +9,7 @@ import { normalizeData } from "./engine/actions";
 import type { ScenarioData } from "./engine/types";
 import { commitOps, getOfficial, listAudit } from "./official.functions";
 import { listMyOrgs } from "./team.functions";
-import { pickOrg } from "./team";
+import { pickOrg, SHARED_ORG_ID, canWrite } from "./team";
 import { isolateOperation, rebasePending, sendOperation, type ReviewedOperation } from "./operationSave";
 import { migrateSims, purgeUser, scopeKey, type SimStore } from "./session";
 setAutoFreeze(false);
@@ -124,7 +124,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const official: Ctx["official"] = !user ? { status: "signed_out", orgId: "", orgName: "", role: "", version: -1, error: "" }
     : offQ.isError ? { status: "error", orgId: "", orgName: "", role: "", version: -1, error: (offQ.error as Error).message }
-    : orgsQ.isSuccess && !selOrg ? { status: "error", orgId: "", orgName: "", role: "", version: -1, error: orgs.length ? "Selecione a organização." : "Usuário sem organização." }
+    : orgsQ.isError ? { status: "error", orgId: "", orgName: "", role: "", version: -1, error: "Não foi possível conferir seu acesso. Tente novamente." }
+    : orgsQ.isSuccess && !selOrg ? { status: "error", orgId: "", orgName: "", role: "", version: -1, error: "Sem acesso ao Grupo Sandrini oficial. Solicite acesso ou convite ao administrador." }
     : !offQ.data ? { status: "loading", orgId: "", orgName: "", role: "", version: -1, error: "" }
     : { status: "ready", orgId: offQ.data.orgId, orgName: offQ.data.orgName, role: offQ.data.role, version: offQ.data.version, error: "" };
 
@@ -139,7 +140,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const emptyBase = useMemo(() => normalizeData({}), []);
   const base: Scenario = { id: "base", name: official.orgName || "Real", isBase: true, data: baseData ?? emptyBase };
   const active: Scenario = sim ? { id: sim.id, name: sim.name, isBase: false, data: sim.data ?? base.data } : { ...base, data: draft ?? base.data };
-  const canEdit = !!sim || (official.status === "ready" && official.role !== "viewer");
+  const canEdit = official.status === "ready" && (!!sim || canWrite(official.role));
   const changes = cur?.ops ?? [];
 
   const mutLocal = useCallback((fn: (s: LocalState) => void) => setLocal((s) => { const n = clone(s); fn(n); return n; }), []);
@@ -208,7 +209,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!operationRef.current) {
       // Isolation compares the reviewed delta only; no global draft commit.
       const pending = sessionRef.current?.scope === scope ? sessionRef.current.ops : [];
-      isolateOperation(baseData, applyOps(baseData, op.ops, false).data, pending);
+      const independent=pending.filter(p=>!op.recoveredPending?.some(r=>r.entity==='Fornecedor' && JSON.stringify(r)===JSON.stringify(p)));
+      isolateOperation(baseData, applyOps(baseData, op.ops, false).data, independent);
       const blocked=pending.filter(p=>op.dependencies?.some(r=>r.entity===p.entity && r.id===p.id));
       if(blocked.length)throw new Error(`Dependências não salvas: ${blocked.map(p=>`${p.entity} ${p.id}`).join('; ')}. Revise/salve ou descarte explicitamente essas pendências antes desta operação.`);
       inflight.current = true;
@@ -234,7 +236,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (latestContext.current.scope === scope) {
         const current = sessionRef.current;
         if (current?.scope === scope) {
-          const rest = rebasePending(current.ops, op.ops);
+          const rest = rebasePending(current.ops, op.ops, op.recoveredPending??[]);
           setSession(rest.length ? { ...current, ops: rest, baseVersion: fresh.version, requestId: uuid() } : null);
         }
         qc.setQueryData(["official", user?.id, op.orgId], fresh);
@@ -299,7 +301,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value: Ctx = {
     authReady,
     user, signOut: async () => { await qc.cancelQueries(); qc.removeQueries({ queryKey: ["official"] }); setSession(null); if (user) mutLocal((s) => { s.sims = purgeUser(s.sims, user.id); s.activeId = "base"; }); await supabase.auth.signOut(); },
-    official, orgs, setOrgId: (id) => { setSession(null); setSaveState("idle"); setSaveMsg(""); setOrgIdS(id); try { localStorage.setItem("fluxo.orgId", id); } catch { /* sem storage */ } mutLocal((s) => { s.activeId = "base"; }); },
+    official, orgs, setOrgId: (id) => { if(id!==SHARED_ORG_ID)return; setOrgIdS(SHARED_ORG_ID); void qc.invalidateQueries({queryKey:["official","orgs",user?.id]}); },
     base, active, sims, allSims, ui, canEdit,
     setUi: (p) => setUiS((u) => ({ ...u, ...p })),
     setActive: (id) => mutLocal((s) => { s.activeId = id; }),

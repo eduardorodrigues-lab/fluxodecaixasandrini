@@ -1,5 +1,11 @@
 # Roadmap
 
+## Organização única e fornecedores — autorizado 18/11/2026
+- [x] IDs/memberships lidos; somente oficial, sem seletores/fallback; função de criação automática desativada sem alterar registros/memberships
+- [x] Fornecedores/condições isolados e protegidos localmente; inline local/atômico; recuperação seletiva por ID com confirmação e pendências independentes preservadas
+- [x] Testes focados e navegador fictício: roles/sem acesso/mesmo nome, fornecedor+condição/reload/efetivado com datas manuais, inline planejado/reload/falha/retry; zero escrita real/publicação
+- [ ] Convite/login/logout completos, duas abas e recuperação pós-envio no navegador não verificados; auditoria/concorrência hospedada bloqueadas por proibição de gravações reais
+
 ## Planejamento simples e múltiplas notas — autorizado 17/11/2026 18:45
 - [x] Proteção local do preenchimento por contexto, recuperação sem autorização antiga e descarte explícito
 - [x] Cadastro com notas opcionais, edição compatível, valor previsto revisado e saldo coberto por datas

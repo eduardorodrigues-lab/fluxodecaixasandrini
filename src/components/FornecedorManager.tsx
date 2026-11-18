@@ -7,6 +7,8 @@ import { Field, guardClose, SidePanel } from "./NotaPanel";
 import { DateInput } from "./kit";
 import { TermsEditor, termsLabel } from "./TermsEditor";
 import { useApp } from "@/lib/store";
+import { useOperationSave } from './useOperationSave';
+import { useFormDraft } from './useFormDraft';
 import { addSupplierCondition, condPeriods, currentCondition, invalidSupplierName, reactivateCondition, supplierConditions } from "@/lib/notas";
 import { changeCondition, conditionImpact } from "@/lib/condicoes";
 import { deleteSupplier, editSupplier, setSupplierActivity, supplierActive, supplierLinks } from "@/lib/fornecedores";
@@ -21,7 +23,8 @@ const dt = (at: string) => at ? new Date(at).toLocaleString("pt-BR", { timeZone:
 type Operation = { kind: "new" | "edit" | "activate" | "cancel" | "period" | "delete" | "inativar" | "reativar" | "excluir"; id?: string; index?: number };
 
 export function FornecedorManager({ supplierId, onClose }: { supplierId: string; onClose: () => void }) {
-  const { active, update, user } = useApp();
+  const { active, official, user, canEdit } = useApp();
+  const saving = useOperationSave();
   const d = active.data;
   const s = d.suppliers.find((x) => x.id === supplierId);
   const [tab, setTab] = useState("dados");
@@ -36,6 +39,8 @@ export function FornecedorManager({ supplierId, onClose }: { supplierId: string;
   const [from, setFrom] = useState<string | null>(todaySP());
   const [reason, setReason] = useState(""); const [replacement, setReplacement] = useState(""); const [ack, setAck] = useState(false);
   const [error, setError] = useState("");
+  const [originalSupplier,setOriginalSupplier]=useState(()=>s ? structuredClone(s) : null);
+  const protection=useFormDraft({user:user?.id??'',org:official.orgId,mode:active.id,form:'fornecedor',record:supplierId},{name,aliases,note,op,cn,cnote,terms,from,reason,replacement,originalSupplier},v=>{setName(v.name);setAliases(v.aliases);setNote(v.note);setOp(v.op);setCn(v.cn);setCnote(v.cnote);setTerms(v.terms);setFrom(v.from);setReason(v.reason);setReplacement(v.replacement);setOriginalSupplier(v.originalSupplier);setReview(false);setAck(false);});
   if (!s) return null;
   const today = todaySP(); const list = supplierConditions(s); const cur = currentCondition(s, today);
   const selected = list.find((c) => c.id === op?.id);
@@ -43,9 +48,11 @@ export function FornecedorManager({ supplierId, onClose }: { supplierId: string;
   const start = (operation: Operation, c?: SupplierCondition) => {
     setOp(operation); setReview(false); setError(""); setCn(c?.name ?? ""); setCnote(c?.note ?? ""); setTerms(c ? [...c.terms] : [null]); setFrom(today); setReason(""); setReplacement(""); setAck(false);
   };
-  const saveChanges = () => {
+  const saveChanges = async () => {
     const at = new Date().toISOString(); const by = user?.email ?? "";
-    const e = update((x) => {
+    const before=structuredClone(d);
+    if(originalSupplier)before.suppliers=before.suppliers.map(s=>s.id===supplierId?originalSupplier:s);
+    const ok = await saving.saveMutation(before, (x) => {
       if (!op) { editSupplier(x, supplierId, { name, aliases: aliases.split("\n").map((v) => v.trim()).filter(Boolean), note }); return; }
       if (op.kind === "new") addSupplierCondition(x, supplierId, { name: cn, terms, note: cnote, from }, at, by, today);
       else if (op.kind === "activate" && op.id && from) reactivateCondition(x, supplierId, op.id, from, at, by, today);
@@ -53,8 +60,8 @@ export function FornecedorManager({ supplierId, onClose }: { supplierId: string;
       else if (op.kind === "excluir") deleteSupplier(x, supplierId);
       else if (op.id) changeCondition(x, supplierId, op.id,
         op.kind === "edit" ? { kind: "edit", name: cn, note: cnote, terms } : op.kind === "delete" ? { kind: "delete" } : op.kind === "period" ? { kind: "period", index: op.index ?? -1, reason, replacementId: replacement || null, acknowledge: ack } : { kind: "cancel", reason, replacementId: replacement || null, acknowledge: ack }, at, by, today);
-    });
-    setError(e ?? ""); if (!e) { if (op?.kind === "excluir") onClose(); setOp(null); setReview(false); }
+    }, [supplierId]);
+    if (ok) { protection.clear(); onClose(); }
   };
   const draft = op?.kind === "new" || op?.kind === "edit";
   const cancelling = op?.kind === "cancel" || op?.kind === "period";
@@ -62,14 +69,15 @@ export function FornecedorManager({ supplierId, onClose }: { supplierId: string;
   const title = !op ? "Dados do fornecedor" : ({ new: "Nova condição", edit: "Editar condição", activate: "Usar como vigente", cancel: "Cancelar condição", period: "Cancelar ativação de vigência", delete: "Excluir condição", inativar: "Inativar fornecedor", reativar: "Reativar fornecedor", excluir: "Excluir fornecedor" }[op.kind]);
   const editing = !!op || tab === "dados";
   const dirty = !!op || name !== s.name || aliases !== (s.aliases ?? []).join("\n") || note !== (s.note ?? "");
-  const close = guardClose(dirty, onClose);
+  const close = guardClose(dirty, () => {if(protection.clear())onClose();});
   const destructive = !!op && ["delete", "excluir", "cancel", "period", "inativar"].includes(op.kind);
   const action = !op ? "Salvar fornecedor" : draft ? "Salvar condição" : title;
-  return <SidePanel centered={review} title={review ? `${action}?` : "Gerenciar fornecedor"} sub={s.name} onClose={onClose} dirty={dirty} footer={<>
+  return <SidePanel centered={review} title={review ? `${action}?` : "Gerenciar fornecedor"} sub={s.name} onClose={()=>void close()} dirty={false} footer={<>
     {review ? <Button variant="outline" onClick={() => setReview(false)}>Cancelar</Button> : editing && op ? <Button variant="outline" onClick={guardClose(dirty, () => { setOp(null); setError(""); })}>Cancelar edição</Button> : <Button variant="outline" onClick={close}>Fechar</Button>}
-    {editing && <Button variant={review && destructive ? "destructive" : "default"} disabled={!valid} onClick={() => review ? saveChanges() : setReview(true)}>{review ? action : "Revisar e confirmar"}</Button>}
+    {editing && <Button variant={review && destructive ? "destructive" : "default"} disabled={!valid || !canEdit || saving.saving} onClick={() => review ? void saveChanges() : setReview(true)}>{saving.saving ? "Salvando…" : review ? action : "Revisar e confirmar"}</Button>}
   </>}>
     <div className="min-w-0 space-y-4 break-words [overflow-wrap:anywhere]">
+      {protection.recovered && <p role="status">Preenchimento recuperado; revise novamente antes de salvar.</p>}{protection.warning && <p role="alert" className="text-destructive">{protection.warning}</p>}
       {!op && <div role="tablist" className="grid grid-cols-2 gap-1 border-b border-border pb-2">{[["dados", "Dados do fornecedor"], ["condicoes", "Condições de pagamento"]].map(([id, label]) => <Button key={id} role="tab" aria-selected={tab === id} variant={tab === id ? "default" : "outline"} className="h-auto min-h-9 whitespace-normal" onClick={() => { setTab(id ?? "dados"); setReview(false); setError(""); }}>{label}</Button>)}</div>}
       {(op || tab === "dados") && <>
         <h3 className="text-sm font-semibold">{review ? `Revisar: ${title}` : title}</h3>
@@ -106,7 +114,7 @@ export function FornecedorManager({ supplierId, onClose }: { supplierId: string;
         </section>)}
         {!list.length && <p className="text-muted-foreground">Nenhuma condição cadastrada.</p>}
       </>}
-      {error && <p role="alert" className="text-destructive">{error}</p>}
+      {saving.error && <p role="alert" className="text-destructive">{saving.error}</p>}{error && <p role="status">{error}</p>}
     </div>
   </SidePanel>;
 }

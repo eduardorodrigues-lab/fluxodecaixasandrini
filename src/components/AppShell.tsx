@@ -23,7 +23,7 @@ const NAV = [
 const NAV_KEY = "fluxo.nav.hidden";
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { orgs, setOrgId, user, authReady, signOut, official, base, active, sims, setActive, draft, saveState, saveMsg, canEdit, changes, commitDraft, discardDraft, conflicts, resolveConflict, protectErr, pendingOperation, saveOperation, abandonOperation } = useApp();
+  const { orgs, user, authReady, signOut, official, base, active, sims, setActive, draft, saveState, saveMsg, canEdit, changes, commitDraft, discardDraft, conflicts, resolveConflict, protectErr, pendingOperation, saveOperation, abandonOperation } = useApp();
   const simMode = !active.isBase;
   // Barra lateral ocultável: a preferência fica só neste navegador (não é dado da organização).
   const [navHidden, setNavHidden] = useState(false);
@@ -39,7 +39,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const publicPage = path === "/auth" || path === "/convite";
   // Sem login: só a tela de entrada (ou aceite de convite). Nenhum dado financeiro é exibido.
   if (!user) return <Gate>{!authReady ? <p className="text-xs text-muted-foreground">Verificando acesso…</p> : publicPage ? children : <Entry />}</Gate>;
-  if (official.status !== "ready" && !publicPage) return <Gate><div className="card w-full max-w-md p-4 text-sm"><p className="mb-2">{official.status === "error" ? `Não foi possível abrir os dados da organização: ${official.error}` : "Carregando dados da organização…"}</p><p className="mb-3 text-xs text-muted-foreground">Conectado como {user.email}. Nenhum dado é exibido até a organização carregar.</p>{orgs.length > 1 && <select aria-label="Organização" className="mb-2 w-full rounded border border-border px-1.5 py-1 text-xs" value={official.orgId} onChange={(e) => setOrgId(e.target.value)}><option value="">— selecione a organização —</option>{orgs.map((o) => <option key={o.orgId} value={o.orgId}>{o.name}</option>)}</select>}<button className="btn" onClick={() => signOut()}>Sair</button></div></Gate>;
+  if (official.status !== "ready" && !publicPage) return <Gate><div className="card w-full max-w-md p-4 text-sm"><p className="mb-2">{official.status === "error" ? official.error : "Carregando dados do Grupo Sandrini…"}</p><p className="mb-3 text-xs text-muted-foreground">Conectado como {user.email}. Nenhum dado de outra organização será carregado.</p><button className="btn" onClick={() => signOut()}>Sair</button></div></Gate>;
   return (
     <div className="app-workspace flex min-h-screen">
       {navHidden ? (
@@ -66,12 +66,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           ))}
         </nav>
         <div className="space-y-2 border-t border-sidebar-border p-3 text-[11px]">
-          {orgs.length > 1 && <>
-            <label className="block text-sidebar-primary" htmlFor="org-sel">Organização</label>
-            <select id="org-sel" className="w-full rounded bg-sidebar-accent px-1.5 py-1 text-xs" value={official.orgId} onChange={async (e) => { const next = e.target.value; if (!draft || await askConfirm("Há alterações não salvas (ficam protegidas neste navegador). Trocar de organização agora pode perdê-las.", { title: "Trocar organização?", action: "Trocar organização" })) setOrgId(next); }}>
-              {!official.orgId && <option value="">— selecione —</option>}
-              {orgs.map((o) => <option key={o.orgId} value={o.orgId}>{o.name} ({o.own ? "própria" : "convidada"} · {o.role})</option>)}
-            </select></>}
+          {orgs.some(o=>o.orgId!==official.orgId) && <p className="opacity-80">Rascunhos de outra organização permanecem separados neste navegador, disponíveis para conferência; não são enviados a esta base.</p>}
           <label className="block text-sidebar-primary" htmlFor="modo-sel">Modo de trabalho</label>
           <select id="modo-sel" className="w-full rounded bg-sidebar-accent px-1.5 py-1 text-xs" value={active.id} onChange={(e) => setActive(e.target.value)}>
             <option value="base">Real</option>
