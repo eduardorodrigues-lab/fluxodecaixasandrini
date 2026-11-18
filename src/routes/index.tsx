@@ -7,6 +7,8 @@ import { DateInput, MoneyInput } from "@/components/kit";
 import { SlidersHorizontal } from "lucide-react";
 import { PendenciasFluxo } from "@/components/PendenciasFluxo";
 import { SaldoAdjustments } from "@/components/SaldoAdjustments";
+import { FlowEntryDetail } from "@/components/FlowEntryDetail";
+import { entryKeys } from "@/lib/flowEntryDetail";
 import { Button } from "@/components/ui/button";
 import { buildRows, computeFlow, toVertical, type Row } from "@/lib/engine/engine";
 import { fmtDate, weekday } from "@/lib/dates";
@@ -33,6 +35,12 @@ function FluxoPage() {
   const rows = useMemo(() => buildRows(res, data.categories, ui.flowMode), [res, data.categories, ui.flowMode]);
   const [open, setOpen] = useState<Set<string>>(new Set(["entradas", "saidas", "compras", "despesas"]));
   const [sel, setSel] = useState<{ row: Row; i: number } | null>(null);
+  const [entry, setEntry] = useState<{ key: string; i: number | null } | null>(null);
+  const entryRow = rows.find(r => r.key === entry?.key);
+  const pick = (row: Row, i: number | null) => {
+    if (entryKeys.has(row.key)) { setSel(null); setEntry({ key: row.key, i }); }
+    else if (i !== null) setSel({ row, i });
+  };
   const [adjustmentsOpen, setAdjustmentsOpen] = useState(false);
   const visible = rows.filter((r) => { let p = r.parent; while (p) { if (!open.has(p)) return false; p = rows.find((x) => x.key === p)?.parent; } return true; });
   const hasKids = (k: string) => rows.some((r) => r.parent === k);
@@ -43,6 +51,7 @@ function FluxoPage() {
   return (
     <div>
       {adjustmentsOpen && <SaldoAdjustments onClose={() => setAdjustmentsOpen(false)} />}
+      {entry && entryRow && <FlowEntryDetail data={data} res={res} row={entryRow} index={entry.i} mode={active.isBase ? "Real" : `SIMULAÇÃO ${active.name}`} onClose={() => setEntry(null)} />}
       <header className="mb-2 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:flex sm:justify-between">
         <h1 className="min-w-0 text-base font-semibold">Fluxo de caixa</h1>
         <div className="flex shrink-0 items-center gap-2">
@@ -87,15 +96,15 @@ function FluxoPage() {
                       <td className={`col-fix sticky left-52 z-[5] w-64 min-w-64 max-w-64 border-r border-border ${r.emphasis ? "bg-muted" : "bg-card"}`} title={r.label} style={{ paddingLeft: 8 + r.level * 12 }}>
                         {hasKids(r.key) ? <button className="mr-1 w-3 text-primary" onClick={() => toggle(r.key)}>{open.has(r.key) ? "▾" : "▸"}</button> : <span className="mr-1 inline-block w-3" />}{r.label}
                       </td>
-                      <td className={`num ${r.total < 0 ? "neg" : ""}`}>{fmtNum(r.total)}</td>
-                      {r.values.map((v, i) => <td key={i} onClick={() => setSel({ row: r, i })} className={`num cursor-pointer hover:bg-accent ${v < 0 ? "neg" : ""} ${v === 0 ? "text-muted-foreground" : ""}`}>{fmtNum(v)}</td>)}
+                      <td className={`num ${r.total < 0 ? "neg" : ""}`}>{entryKeys.has(r.key) ? <Button variant="ghost" className="h-auto w-full justify-end p-0 font-inherit text-inherit" aria-label={`${r.label} · Total período · detalhar`} onClick={() => pick(r, null)}>{fmtNum(r.total)}</Button> : fmtNum(r.total)}</td>
+                      {r.values.map((v, i) => <td key={i} onClick={entryKeys.has(r.key) ? undefined : () => pick(r, i)} className={`num cursor-pointer hover:bg-accent ${v < 0 ? "neg" : ""} ${v === 0 ? "text-muted-foreground" : ""}`}>{entryKeys.has(r.key) ? <Button variant="ghost" className="h-auto w-full justify-end p-0 font-inherit text-inherit" aria-label={`${r.label} · ${fmtDate(res.days[i]?.date)} · detalhar`} onClick={() => pick(r, i)}>{fmtNum(v)}</Button> : fmtNum(v)}</td>)}
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           ) : (
-            <Vertical rows={rows} res={res} onPick={(row, i) => setSel({ row, i })} update={update} receipts={data.receipts} adjustments={data.adjustments} />
+            <Vertical rows={rows} res={res} onPick={pick} update={update} receipts={data.receipts} adjustments={data.adjustments} />
           )}
         </div>
         {sel && (
@@ -119,11 +128,11 @@ function Kpi({ label, v }: { label: string; v: number }) {
   return <div className="min-w-0"><div className="text-[11px] leading-tight text-muted-foreground">{label}</div><div className={`num text-sm font-semibold ${v < 0 ? "neg" : ""}`}>{fmtBRL(v)}</div></div>;
 }
 
-type VProps = { rows: Row[]; res: ReturnType<typeof computeFlow>; onPick: (r: Row, i: number) => void; update: ReturnType<typeof useApp>["update"]; receipts: ReturnType<typeof useApp>["active"]["data"]["receipts"]; adjustments: ReturnType<typeof useApp>["active"]["data"]["adjustments"] };
+type VProps = { rows: Row[]; res: ReturnType<typeof computeFlow>; onPick: (r: Row, i: number | null) => void; update: ReturnType<typeof useApp>["update"]; receipts: ReturnType<typeof useApp>["active"]["data"]["receipts"]; adjustments: ReturnType<typeof useApp>["active"]["data"]["adjustments"] };
 const VCOLS = ["saldo_ini", "rec_real", "rec_est", "compras", "despesas", "saidas", "saldo_fim"];
 function Vertical({ rows, res, onPick, update, receipts, adjustments }: VProps) {
   const vert = toVertical(rows, res.days);
-  const cols = VCOLS.map((k) => rows.find((r) => r.key === k)!);
+  const cols = rows.filter(r => VCOLS.includes(r.key)).sort((a,b) => VCOLS.indexOf(a.key) - VCOLS.indexOf(b.key));
   const setGeneral = (date: string, v: number | null) => update((d) => {
     const r = d.receipts.find((x) => x.date === date);
     if (r) r.general = v; else if (v !== null) d.receipts.push({ id: uid(), date, platforms: {}, general: v, notes: "lançado na visão vertical" });
@@ -138,10 +147,10 @@ function Vertical({ rows, res, onPick, update, receipts, adjustments }: VProps) 
               <td className="sticky left-0 z-[5] bg-card">{fmtDate(v.date)} <span className="text-muted-foreground">{weekday(v.date)}</span></td>
               <td className="num">{adjustments.find((a) => a.date === v.date)?.value != null ? fmtNum(adjustments.find((a) => a.date === v.date)?.value) : "—"}</td>
               <td className="num"><MoneyInput value={receipts.find((r) => r.date === v.date)?.general ?? null} onChange={(x) => setGeneral(v.date, x)} /></td>
-              {cols.map((c) => <td key={c.key} onClick={() => onPick(c, i)} className={`num cursor-pointer hover:bg-accent ${(v.cells[c.key] ?? 0) < 0 ? "neg" : ""} ${c.emphasis ? "font-semibold" : ""}`}>{fmtNum(v.cells[c.key])}</td>)}
+              {cols.map((c) => <td key={c.key} onClick={entryKeys.has(c.key) ? undefined : () => onPick(c, i)} className={`num cursor-pointer hover:bg-accent ${(v.cells[c.key] ?? 0) < 0 ? "neg" : ""} ${c.emphasis ? "font-semibold" : ""}`}>{entryKeys.has(c.key) ? <Button variant="ghost" className="h-auto w-full justify-end p-0 text-inherit" aria-label={`${c.label} · ${fmtDate(v.date)} · detalhar`} onClick={() => onPick(c, i)}>{fmtNum(v.cells[c.key])}</Button> : fmtNum(v.cells[c.key])}</td>)}
             </tr>
           ))}
-          <tr className="bg-muted font-semibold"><td className="sticky left-0 z-[5] bg-muted">Total</td><td /><td />{cols.map((c) => <td key={c.key} className="num">{fmtNum(c.total)}</td>)}</tr>
+          <tr className="bg-muted font-semibold"><td className="sticky left-0 z-[5] bg-muted">Total</td><td /><td />{cols.map((c) => <td key={c.key} className="num">{entryKeys.has(c.key) ? <Button variant="ghost" className="h-auto w-full justify-end p-0 text-inherit" aria-label={`${c.label} · Total período · detalhar`} onClick={() => onPick(c, null)}>{fmtNum(c.total)}</Button> : fmtNum(c.total)}</td>)}</tr>
         </tbody>
       </table>
       <div className="p-2 text-xs"><Link to="/recebimentos" className="underline">Revisar e salvar recebimentos</Link></div>

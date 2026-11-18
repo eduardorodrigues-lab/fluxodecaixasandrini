@@ -1,5 +1,11 @@
 # Roadmap
 
+## Entradas clicáveis e revisão de lançamentos — autorizado 18/11/2026 17:08 UTC
+- [x] Detalhamento somente visual do mesmo motor: diário/período, contas ausentes, saldo bancário separado, estimativas e transferências/estornos
+- [x] Quadro atualizado por leitura em Files: pedido 1852, NF 017766350, aportes/Geral, M&S/Mococa; sem aplicação de lote
+- [x] 44 testes e navegador fictício horizontal/vertical/simulação 1366/1920/390; compilação OK; zero escrita real; docs/entradas-detalhamento-2026-11-18.md
+- [ ] Conciliação de NF 017766350, aportes/Geral e M&S/Mococa aguarda documentos/IDs/contas e revisão específica; nenhuma aplicação autorizada
+
 ## Lacunas de revisão e confirmação — autorizado 18/11/2026 14:55 UTC
 - [x] Substituir envio global direto por revisão identificada e pacote protegido; preservar confirmação isolada
 - [x] Estados explícitos, tempo limite e consultas read-only limitadas; recuperação com o mesmo requestId, sem escrita automática
