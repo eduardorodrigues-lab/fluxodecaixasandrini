@@ -25,6 +25,8 @@ const NAV_KEY = "fluxo.nav.hidden";
 export function AppShell({ children }: { children: ReactNode }) {
   const { orgs, user, authReady, signOut, official, base, active, sims, setActive, draft, saveState, saveMsg, canEdit, changes, commitDraft, discardDraft, conflicts, resolveConflict, protectErr, pendingOperation, saveOperation, abandonOperation } = useApp();
   const simMode = !active.isBase;
+  const otherChanges=changes.filter(c=>c.entity!=='Recebimento');
+  const receiptCount=changes.length-otherChanges.length;
   // Barra lateral ocultável: a preferência fica só neste navegador (não é dado da organização).
   const [navHidden, setNavHidden] = useState(false);
   useEffect(() => {
@@ -83,11 +85,12 @@ export function AppShell({ children }: { children: ReactNode }) {
         {active.isBase && canEdit && (draft || saveMsg || protectErr) && (
           <div className={`sticky top-0 z-30 flex flex-wrap items-center gap-2 border-b px-4 py-2 text-xs ${saveState === "error" || saveState === "conflict" ? "border-destructive/30 bg-card text-destructive" : saveState === "saved" ? "border-border bg-muted" : "border-warning/30 bg-warning-soft"}`} role="status">
             <b>{saveState === "saving" ? "Salvando…" : saveState === "error" ? "Falha ao salvar" : saveState === "conflict" ? "Conflito" : draft ? "Alterações não salvas" : saveState === "saved" ? "Salvo" : ""}</b>
-            <span>{draft && saveState === "dirty" && !saveMsg ? `${changes.length} registro(s) alterado(s).` : saveMsg}</span>
+            <span>{draft && saveState === "dirty" && !saveMsg ? `${otherChanges.length} registro(s) de outros módulos alterado(s).` : saveMsg}</span>
+            {receiptCount>0 && <Link to="/recebimentos" className="underline">{receiptCount} recebimento(s): revisar na página Recebimentos</Link>}
             {protectErr && <span className="font-semibold">{protectErr}</span>}
             {draft && <span className="ml-auto flex gap-1">
-              <button className="btn" disabled={saveState === "saving"} onClick={async () => { if (await askConfirm("Todas as alterações não salvas serão descartadas.", { title: "Descartar alterações?", action: "Descartar", destructive: true })) discardDraft(); }}>Descartar</button>
-              <button className="btn btn-primary" disabled={saveState === "saving" || saveState === "conflict"} onClick={() => void commitDraft()}>{saveState === "saving" ? "Salvando…" : "Salvar"}</button>
+              <button className="btn" disabled={saveState === "saving" || !!pendingOperation} onClick={async () => { if (await askConfirm("Todas as alterações não salvas serão descartadas.", { title: "Descartar alterações?", action: "Descartar", destructive: true })) discardDraft(); }}>Descartar</button>
+              <button className="btn btn-primary" disabled={saveState === "saving" || saveState === "conflict" || !otherChanges.length || !!pendingOperation} onClick={() => void commitDraft()}>{saveState === "saving" ? "Salvando…" : receiptCount?'Salvar outros módulos':'Salvar'}</button>
             </span>}
           </div>
         )}
@@ -101,7 +104,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div key={c.change.entity + c.change.id} className="rounded border border-border p-2">
               <p className="mb-1 font-semibold">{c.change.entity}{c.server == null ? " · excluído por outra pessoa" : c.change.after == null ? " · você excluiu" : ""}</p>
               <table className="tbl"><thead><tr><th>Campo</th><th>No banco (outra pessoa)</th><th>Seu preenchimento</th></tr></thead><tbody>{keys.map((k) => <tr key={k}><td>{fieldLabel(k)}</td><td>{show(obj ? srv[k] : c.server)}</td><td className="text-destructive">{show(obj ? mine[k] : c.change.after)}</td></tr>)}</tbody></table>
-              <div className="mt-1 flex justify-end gap-1"><button className="btn" onClick={() => resolveConflict(c, "server")}>Manter a do banco</button><button className="btn btn-primary" onClick={() => resolveConflict(c, "mine")}>Manter a minha</button></div>
+              <div className="mt-1 flex justify-end gap-1"><button className="btn" disabled={!!pendingOperation} onClick={() => resolveConflict(c, "server")}>Manter a do banco</button><button className="btn btn-primary" disabled={!!pendingOperation} onClick={() => resolveConflict(c, "mine")}>Manter a minha</button></div>
             </div>); })}
         </DecisionWindow>}
         <main className="p-4">{children}</main>

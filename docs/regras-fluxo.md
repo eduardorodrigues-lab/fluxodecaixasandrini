@@ -1,5 +1,13 @@
 # Fluxo de Caixa Sandrini — Regras, schema e critérios de aceite (NÃO homologado)
 
+## Salvamento de Recebimentos — 18/11/2026
+- Grade, novo recebimento, contas/observações/exclusão e Geral da visão vertical acumulam alterações no rascunho existente (IndexedDB por usuário/organização); nada é salvo no banco a cada digitação. Simulações permanecem locais e viewer não grava.
+- A página Recebimentos oferece revisão por data e plataforma/Geral, antes/depois, incluindo zero distinto de ausência. Voltar conserva valores; uma única confirmação envia somente os IDs revisados por `saveOperation`/`commitOps`. Não executa simulação diária na revisão e não altera estimativas, fórmulas, alertas, filtros ou snapshots.
+- Barra global mantida: Salvar dos outros módulos exclui Recebimentos sem eliminá-los. Guardas só permitem recuperar exatamente a pendência de Recebimento capturada; fornecedores/contas/plataformas pendentes independentes não são incluídos. Edições posteriores ao envio são rebaseadas e preservadas.
+- Pendências antigas continuam na mesma chave. RequestIds recuperados são conferidos na auditoria via leitura autenticada antes de novo envio; confirmação existente reconcilia a versão sem gravar novamente. Pacote isolado em confirmação conserva requestId e recuperação; resultado desconhecido não autoriza novo pacote. Lock do navegador e conferência de operação persistida protegem envios entre abas; versões/antes e dependências seguem validados no servidor. Não há mudança de schema, SQL, auditoria ou `snapshot_before`.
+- Sucesso somente após confirmação e cache canônico na versão exata; exceções/duplicata exigem releitura segura. Falhas conservam valores; conflito permite liberar operação rejeitada, comparar banco/rascunho e revisar de novo, sem sobrescrita automática.
+- Evidências e limitações: `docs/recebimentos-salvamento-2026-11-18.md`. Somente código/testes fictícios; nenhuma escrita financeira real ou publicação.
+
 ## Salvamento pontual — 18/11/2026
 - Revisão de planejamento, efetivado e efetivação não executa simulação/impacto diário; mostra alterações da operação, abrangência compartilhada e totais pertinentes. O motor oficial do Fluxo permanece intacto.
 - Sucesso continua condicionado ao banco. O servidor reutiliza a base normalizada nas conferências e responde com transição canônica completa (inclusive efeitos da normalização), versão de origem/destino, contexto e digest. O SQL existente grava exatamente o documento enviado e preserva `snapshot_before` e auditoria integral.

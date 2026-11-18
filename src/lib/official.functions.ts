@@ -42,6 +42,21 @@ export const listAudit = createServerFn({ method: "GET" })
     return (data ?? []).map((r) => ({ id: r.id, at: r.at, user_email: r.user_email, version_from: r.version_from, version_to: r.version_to, summary: r.summary, changesJson: JSON.stringify(r.changes) }));
   });
 
+// Read-only reconciliation for legacy global drafts; absence never authorizes a write itself.
+export const checkCommitRequest = createServerFn({ method: 'GET' })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i: {orgId: string; requestId: string}) => {
+    orgIn(i);
+    if (!/^[0-9a-f-]{36}$/i.test(i.requestId)) throw new Error('Identificação inválida.');
+    return i;
+  })
+  .handler(async ({data:input,context}) => {
+    const m=await myOrg(context.supabase,context.userId,input.orgId);
+    const {data,error}=await context.supabase.from('audit_log').select('version_to, changes').eq('org_id',m.org_id).eq('request_id',input.requestId).maybeSingle();
+    if(error)throw new Error('Não foi possível conferir a confirmação anterior. Preenchimento preservado; nenhum novo envio.');
+    return data ? {version:data.version_to,opsJson:JSON.stringify(data.changes)} : null;
+  });
+
 export const commitOfficial = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((i: { orgId: string | null; expectedVersion: number; requestId: string; dataJson: string }) => {

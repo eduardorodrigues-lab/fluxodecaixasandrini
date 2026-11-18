@@ -1,7 +1,7 @@
 import { OriginNote } from "@/components/OriginNote";
 import { presentLabel } from "@/lib/originText";
 import { supplierIdentityOptions } from "@/lib/supplierIdentity";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { DateInput, MoneyInput } from "@/components/kit";
 import { SlidersHorizontal } from "lucide-react";
@@ -144,6 +144,7 @@ function Vertical({ rows, res, onPick, update, receipts, adjustments }: VProps) 
           <tr className="bg-muted font-semibold"><td className="sticky left-0 z-[5] bg-muted">Total</td><td /><td />{cols.map((c) => <td key={c.key} className="num">{fmtNum(c.total)}</td>)}</tr>
         </tbody>
       </table>
+      <div className="p-2 text-xs"><Link to="/recebimentos" className="underline">Revisar e salvar recebimentos</Link></div>
     </div>
   );
 }

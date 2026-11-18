@@ -1,7 +1,7 @@
-import { diffData, opKey, type Change } from './diff';
+import { diffData, opKey, type Change, type Conflict } from './diff';
 import type { ScenarioData } from './engine/types';
 
-export interface ReviewedOperation { scope: string; orgId: string; requestId: string; ops: Change[]; recoveredPending?: Change[]; dependencies?: ReturnType<typeof operationDependencies>; rejected?: boolean }
+export interface ReviewedOperation { scope: string; orgId: string; requestId: string; ops: Change[]; recoveredPending?: Change[]; dependencies?: ReturnType<typeof operationDependencies>; rejected?: boolean; conflicts?: Conflict[] }
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /** Read dependencies, including newly added payments, must remain unchanged until commit. */
@@ -15,9 +15,18 @@ export function operationDependencies(d: ScenarioData, ops: Change[]) {
   const suppliers = new Set(refs.map(r=>r['supplierId']).filter((id):id is string=>typeof id==='string' && !!id));
   const categories = new Set(refs.map(r=>r['categoryId']).filter((id):id is string=>typeof id==='string' && !!id));
   const accounts = new Set(refs.map(r=>r['accountId']).filter((id):id is string=>typeof id==='string' && !!id));
+  const receiptOps = ops.filter(o=>o.entity==='Recebimento');
+  const platformIds = new Set<string>();
+  receiptOps.forEach(o=>{for(const r of [o.before,o.after]) if(r && typeof r==='object') {
+    const receipt=r as Record<string,unknown>;
+    Object.keys((receipt['platforms'] ?? {}) as object).forEach(id=>platformIds.add(id));
+    if(typeof receipt['generalAccountId']==='string')accounts.add(receipt['generalAccountId']);
+    Object.values((receipt['accountByPlatform'] ?? {}) as Record<string,{accountId?:string}>).forEach(a=>{if(a.accountId)accounts.add(a.accountId);});
+  }});
   const cards = new Set(refs.map(r=>r['cardId']).filter((id):id is string=>typeof id==='string' && !!id));
   const affected = new Set(ops.map(opKey));
   const records = [
+    ...(platformIds.size ? [{entity:'Plataformas',id:'platforms',data:d.platforms}] : []),
     ...d.committed.filter(c=>titleKeys.has(`committed:${c.id}`)||planned.has(c.plannedId ?? '')).map(c=>({entity:'Efetivado (compra/pedido)',id:c.id,data:c})),
     ...d.expenses.filter(c=>titleKeys.has(`expense:${c.id}`)).map(c=>({entity:'Despesa',id:c.id,data:c})),
     ...d.planned.filter(c=>planned.has(c.id)).map(c=>({entity:'Previsão (planejada)',id:c.id,data:c})),

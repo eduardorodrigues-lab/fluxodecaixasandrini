@@ -7,7 +7,8 @@ import { applyOps, diffData, mergeOps, opKey, type Change, type Conflict } from 
 import { clearDraftLocal, loadDraft, saveDraftLocal } from "./draftStore";
 import { normalizeData } from "./engine/actions";
 import type { ScenarioData } from "./engine/types";
-import { commitOps, getOfficial, listAudit } from "./official.functions";
+import { commitOps, getOfficial, listAudit, checkCommitRequest } from "./official.functions";
+import { recoveredOperationPending, receiptOperation } from './receiptOperation';
 import { listMyOrgs } from "./team.functions";
 import { pickOrg, SHARED_ORG_ID, canWrite } from "./team";
 import { isolateOperation, rebasePending, sendOperation, type ReviewedOperation } from "./operationSave";
@@ -16,7 +17,7 @@ import { NORMALIZATION_REVISION, reconcileReceipt } from './commitReceipt';
 import { measureSavePhase } from './saveTiming';
 setAutoFreeze(false);
 // Rascunho do fluxo real = lista de alterações (antes/depois por registro); a tela aplica sobre a base atual.
-interface OpsSession { scope: string; baseVersion: number; requestId: string; ops: Change[] }
+interface OpsSession { scope: string; baseVersion: number; requestId: string; ops: Change[]; legacyRequestIds?: string[] | undefined }
 
 // UMA base operacional por organização (login obrigatório, gravação só via servidor com auditoria).
 // Sem dados demonstrativos e sem fallback: sem login/erro não há dados financeiros.
@@ -54,6 +55,8 @@ interface Ctx {
   draft: ScenarioData | null; draftBaseVersion: number | null; baseMoved: boolean; changes: Change[]; discardDraft: () => void; commitDraft: () => Promise<void>;
   saveOperation: (op: ReviewedOperation) => Promise<void>; saveSimulationOperation: (before: ScenarioData, ops: Change[]) => string | null;
   pendingOperation: ReviewedOperation | null; abandonOperation: () => Promise<void>;
+  reconcileReceiptDraft: () => Promise<boolean>;
+  prepareReceiptOperation: () => ReturnType<typeof receiptOperation>;
   saveState: SaveState; saveMsg: string; reloadOfficial: () => void;
   conflicts: Conflict[]; resolveConflict: (c: Conflict, keep: "mine" | "server") => void; protectErr: string;
   createSim: (name: string) => void; discardSim: (id: string) => void; deleteSim: (id: string) => void;
@@ -86,6 +89,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const fetchAudit = useServerFn(listAudit);
   const commitFn = useServerFn(commitOps);
   const fetchOrgs = useServerFn(listMyOrgs);
+  const checkRequest = useServerFn(checkCommitRequest);
   const [orgId, setOrgIdS] = useState<string | null>(null);
 
   useEffect(() => {
@@ -162,7 +166,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const delta = diffData(from, next);
         if (!delta.length) return null;
         const ops = mergeOps(cur?.ops ?? [], delta);
-        setSession(ops.length ? { scope, baseVersion: cur?.baseVersion ?? baseVersion, requestId: uuid(), ops } : null);
+        setSession(ops.length ? { scope, baseVersion: cur?.baseVersion ?? baseVersion, requestId: uuid(), ops, legacyRequestIds:cur?.legacyRequestIds } : null);
         setSaveState(ops.length ? "dirty" : "idle"); setSaveMsg("");
       }
       return null;
@@ -185,7 +189,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!scope || !baseData || restored.current.has(scope)) return;
     loadDraft<OpsSession>("draft:" + scope).then((v) => {
       restored.current.add(scope);
-      if (v?.ops?.length) { setSession((s) => s ?? { ...v, scope }); setSaveState("dirty"); setSaveMsg("Rascunho recuperado — ainda não salvo."); }
+      if (v?.ops?.length) { setSession((s) => s ?? { ...v, scope, legacyRequestIds:v.legacyRequestIds ?? [v.requestId] }); setSaveState("dirty"); setSaveMsg("Rascunho recuperado — ainda não salvo."); }
     }).catch((e: Error) => { restored.current.add(scope); setProtectErr(`Não foi possível ler o rascunho protegido (${e.message}).`); });
   }, [scope, baseData]);
 
@@ -205,15 +209,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (result.conflicts.length) return "A simulação mudou nos mesmos registros. Preenchimento preservado; revise novamente.";
     return update(x => Object.assign(x, result.data));
   };
-  const saveOperation = async (op: ReviewedOperation): Promise<void> => {
+  const runSaveOperation = async (op: ReviewedOperation, confirmedVersion?: number): Promise<void> => {
     if (!canEdit || !active.isBase || official.role === "viewer" || !baseData || !scope || op.scope !== `${user?.id}:${official.orgId}` || op.orgId !== official.orgId) throw new Error("Sem acesso ao contexto real desta operação.");
     if (inflight.current) throw new Error("Há uma confirmação em andamento. Aguarde a resposta.");
     if (operationRef.current && operationRef.current.requestId !== op.requestId) throw new Error("Há uma operação com resultado pendente. Resolva-a na faixa de recuperação antes de confirmar outra.");
     if (!operationRef.current) {
       // Isolation compares the reviewed delta only; no global draft commit.
       const pending = sessionRef.current?.scope === scope ? sessionRef.current.ops : [];
-      const independent=pending.filter(p=>!op.recoveredPending?.some(r=>r.entity==='Fornecedor' && JSON.stringify(r)===JSON.stringify(p)));
-      isolateOperation(baseData, applyOps(baseData, op.ops, false).data, independent);
+      const independent=recoveredOperationPending(pending,op.recoveredPending);
+      if(confirmedVersion===undefined)isolateOperation(baseData, applyOps(baseData, op.ops, false).data, independent);
       const blocked=pending.filter(p=>op.dependencies?.some(r=>r.entity===p.entity && r.id===p.id));
       if(blocked.length)throw new Error(`Dependências não salvas: ${blocked.map(p=>`${p.entity} ${p.id}`).join('; ')}. Revise/salve ou descarte explicitamente essas pendências antes desta operação.`);
       inflight.current = true;
@@ -224,12 +228,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     inflight.current = true; setSaveState("saving"); setSaveMsg("");
     try {
       const confirmationStarted=performance.now();
-      const r = await sendOperation(op, o => commitFn({ data: { orgId: o.orgId, requestId: o.requestId, opsJson: JSON.stringify(o.ops), ...(o.dependencies ? {dependenciesJson:JSON.stringify(o.dependencies)} : {}) } }));
+      const r = confirmedVersion!==undefined ? {status:'duplicate',version:confirmedVersion,conflictsJson:'[]'} : await sendOperation(op, o => commitFn({ data: { orgId: o.orgId, requestId: o.requestId, opsJson: JSON.stringify(o.ops), ...(o.dependencies ? {dependenciesJson:JSON.stringify(o.dependencies)} : {}) } }));
       measureSavePhase('confirmation',confirmationStarted);
       if (!["ok", "duplicate", "noop"].includes(r.status)) {
         if (r.status === "conflict") {
-          op.rejected=true; operationRef.current=op; setPendingOperation({...op}); await saveDraftLocal("operation:"+scope,op);
           const conflicts = JSON.parse(r.conflictsJson) as Conflict[];
+          op.rejected=true;
+          if(op.ops.every(o=>o.entity==='Recebimento'))op.conflicts=conflicts;
+          operationRef.current=op; setPendingOperation({...op}); await saveDraftLocal("operation:"+scope,op);
           throw new Error(`Conflito em ${conflicts.map(c => `${c.change.entity} ${c.change.id} (${c.change.fields.join(', ')})`).join('; ')}. Nada foi sobrescrito. Preenchimento preservado. Releia a base e revise antes de substituir qualquer informação.`);
         }
         throw new Error(r.status === "forbidden" ? "Sem permissão para salvar." : "Base ocupada por gravações concorrentes. Tente novamente com a mesma operação.");
@@ -272,6 +278,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch(e) { setSaveState("error"); setSaveMsg("Confirmação não concluída; operação recuperável, sem falso sucesso."); throw e; }
     finally { inflight.current = false; }
   };
+  const saveOperation = async (op:ReviewedOperation, confirmedVersion?:number) => {
+    const run=async()=>{
+      const stored=await loadDraft<ReviewedOperation>('operation:'+scope);
+      if(stored && stored.requestId!==op.requestId)throw new Error('Outra aba tem uma operação em confirmação. Preenchimento preservado; confira essa operação antes de enviar.');
+      await runSaveOperation(op,confirmedVersion);
+    };
+    if(typeof navigator!=='undefined' && navigator.locks) {
+      await navigator.locks.request('sandrini:commit:'+op.scope,{ifAvailable:true},async lock=>{
+        if(!lock)throw new Error('Outra aba está confirmando uma operação. Aguarde; seus valores permanecem preservados.');
+        await run();
+      });
+    } else await run();
+  };
   const abandonOperation = async () => {
     if (!scope || inflight.current) return;
     const op=operationRef.current;
@@ -282,15 +301,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await saveDraftLocal('draft:'+scope,next);setSession(next);
     }
     await clearDraftLocal("operation:" + scope); operationRef.current = null; setPendingOperation(null);
+    if(op?.conflicts)setConflicts(op.conflicts);
     void qc.invalidateQueries({ queryKey: ["official", user?.id, selOrg] });
   };
 
-  const commitDraft = async () => {
+  const runCommitDraft = async () => {
     if (operationRef.current) { setSaveMsg("Resolva primeiro a operação em confirmação; as demais pendências permanecem preservadas."); return; }
     if (!cur || !draft || inflight.current) return; // trava: um envio por vez desta gravação
-    const semData = draft.receipts.filter((r) => !r.date && (r.general != null || Object.values(r.platforms).some((v) => v != null)));
-    if (semData.length) { setSaveState("error"); setSaveMsg(`${semData.length} recebimento(s) com valor e sem data. Informe a data antes de salvar.`); return; }
-    const sent = cur.ops.filter((o) => !(o.entity === "Recebimento" && o.after && !(o.after as { date?: string }).date));
+    const sent = cur.ops.filter((o) => o.entity !== 'Recebimento');
     if (!sent.length) return;
     inflight.current = true; setSaveState("saving"); setSaveMsg("");
     try {
@@ -298,10 +316,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       for (let i = 0; r.status === "retry" && i < 3; i++) r = await commitFn({ data: { orgId: selOrg, requestId: cur.requestId, opsJson: JSON.stringify(sent) } });
       if (r.status === "ok" || r.status === "duplicate" || r.status === "noop") {
         const sentAfter = new Map(sent.map((o) => [opKey(o), JSON.stringify(o.after)]));
-        setSession((s) => { if (!s) return s; const rest = s.ops.filter((o) => sent.some((x) => opKey(x) === opKey(o)) || o.entity !== "Recebimento").filter((o) => sentAfter.get(opKey(o)) !== JSON.stringify(o.after)); return rest.length ? { ...s, ops: rest, baseVersion: r.version, requestId: uuid() } : null; });
+        setSession((s) => { if (!s) return s; const rest = s.ops.filter((o) => sentAfter.get(opKey(o)) !== JSON.stringify(o.after)); return rest.length ? { ...s, ops: rest, baseVersion: r.version, requestId: uuid() } : null; });
         setConflicts([]);
         await qc.invalidateQueries({ queryKey: ["official"] });
-        setSaveState("saved"); setSaveMsg(`Salvo às ${new Date().toLocaleTimeString("pt-BR")}.`);
+        setSaveState(sessionRef.current?.ops.length?'dirty':'saved'); setSaveMsg(sessionRef.current?.ops.length?'Outros módulos salvos. Recebimentos permanecem para revisão na própria página.':`Salvo às ${new Date().toLocaleTimeString("pt-BR")}.`);
       } else if (r.status === "conflict") {
         setConflicts(JSON.parse(r.conflictsJson) as Conflict[]);
         setSaveState("conflict"); setSaveMsg("Outra pessoa alterou a mesma informação. Escolha o que manter; suas demais alterações continuam preservadas.");
@@ -310,13 +328,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (e) { setSaveState("error"); setSaveMsg(`Falha ao salvar: ${(e as Error).message}. Seu preenchimento está preservado; ao tentar de novo, o sistema confere se já foi gravado.`); }
     finally { inflight.current = false; }
   };
+  const commitDraft = async () => {
+    const run=async()=>{
+      const stored=await loadDraft<ReviewedOperation>('operation:'+scope);
+      if(stored){setSaveMsg('Outra aba tem uma operação em confirmação. Confira antes de salvar outras pendências.');return;}
+      await runCommitDraft();
+    };
+    if(typeof navigator!=='undefined' && navigator.locks)await navigator.locks.request(`sandrini:commit:${user?.id}:${official.orgId}`,{ifAvailable:true},async lock=>{
+      if(!lock){setSaveMsg('Outra aba está confirmando uma operação. Aguarde; pendências preservadas.');return;}
+      await run();
+    });
+    else await run();
+  };
   const resolveConflict = (c: Conflict, keep: "mine" | "server") => {
     const k = opKey(c.change);
     setSession((s) => { if (!s) return s; const ops = keep === "mine" ? s.ops.map((o) => (opKey(o) === k ? { ...o, before: c.server } : o)) : s.ops.filter((o) => opKey(o) !== k); return ops.length ? { ...s, ops, requestId: uuid() } : null; });
-    setConflicts((l) => { const n = l.filter((x) => opKey(x.change) !== k); if (!n.length) { setSaveState("dirty"); setSaveMsg("Conflitos resolvidos — clique em Salvar."); } return n; });
+    setConflicts((l) => { const n = l.filter((x) => opKey(x.change) !== k); if (!n.length) { setSaveState("dirty"); setSaveMsg(c.change.entity==='Recebimento'?'Conflitos resolvidos — revise e salve na página Recebimentos.':"Conflitos resolvidos — clique em Salvar."); } return n; });
   };
 
   const value: Ctx = {
+    prepareReceiptOperation: () => {
+      if(!baseData || !canEdit || !active.isBase)throw new Error('Sem acesso para salvar recebimentos reais.');
+      const pending=sessionRef.current?.scope===scope?sessionRef.current.ops:[];
+      const checked=applyOps(baseData,pending.filter(p=>p.entity==='Recebimento'),true);
+      if(checked.conflicts.length){setConflicts(checked.conflicts);throw new Error('Confira os recebimentos alterados por outra pessoa. Seus valores permanecem preservados.');}
+      return receiptOperation(baseData,pending);
+    },
+    reconcileReceiptDraft: async () => {
+      const current=sessionRef.current;
+      if(operationRef.current || inflight.current)throw new Error('Há uma operação em confirmação. Confira o resultado na faixa de recuperação antes de revisar Recebimentos.');
+      if(!current || current.scope!==scope || !active.isBase)return false;
+      for(const requestId of current.legacyRequestIds ?? [current.requestId]) {
+        const result=await checkRequest({data:{orgId:official.orgId,requestId}});
+        if(!result)continue;
+        const ops=JSON.parse(result.opsJson) as Change[];
+        await saveOperation({scope:`${user?.id}:${official.orgId}`,orgId:official.orgId,requestId,ops},result.version);
+        setSession(s=>s?{...s,legacyRequestIds:s.legacyRequestIds?.filter(id=>id!==requestId)}:null);
+        return true;
+      }
+      return false;
+    },
     authReady,
     user, signOut: async () => { await qc.cancelQueries(); qc.removeQueries({ queryKey: ["official"] }); setSession(null); if (user) mutLocal((s) => { s.sims = purgeUser(s.sims, user.id); s.activeId = "base"; }); await supabase.auth.signOut(); },
     official, orgs, setOrgId: (id) => { if(id!==SHARED_ORG_ID)return; setOrgIdS(SHARED_ORG_ID); void qc.invalidateQueries({queryKey:["official","orgs",user?.id]}); },

@@ -1,5 +1,11 @@
 # Roadmap
 
+## Salvamento de Recebimentos — autorizado 18/11/2026
+- [x] Revisão isolada por data/origem, grade e Fluxo; mesma proteção/recuperação de pendências sem salvar outras entidades
+- [x] Confirmação autoritativa/versionada, requestId protegido, leitura de envio legado confirmado e conflito recuperável
+- [x] 43 testes e compilação OK; navegador fictício ~12 MB: revisão/voltar/confirmar/reabrir, zero, múltiplas datas, novo, legado, perda de resposta/reload/retry, conflito; 1366/1920/390. Evidências em docs/recebimentos-salvamento-2026-11-18.md; sem publicação/escrita real
+- [ ] Banco hospedado, duas abas simultâneas e falhas de armazenamento não testados; dados reais não autorizados, limites descritos no relatório
+
 ## Salvamento pontual — autorizado 18/11/2026
 - [x] Remover cálculo diário da revisão; manter alterações da operação e histórico
 - [x] Resposta canônica confirmada com aplicação por versão exata e releitura segura nas exceções

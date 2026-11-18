@@ -14,6 +14,11 @@ import { uid, useApp } from "@/lib/store";
 import { pendingSearch } from "@/lib/pendencias";
 import { usePendingFocus } from "@/components/PendingFocus";
 import { receiptPlatformEntries } from "@/lib/receiptMigration";
+import { DecisionWindow } from '@/components/DecisionDialog';
+import { Button } from '@/components/ui/button';
+import { receiptReview } from '@/lib/receiptOperation';
+import type { ReviewedOperation } from '@/lib/operationSave';
+import { measureSavePhase } from '@/lib/saveTiming';
 
 export const Route = createFileRoute("/recebimentos")({
   validateSearch: pendingSearch,
@@ -35,10 +40,34 @@ const pfState = (p: Platform, today: string) => (p.end && p.end < today ? "inati
 function Page() {
   const { focus } = Route.useSearch();
   usePendingFocus(focus);
-  const { active, update, ui } = useApp();
+  const app = useApp();
+  const { active, update, ui } = app;
   const d = active.data;
   const [err, setErr] = useState("");
-  const act = (fn: Parameters<typeof update>[0]) => { const e = update(fn); setErr(e ?? ""); return !e; };
+  const [review, setReview] = useState<ReviewedOperation | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const receiptChanges=app.changes.filter(p=>p.entity==='Recebimento');
+  const revise=async()=>{
+    setErr(''); setSaving(true); setSaved(false);
+    try {
+      if(active.isBase && await app.reconcileReceiptDraft()) {
+        setErr('Confirmação anterior conferida. Os valores salvos foram atualizados; revise as edições que ainda restam.'); return;
+      }
+      const started=performance.now();
+      const prepared=app.prepareReceiptOperation();
+      if(!prepared.ops.length)return;
+      setReview({...prepared,scope:`${app.user?.id}:${app.official.orgId}`,orgId:app.official.orgId,requestId:crypto.randomUUID()});
+      measureSavePhase('prepare',started);
+    } catch(e){setErr((e as Error).message);} finally{setSaving(false);}
+  };
+  const confirm=async()=>{
+    if(!review || saving)return;
+    setSaving(true);setErr('');
+    try{await app.saveOperation(review);setReview(null);setSaved(true);}
+    catch(e){setErr((e as Error).message);if(review.rejected)setReview(null);}finally{setSaving(false);}
+  };
+  const act = (fn: Parameters<typeof update>[0]) => { setSaved(false); const e = update(fn); setErr(e ?? ""); return !e; };
   const [pStart, setPStart] = useState<string | null>(ui.start);
   const [pEnd, setPEnd] = useState<string | null>(ui.end);
   const [dir, setDir] = useState<"todos" | "acima" | "abaixo">("todos");
@@ -62,7 +91,8 @@ function Page() {
   const unknown = [...new Set(list.flatMap((r) => Object.keys(r.platforms).filter((k) => r.platforms[k] != null && !d.platforms.some((p) => p.id === k))))];
   const set = (id: string, fn: (r: (typeof d.receipts)[number]) => void) => act((x) => { const r = x.receipts.find((i) => i.id === id); if (r) fn(r); });
   const setPf = async (rid: string, pid: string, v: number | null, date: string) => {
-    const pf = d.platforms.find((p) => p.id === pid)!;
+    const pf = d.platforms.find((p) => p.id === pid);
+    if(!pf)return;
     let note: string | null = null;
     if (v !== null && !platformActiveOn(pf, date) && pf.end && date > pf.end) {
       note = await askText(`"${pf.name}" foi inativada em ${fmtDate(pf.end)}. Registrar como REPASSE RESIDUAL? Informe a nota (obrigatória):`);
@@ -75,6 +105,22 @@ function Page() {
       <PageHeader title="Recebimentos" sub="Vazio (não informado) usa estimativa; ZERO confirmado é valor informado. Linha com valor só grava com data.">
         <button className="btn" onClick={() => setShowPf(true)}>Plataformas</button><button className="btn btn-primary" onClick={() => act((x) => { x.receipts.push({ id: uid(), date: "", platforms: {}, general: null, notes: "", residual: {} }); })}>+ Recebimento</button>
       </PageHeader>
+      {active.isBase && app.canEdit && <div className="flex flex-wrap items-center gap-2 border-y border-border py-2 text-xs" role="status">
+        <span>{saving ? 'Conferindo salvamento…' : saved ? 'Recebimentos salvos após confirmação.' : receiptChanges.length ? `${receiptChanges.length} recebimento(s) com alterações não salvas; preenchimento protegido neste navegador.` : 'Nenhuma alteração de recebimentos.'}</span>
+        <Button variant="outline" size="sm" disabled={saving || !receiptChanges.length || !!app.pendingOperation} onClick={()=>void revise()}>Revisar e salvar recebimentos</Button>
+        {app.protectErr && <span className="text-destructive">{app.protectErr}</span>}
+      </div>}
+      {review && <DecisionWindow wide title="Revisar recebimentos" description="Somente os recebimentos abaixo serão salvos. Outras alterações permanecem separadas." footer={<div className="flex gap-2">
+        <Button variant="outline" disabled={saving || !!app.pendingOperation} onClick={()=>setReview(null)}>Voltar à edição</Button>
+        <Button disabled={saving || (!!app.pendingOperation && (app.pendingOperation.requestId!==review.requestId || !!app.pendingOperation.rejected))} onClick={()=>void confirm()}>{saving?'Salvando…':app.pendingOperation?'Tentar novamente a confirmação':'Confirmar e salvar'}</Button>
+      </div>}>
+        {err && <p role="alert" className="text-sm text-destructive">{err}</p>}
+        <table className="tbl"><thead><tr><th>Data</th><th>Plataforma / campo</th><th>Antes</th><th>Depois</th></tr></thead><tbody>{receiptReview(review.ops,d.platforms).map((r,i)=>{
+          const show=(v:unknown)=>v==null?'Não informado':r.money?fmtNum(v as number):r.field==='Data'?fmtDate(v as string):typeof v==='boolean'?v?'Sim':'Não':typeof v==='object'?JSON.stringify(v):String(v);
+          return <tr key={`${r.id}:${i}`}><td>{fmtDate(r.date)||'Sem data'}</td><td>{r.field}</td><td>{show(r.before)}</td><td>{show(r.after)}</td></tr>;
+        })}</tbody></table>
+        <p className="mt-2 text-xs text-warning-foreground">Plataformas + Geral seguem somados. Vazio usa estimativa; zero informado permanece zero.</p>
+      </DecisionWindow>}
       {err && <div className="rounded border border-destructive p-2 text-xs text-destructive">{err}</div>}
       {targetOutside && <p className="text-xs text-warning-foreground">O recebimento selecionado foi destacado fora dos filtros atuais. Os filtros foram mantidos.</p>}
       <div className="rounded border border-warning bg-warning-soft p-2 text-xs text-warning-foreground">Valores das plataformas e do campo Geral são somados no total do dia. Quando ambos estão preenchidos na mesma data, o sistema exibe alerta de possível duplicidade; nada é corrigido automaticamente.</div>
@@ -120,7 +166,7 @@ function Page() {
                 <td>{inf.doubleCount && <span className="tag tag-warn mr-1">possível dupla contagem</span>}{inf.present ? <span className="tag tag-ok">{inf.confirmedZero ? "zero confirmado" : "informado"}</span> : <span className="tag tag-warn">não informado → estimativa</span>}{issues.filter((i) => i.severity !== "info").map((i, k) => <div key={k} className="tag tag-err" title={i.message}>{i.code === "PLAT_FORA_VIGENCIA" ? "fora de vigência" : "plataforma desconhecida"}</div>)}</td>
                 <td>{inf.present ? <button className="btn" onClick={() => setAccFor(r.id)}>{receiptAccountsLabel(d, r)}</button> : ""}</td>
                 <td className="text-center"><input type="checkbox" aria-label="Creditado em conta" checked={!!r.realized} disabled={!inf.present} onChange={(e) => set(r.id, (x) => { x.realized = e.target.checked; })} /></td>
-                <td><input className="inp w-32" key={r.notes} defaultValue={r.notes} onBlur={(e) => set(r.id, (x) => { x.notes = e.target.value; })} /></td>
+                <td><input className="inp w-32" aria-label={`Observações ${r.date || r.id}`} value={r.notes} onChange={(e) => set(r.id, (x) => { x.notes = e.target.value; })} /></td>
                 <td><button className="btn btn-danger" onClick={async () => await askConfirm(`O recebimento de ${fmtDate(r.date) || "data não informada"} será excluído do cenário atual. O histórico será preservado.`, { title: "Excluir recebimento?", action: "Excluir recebimento", destructive: true }) && act((x) => { x.receipts = x.receipts.filter((i) => i.id !== r.id); })}>Excluir</button></td>
               </tr>
             );
@@ -133,7 +179,7 @@ function Page() {
           <Platforms today={today} act={act} />
         </aside>
       </div>}
-      {accFor && <ReceiptAccounts rid={accFor} act={act} onClose={() => setAccFor(null)} />}
+      {accFor && <ReceiptAccounts d={d} rid={accFor} act={act} onClose={() => setAccFor(null)} />}
       <p className="text-[11px] text-muted-foreground">Mesma data com mais de um registro: o fluxo soma o dia. Renomear uma plataforma não altera recebimentos anteriores.</p>
     </div>
   );
@@ -190,9 +236,7 @@ function receiptAccountsLabel(d: ScenarioData, r: Receipt) {
   if (uniq.length === 1) return uniq[0] ? accountName(d, uniq[0]).split(" · ")[0] : NO_ACCOUNT;
   return `${uniq.length} contas`;
 }
-function ReceiptAccounts({ rid, act, onClose }: { rid: string; act: (fn: (x: ScenarioData) => void) => boolean; onClose: () => void }) {
-  const { active } = useApp();
-  const d = active.data;
+function ReceiptAccounts({ d, rid, act, onClose }: { d:ScenarioData; rid: string; act: (fn: (x: ScenarioData) => void) => boolean; onClose: () => void }) {
   const r = d.receipts.find((x) => x.id === rid);
   if (!r) return null;
   const rows = [...receiptPlatformEntries(d, r).filter(([, v]) => v != null).map(([pid, v]) => {
