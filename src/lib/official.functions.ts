@@ -82,7 +82,7 @@ export const commitOfficial = createServerFn({ method: "POST" })
       _org: m.org_id, _user: context.userId, _email: email ?? "", _expected: input.expectedVersion,
       _data: next as never, _request: input.requestId, _summary: summary, _changes: changes as never,
     });
-    if (e2) { console.error(e2); throw new Error("Falha ao gravar."); }
+    if (e2) { console.error('sandrini.commit.failure', {code:e2.code}); throw new Error("Falha ao gravar."); }
     const r = res as { status: "ok" | "conflict" | "duplicate" | "forbidden"; version: number };
     return { status: r.status, version: r.version ?? -1, summary };
   });
@@ -101,7 +101,8 @@ export const commitOps = createServerFn({ method: "POST" })
   .handler(async ({ data: input, context }) => {
     const m = await myOrg(context.supabase, context.userId, input.orgId);
     if (m.role !== "owner" && m.role !== "editor") return { status: "forbidden" as const, version: -1, conflictsJson: "[]" };
-    const { data: done } = await context.supabase.from("audit_log").select("version_to").eq("org_id", m.org_id).eq("request_id", input.requestId).maybeSingle();
+    const { data: done, error: lookupError } = await context.supabase.from("audit_log").select("version_to").eq("org_id", m.org_id).eq("request_id", input.requestId).maybeSingle();
+    if(lookupError)throw new Error('Não foi possível conferir o envio anterior. Nenhuma nova escrita.');
     if (done) return { status: "duplicate" as const, version: done.version_to as number, conflictsJson: "[]" };
     let ops: Change[];
     try { ops = JSON.parse(input.opsJson) as Change[]; if (!Array.isArray(ops)) throw new Error(); } catch { throw new Error("Dados inválidos."); }
@@ -129,7 +130,7 @@ export const commitOps = createServerFn({ method: "POST" })
       _org: m.org_id, _user: context.userId, _email: email ?? "", _expected: cur.version,
       _data: next as never, _request: input.requestId, _summary: summary, _changes: r.applied as never,
     });
-    if (e2) { console.error(e2); throw new Error("Falha ao gravar."); }
+    if (e2) { console.error('sandrini.commit.failure', {code:e2.code}); throw new Error("Falha ao gravar."); }
     const x = res as { status: "ok" | "conflict" | "duplicate" | "forbidden"; version: number };
     // "conflict" aqui = outra gravação entrou entre a leitura e o bloqueio; o cliente repete (mesmo requestId).
     // SQL stores exactly _data and confirms expected+1; duplicates must be reconciled by reading.

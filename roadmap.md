@@ -1,5 +1,11 @@
 # Roadmap
 
+## Lacunas de revisão e confirmação — autorizado 18/11/2026 14:55 UTC
+- [x] Substituir envio global direto por revisão identificada e pacote protegido; preservar confirmação isolada
+- [x] Estados explícitos, tempo limite e consultas read-only limitadas; recuperação com o mesmo requestId, sem escrita automática
+- [x] 49 testes e navegador fictício global/isolado: volta, duplo clique, perda de resposta, offline, pacote/reload, conflito e edição durante envio; relatório docs/salvamento-confirmacao-2026-11-18.md
+- [ ] Resultado de rascunhos legados sem captura e sem auditoria encontrada depende de evidência hospedada; bloqueados conservadoramente sem novo envio. Banco real e duas abas simultâneas não testados nesta rodada.
+
 ## Salvamento de Recebimentos — autorizado 18/11/2026
 - [x] Revisão isolada por data/origem, grade e Fluxo; mesma proteção/recuperação de pendências sem salvar outras entidades
 - [x] Confirmação autoritativa/versionada, requestId protegido, leitura de envio legado confirmado e conflito recuperável

@@ -1,7 +1,8 @@
 import { diffData, opKey, type Change, type Conflict } from './diff';
 import type { ScenarioData } from './engine/types';
+import type { OperationPhase } from './saveRecovery';
 
-export interface ReviewedOperation { scope: string; orgId: string; requestId: string; ops: Change[]; recoveredPending?: Change[]; dependencies?: ReturnType<typeof operationDependencies>; rejected?: boolean; conflicts?: Conflict[] }
+export interface ReviewedOperation { scope: string; orgId: string; requestId: string; ops: Change[]; recoveredPending?: Change[]; dependencies?: ReturnType<typeof operationDependencies>; rejected?: boolean; conflicts?: Conflict[]; phase?: OperationPhase; submittedAt?: string; legacyUncertain?: boolean; confirmation?: { status: string; version: number; receipt?: import('./commitReceipt').CommitReceipt | undefined }; reviewRows?: import('./operationReview').OperationReviewRow[] }
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /** Read dependencies, including newly added payments, must remain unchanged until commit. */
@@ -75,7 +76,5 @@ export function rebasePending(pending: Change[], sent: Change[], captured: Chang
 }
 
 export async function sendOperation<T extends { status: string }>(op: ReviewedOperation, send: (op: ReviewedOperation) => Promise<T>): Promise<T> {
-  let r = await send(op);
-  for (let i = 0; r.status === 'retry' && i < 3; i++) r = await send(op);
-  return r;
+  return send(op); // Automatic retries are read-only; writes require an explicit reviewed submission.
 }

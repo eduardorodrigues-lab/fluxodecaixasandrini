@@ -5,6 +5,10 @@ import type { ScenarioData } from "@/lib/engine/types";
 import { useEffect, useState, type ReactNode } from "react";
 import { PanelLeftClose, PanelLeftOpen, Activity, LayoutDashboard, FileText, Receipt, ArrowDownToLine, Landmark, Target, ContactRound, FlaskConical, History, UsersRound } from "lucide-react";
 import { useApp } from "@/lib/store";
+import { Button } from '@/components/ui/button';
+import { OperationReviewTable } from './OperationReviewTable';
+import { operationReview } from '@/lib/operationReview';
+import { operationPhaseLabel } from '@/lib/saveRecovery';
 
 const NAV = [
   { to: "/", label: "Fluxo", icon: Activity },
@@ -23,7 +27,10 @@ const NAV = [
 const NAV_KEY = "fluxo.nav.hidden";
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { orgs, user, authReady, signOut, official, base, active, sims, setActive, draft, saveState, saveMsg, canEdit, changes, commitDraft, discardDraft, conflicts, resolveConflict, protectErr, pendingOperation, saveOperation, abandonOperation } = useApp();
+  const { orgs, user, authReady, signOut, official, base, active, sims, setActive, draft, saveState, saveMsg, canEdit, changes, commitDraft, discardDraft, conflicts, resolveConflict, protectErr, pendingOperation, saveOperation, abandonOperation, globalReview, closeGlobalReview, checkPendingOperation } = useApp();
+  const [viewPacket,setViewPacket] = useState(false);
+  const [confirming,setConfirming] = useState(false);
+  const [reviewError,setReviewError] = useState('');
   const simMode = !active.isBase;
   const otherChanges=changes.filter(c=>c.entity!=='Recebimento');
   const receiptCount=changes.length-otherChanges.length;
@@ -84,26 +91,32 @@ export function AppShell({ children }: { children: ReactNode }) {
         {!active.isBase && <div className="sticky top-0 z-30 border-b-2 border-destructive bg-destructive px-4 py-1.5 text-xs font-semibold text-destructive-foreground">SIMULAÇÃO "{active.name}" — exclusivamente visual, local a este navegador. Nada aqui é gravado nos dados reais, marca pagamentos ou é promovido.</div>}
         {active.isBase && canEdit && (draft || saveMsg || protectErr) && (
           <div className={`sticky top-0 z-30 flex flex-wrap items-center gap-2 border-b px-4 py-2 text-xs ${saveState === "error" || saveState === "conflict" ? "border-destructive/30 bg-card text-destructive" : saveState === "saved" ? "border-border bg-muted" : "border-warning/30 bg-warning-soft"}`} role="status">
-            <b>{saveState === "saving" ? "Salvando…" : saveState === "error" ? "Falha ao salvar" : saveState === "conflict" ? "Conflito" : draft ? "Alterações não salvas" : saveState === "saved" ? "Salvo" : ""}</b>
+            <b>{pendingOperation ? operationPhaseLabel[pendingOperation.phase ?? 'unknown'] : saveState === "saving" ? "Aguardando confirmação" : saveState === "error" ? "Conferência pendente" : saveState === "conflict" ? "Conflito" : draft ? "Alterações não salvas" : saveState === "saved" ? "Salvo" : ""}</b>
             <span>{draft && saveState === "dirty" && !saveMsg ? `${otherChanges.length} registro(s) de outros módulos alterado(s).` : saveMsg}</span>
             {receiptCount>0 && <Link to="/recebimentos" className="underline">{receiptCount} recebimento(s): revisar na página Recebimentos</Link>}
             {protectErr && <span className="font-semibold">{protectErr}</span>}
             {draft && <span className="ml-auto flex gap-1">
               <button className="btn" disabled={saveState === "saving" || !!pendingOperation} onClick={async () => { if (await askConfirm("Todas as alterações não salvas serão descartadas.", { title: "Descartar alterações?", action: "Descartar", destructive: true })) discardDraft(); }}>Descartar</button>
-              <button className="btn btn-primary" disabled={saveState === "saving" || saveState === "conflict" || !otherChanges.length || !!pendingOperation} onClick={() => void commitDraft()}>{saveState === "saving" ? "Salvando…" : receiptCount?'Salvar outros módulos':'Salvar'}</button>
+              <Button size="sm" disabled={saveState === "saving" || saveState === "conflict" || !otherChanges.length || !!pendingOperation} onClick={() => void commitDraft()}>{receiptCount?'Salvar outros módulos':'Salvar'}</Button>
             </span>}
           </div>
         )}
         {active.isBase && pendingOperation && <div role="status" className="flex flex-wrap items-center gap-2 border-b border-border bg-card px-4 py-2 text-sm">
-          <span>Operação em confirmação: {pendingOperation.ops.length} registro(s). Não incluída no Salvar das outras pendências.</span>
-          <button className="btn" disabled={saveState === "saving"} onClick={() => void saveOperation(pendingOperation).catch(() => {})}>Tentar novamente a operação</button>
-          <button className="btn" disabled={saveState === "saving" || !pendingOperation.rejected} title={!pendingOperation.rejected ? 'Confira o resultado tentando novamente a mesma operação primeiro.' : undefined} onClick={async () => { if(await askConfirm("A operação rejeitada será preservada nas alterações não salvas para nova revisão. Nada será gravado; o formulário e outras pendências permanecem.", {title:"Revisar operação pendente?",action:"Liberar para nova revisão"})) await abandonOperation(); }}>Liberar para nova revisão</button>
+          <span>{operationPhaseLabel[pendingOperation.phase ?? 'unknown']}: {pendingOperation.ops.length} registro(s). Outras pendências continuam separadas.</span>
+          <Button size="sm" variant="outline" onClick={()=>setViewPacket(true)}>Ver alterações</Button>
+          <Button size="sm" variant="outline" disabled={saveState === "saving" || !!pendingOperation.rejected} onClick={() => void checkPendingOperation().catch(() => {})}>Conferir confirmação</Button>
+          <Button size="sm" variant="outline" disabled={saveState === "saving" || !pendingOperation.rejected} title={!pendingOperation.rejected ? 'Resultado desconhecido não permite liberar nem descartar este pacote.' : undefined} onClick={async () => { if(await askConfirm("A operação rejeitada será preservada nas alterações não salvas para nova revisão. Nada será gravado; o formulário e outras pendências permanecem.", {title:"Revisar operação pendente?",action:"Liberar para nova revisão"})) await abandonOperation(); }}>Liberar para nova revisão</Button>
         </div>}
+        {globalReview && !pendingOperation && <DecisionWindow wide title="Revisar alterações não salvas" description="Somente as alterações abaixo serão enviadas. Recebimentos e edições posteriores permanecem separados." footer={<>
+          <Button variant="outline" disabled={confirming} onClick={closeGlobalReview}>Voltar à edição</Button>
+          <Button disabled={confirming} onClick={async()=>{if(confirming)return;setConfirming(true);setReviewError('');try{await saveOperation(globalReview);}catch(e){setReviewError((e as Error).message);}finally{setConfirming(false);closeGlobalReview();}}}>Confirmar e salvar</Button>
+        </>}><OperationReviewTable rows={globalReview.reviewRows ?? operationReview(globalReview.ops,active.data)} />{reviewError && <p role="alert">{reviewError}</p>}</DecisionWindow>}
+        {viewPacket && pendingOperation && <DecisionWindow wide title="Alterações do pacote enviado" description="Somente leitura. Este é o pacote capturado; abrir esta janela não envia nem altera informações." footer={<Button variant="outline" onClick={()=>setViewPacket(false)}>Fechar</Button>}><OperationReviewTable rows={pendingOperation.reviewRows ?? operationReview(pendingOperation.ops,active.data)} /></DecisionWindow>}
         {conflicts.length > 0 && <DecisionWindow wide title="Conflito na mesma informação" description="Outra pessoa salvou alterações nestes registros depois que você começou. Escolha, para cada um, qual versão manter. Nada foi sobrescrito." footer={<span className="text-xs text-muted-foreground">{conflicts.length} pendente(s)</span>}>
-          {conflicts.map((c) => { const srv = (c.server ?? {}) as Record<string, unknown>, mine = (c.change.after ?? {}) as Record<string, unknown>; const obj = typeof srv === "object" && typeof mine === "object"; const keys = obj ? Object.keys({ ...srv, ...mine }).filter((k) => JSON.stringify(srv[k]) !== JSON.stringify(mine[k])) : ["valor"]; const show = (v: unknown) => v == null || v === "" ? "—" : typeof v === "object" ? JSON.stringify(v) : String(v); return (
+          {conflicts.map((c) => { return (
             <div key={c.change.entity + c.change.id} className="rounded border border-border p-2">
               <p className="mb-1 font-semibold">{c.change.entity}{c.server == null ? " · excluído por outra pessoa" : c.change.after == null ? " · você excluiu" : ""}</p>
-              <table className="tbl"><thead><tr><th>Campo</th><th>No banco (outra pessoa)</th><th>Seu preenchimento</th></tr></thead><tbody>{keys.map((k) => <tr key={k}><td>{fieldLabel(k)}</td><td>{show(obj ? srv[k] : c.server)}</td><td className="text-destructive">{show(obj ? mine[k] : c.change.after)}</td></tr>)}</tbody></table>
+              <OperationReviewTable rows={operationReview([{...c.change,before:c.server}],active.data)} />
               <div className="mt-1 flex justify-end gap-1"><button className="btn" disabled={!!pendingOperation} onClick={() => resolveConflict(c, "server")}>Manter a do banco</button><button className="btn btn-primary" disabled={!!pendingOperation} onClick={() => resolveConflict(c, "mine")}>Manter a minha</button></div>
             </div>); })}
         </DecisionWindow>}
@@ -114,8 +127,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 }
 
-const FIELD_LABEL: Record<string, string> = { value: "Valor", amount: "Valor", date: "Data", dueDate: "Vencimento", baseDate: "Data base", extensionDate: "Prorrogado para", document: "Documento", purchaseCode: "Código do pedido", notes: "Descrição/observações", supplierId: "Fornecedor", categoryId: "Subgrupo", status: "Situação", general: "Geral", platforms: "Plataformas", name: "Nome", termDays: "Prazo (dias)", installments: "Parcelas", valor: "Valor" };
-const fieldLabel = (k: string) => FIELD_LABEL[k] ?? k;
 const isEmpty = (d: ScenarioData) => !d.suppliers.length && !d.planned.length && !d.committed.length && !d.expenses.length && !d.receipts.length && !Object.keys(d.targets).length;
 function Gate({ children }: { children: ReactNode }) {
   return <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background p-6">

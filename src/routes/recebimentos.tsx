@@ -16,9 +16,10 @@ import { usePendingFocus } from "@/components/PendingFocus";
 import { receiptPlatformEntries } from "@/lib/receiptMigration";
 import { DecisionWindow } from '@/components/DecisionDialog';
 import { Button } from '@/components/ui/button';
-import { receiptReview } from '@/lib/receiptOperation';
 import type { ReviewedOperation } from '@/lib/operationSave';
 import { measureSavePhase } from '@/lib/saveTiming';
+import { OperationReviewTable } from '@/components/OperationReviewTable';
+import { operationReview } from '@/lib/operationReview';
 
 export const Route = createFileRoute("/recebimentos")({
   validateSearch: pendingSearch,
@@ -65,7 +66,7 @@ function Page() {
     if(!review || saving)return;
     setSaving(true);setErr('');
     try{await app.saveOperation(review);setReview(null);setSaved(true);}
-    catch(e){setErr((e as Error).message);if(review.rejected)setReview(null);}finally{setSaving(false);}
+    catch(e){setErr((e as Error).message);setReview(null);}finally{setSaving(false);}
   };
   const act = (fn: Parameters<typeof update>[0]) => { setSaved(false); const e = update(fn); setErr(e ?? ""); return !e; };
   const [pStart, setPStart] = useState<string | null>(ui.start);
@@ -115,10 +116,7 @@ function Page() {
         <Button disabled={saving || (!!app.pendingOperation && (app.pendingOperation.requestId!==review.requestId || !!app.pendingOperation.rejected))} onClick={()=>void confirm()}>{saving?'Salvando…':app.pendingOperation?'Tentar novamente a confirmação':'Confirmar e salvar'}</Button>
       </div>}>
         {err && <p role="alert" className="text-sm text-destructive">{err}</p>}
-        <table className="tbl"><thead><tr><th>Data</th><th>Plataforma / campo</th><th>Antes</th><th>Depois</th></tr></thead><tbody>{receiptReview(review.ops,d.platforms).map((r,i)=>{
-          const show=(v:unknown)=>v==null?'Não informado':r.money?fmtNum(v as number):r.field==='Data'?fmtDate(v as string):typeof v==='boolean'?v?'Sim':'Não':typeof v==='object'?JSON.stringify(v):String(v);
-          return <tr key={`${r.id}:${i}`}><td>{fmtDate(r.date)||'Sem data'}</td><td>{r.field}</td><td>{show(r.before)}</td><td>{show(r.after)}</td></tr>;
-        })}</tbody></table>
+        <OperationReviewTable rows={operationReview(review.ops,d)} />
         <p className="mt-2 text-xs text-warning-foreground">Plataformas + Geral seguem somados. Vazio usa estimativa; zero informado permanece zero.</p>
       </DecisionWindow>}
       {err && <div className="rounded border border-destructive p-2 text-xs text-destructive">{err}</div>}

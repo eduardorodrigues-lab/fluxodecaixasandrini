@@ -76,6 +76,6 @@ describe('Operação revisada isolada',()=>{
   it('falha antes de gravar preserva payload e tentativa após disputa reutiliza ID',async()=>{
     const d=base(),op={scope:'u:o',orgId:'o',requestId:'same',ops:diffData(d,changed(d,'a','value',0))};
     const original=JSON.stringify(op);await expect(sendOperation(op,async()=>{throw new Error('rede');})).rejects.toThrow('rede');expect(JSON.stringify(op)).toBe(original);
-    const ids:string[]=[];await sendOperation(op,async o=>{ids.push(o.requestId);return {status:ids.length===1?'retry':'ok'};});expect(ids).toEqual(['same','same']);
+    const ids:string[]=[];const result=await sendOperation(op,async o=>{ids.push(o.requestId);return {status:'retry'};});expect(ids).toEqual(['same']);expect(result.status).toBe('retry');
   });
 });

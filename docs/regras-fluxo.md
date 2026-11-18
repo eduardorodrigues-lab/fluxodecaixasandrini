@@ -1,5 +1,12 @@
 # Fluxo de Caixa Sandrini — Regras, schema e critérios de aceite (NÃO homologado)
 
+## Revisão global e recuperação de confirmação — 18/11/2026 14:55 UTC
+- Salvar global captura revisão antes/depois das alterações de outros módulos, sem Recebimentos, sem cálculo diário e sem envio ao abrir/voltar. Confirmar usa o mesmo caminho isolado/versionado. Campos intactos não aparecem; vazio e zero são distintos.
+- Pacote protegido antes do envio na chave existente: requestId, operações, captura das pendências, dependências e identificação humana da revisão. Ver alterações é somente leitura dessa captura, inclusive após recarga. Edições posteriores não modificam o pacote; a confirmação preserva essas edições e as pendências independentes.
+- Escritas não têm repetição automática. Espera do envio limitada a 20s; recuperação consulta a auditoria até três vezes (pausas 0/1/3s, cada leitura limitada a 5s). Ausência de auditoria NÃO comprova erro do banco e NÃO permite liberar/revisar/descartar pacote desconhecido. Conferir confirmação repete apenas leituras com o requestId original.
+- Confirmação é protegida antes de atualizar o cache. Se atualização/releitura falhar, o estado informa confirmação com atualização pendente; nova conferência não escreve. Patch canônico exige contexto/digest/versão exata; exceções usam releitura limitada, sem restaurar snapshot antigo. Auditoria/snapshot/SQL/schema intactos.
+- Conflito/recusa explícita permite liberar para nova revisão; resultado desconhecido permanece protegido. A interface deixa de chamar ambos indistintamente de Salvando. Não há diagnóstico conclusivo de causa hospedada sem operação real.
+
 ## Salvamento de Recebimentos — 18/11/2026
 - Grade, novo recebimento, contas/observações/exclusão e Geral da visão vertical acumulam alterações no rascunho existente (IndexedDB por usuário/organização); nada é salvo no banco a cada digitação. Simulações permanecem locais e viewer não grava.
 - A página Recebimentos oferece revisão por data e plataforma/Geral, antes/depois, incluindo zero distinto de ausência. Voltar conserva valores; uma única confirmação envia somente os IDs revisados por `saveOperation`/`commitOps`. Não executa simulação diária na revisão e não altera estimativas, fórmulas, alertas, filtros ou snapshots.
