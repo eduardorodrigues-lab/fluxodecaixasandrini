@@ -1,5 +1,5 @@
 import { showMessage } from "@/lib/decisions";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { HistoryView } from "@/components/HistoryView";
 import { PageHeader } from "@/components/kit";
@@ -33,7 +33,7 @@ function Page() {
       if (arr.some((i) => (b.id ? i.id === b.id : i.date === b.date))) throw new Error("Registro já existe na base atual.");
       arr.push(JSON.parse(JSON.stringify(before)));
     });
-    await showMessage(e ?? "Registro restaurado.");
+    await showMessage(e ?? (entity==='Recebimento' && active.isBase ? 'Recebimento recuperado somente no rascunho. Revise e confirme na página Recebimentos; nada foi gravado ainda.' : active.isBase ? 'Registro recuperado somente no rascunho. Ainda é necessário salvar; nada foi gravado.' : 'Registro recuperado na simulação local. Nada foi gravado nos dados reais.'));
   };
   const [simId, setSimId] = useState<string | null>(null);
   const sim = tab === "sims" ? sims.find((s) => s.id === simId) : undefined;
@@ -42,6 +42,7 @@ function Page() {
   return (
     <div className="space-y-3">
       <PageHeader title="Histórico / Auditoria" sub="Cada registro mostra data, horário, quem alterou e a linha completa antes e depois; em vermelho o que mudou." />
+      {active.isBase && <Link to="/recebimentos" className="text-xs underline">Revisar recebimentos recuperados</Link>}
       <div className="flex flex-wrap gap-1 text-xs">
         <button className={`btn ${tab === "real" ? "btn-primary" : ""}`} onClick={() => setTab("real")}>Fluxo real</button>
         <button className={`btn ${tab === "sims" ? "btn-danger" : ""}`} onClick={() => { setTab("sims"); setSimId(null); }}>Simulações</button>

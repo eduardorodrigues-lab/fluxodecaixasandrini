@@ -106,7 +106,7 @@ function Page() {
         <button className="btn" onClick={() => setShowPf(true)}>Plataformas</button><button className="btn btn-primary" onClick={() => act((x) => { x.receipts.push({ id: uid(), date: "", platforms: {}, general: null, notes: "", residual: {} }); })}>+ Recebimento</button>
       </PageHeader>
       {active.isBase && app.canEdit && <div className="flex flex-wrap items-center gap-2 border-y border-border py-2 text-xs" role="status">
-        <span>{saving ? 'Conferindo salvamento…' : saved ? 'Recebimentos salvos após confirmação.' : receiptChanges.length ? `${receiptChanges.length} recebimento(s) com alterações não salvas; preenchimento protegido neste navegador.` : 'Nenhuma alteração de recebimentos.'}</span>
+        <span>{saving ? 'Conferindo salvamento…' : saved ? 'Recebimentos salvos após confirmação.' : receiptChanges.length ? `${receiptChanges.length} recebimento(s) com alterações não salvas; proteção local pelo navegador.` : 'Nenhuma alteração de recebimentos.'}</span>
         <Button variant="outline" size="sm" disabled={saving || !receiptChanges.length || !!app.pendingOperation} onClick={()=>void revise()}>Revisar e salvar recebimentos</Button>
         {app.protectErr && <span className="text-destructive">{app.protectErr}</span>}
       </div>}
