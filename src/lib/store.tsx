@@ -12,6 +12,8 @@ import { listMyOrgs } from "./team.functions";
 import { pickOrg, SHARED_ORG_ID, canWrite } from "./team";
 import { isolateOperation, rebasePending, sendOperation, type ReviewedOperation } from "./operationSave";
 import { migrateSims, purgeUser, scopeKey, type SimStore } from "./session";
+import { NORMALIZATION_REVISION, reconcileReceipt } from './commitReceipt';
+import { measureSavePhase } from './saveTiming';
 setAutoFreeze(false);
 // Rascunho do fluxo real = lista de alterações (antes/depois por registro); a tela aplica sobre a base atual.
 interface OpsSession { scope: string; baseVersion: number; requestId: string; ops: Change[] }
@@ -118,9 +120,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const orgs = orgsQ.data ?? [];
   const resolvedOrg = pickOrg(orgs.map((o) => ({ org_id: o.orgId, created_by: o.own ? user?.id ?? null : null })), user?.id ?? "", orgId);
   const selOrg = resolvedOrg && resolvedOrg !== "choose" ? resolvedOrg.org_id : null;
-  const offQ = useQuery({ queryKey: ["official", user?.id, selOrg], queryFn: () => fetchOfficial({ data: { orgId: selOrg } }), enabled: hydrated && !!user && !!selOrg, staleTime: 30_000, refetchOnWindowFocus: false });
+  const offQ = useQuery({ queryKey: ["official", user?.id, selOrg], queryFn: () => fetchOfficial({ data: { orgId: selOrg } }), enabled: hydrated && !!user && !!selOrg, staleTime: 30_000, refetchOnWindowFocus: false, structuralSharing: false });
   const auditQ = useQuery({ queryKey: ["official", "audit", user?.id, selOrg], queryFn: () => fetchAudit({ data: { orgId: selOrg } }), enabled: hydrated && !!user && !!selOrg });
-  const offData = useMemo(() => (offQ.data ? normalizeData(JSON.parse(offQ.data.dataJson)) : null), [offQ.data]);
+  type OfficialCache = Awaited<ReturnType<typeof fetchOfficial>> & { normalizedData?: ScenarioData };
+  const offData = useMemo(() => (offQ.data ? (offQ.data as OfficialCache).normalizedData ?? (offQ.data.normalization === NORMALIZATION_REVISION ? JSON.parse(offQ.data.dataJson) as ScenarioData : normalizeData(JSON.parse(offQ.data.dataJson))) : null), [offQ.data]);
 
   const official: Ctx["official"] = !user ? { status: "signed_out", orgId: "", orgName: "", role: "", version: -1, error: "" }
     : offQ.isError ? { status: "error", orgId: "", orgName: "", role: "", version: -1, error: (offQ.error as Error).message }
@@ -220,7 +223,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     inflight.current = true; setSaveState("saving"); setSaveMsg("");
     try {
+      const confirmationStarted=performance.now();
       const r = await sendOperation(op, o => commitFn({ data: { orgId: o.orgId, requestId: o.requestId, opsJson: JSON.stringify(o.ops), ...(o.dependencies ? {dependenciesJson:JSON.stringify(o.dependencies)} : {}) } }));
+      measureSavePhase('confirmation',confirmationStarted);
       if (!["ok", "duplicate", "noop"].includes(r.status)) {
         if (r.status === "conflict") {
           op.rejected=true; operationRef.current=op; setPendingOperation({...op}); await saveDraftLocal("operation:"+scope,op);
@@ -229,17 +234,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         throw new Error(r.status === "forbidden" ? "Sem permissão para salvar." : "Base ocupada por gravações concorrentes. Tente novamente com a mesma operação.");
       }
-      // Read the latest official snapshot, including independent third-party writes, before success.
+      // Apply only the server-confirmed canonical transition to the exact cached version.
+      const reconcileStarted=performance.now();
       await qc.cancelQueries({queryKey:["official",user?.id,op.orgId]});
-      const fresh = await fetchOfficial({ data: { orgId: op.orgId } });
+      const key = ["official", user?.id, op.orgId];
+      const cached = qc.getQueryData<OfficialCache>(key);
+      const patched = latestContext.current.scope === scope && cached?.normalization === NORMALIZATION_REVISION
+        ? await reconcileReceipt(cached.normalizedData ?? (cached === offQ.data && offData ? offData : normalizeData(JSON.parse(cached.dataJson))), cached.version,
+          'receipt' in r ? r.receipt : undefined, {orgId:op.orgId,userId:user?.id ?? '',requestId:op.requestId}, r.version) : null;
+      // During async verification another response may have advanced the cache: never lower its version.
+      const stillCurrent = qc.getQueryData<OfficialCache>(key) === cached;
+      let fresh: OfficialCache = patched && cached && stillCurrent
+        ? {...cached,version:r.version,normalizedData:patched,dataJson:'',updatedAt:''}
+        : await fetchOfficial({ data: { orgId: op.orgId } });
       if (fresh.version < r.version) throw new Error("A gravação foi confirmada, mas a releitura ainda não alcançou a versão salva. Tente novamente para conferir.");
+      const newer = qc.getQueryData<OfficialCache>(key);
+      if (newer && newer.version > fresh.version) fresh = newer;
       if (latestContext.current.scope === scope) {
         const current = sessionRef.current;
         if (current?.scope === scope) {
           const rest = rebasePending(current.ops, op.ops, op.recoveredPending??[]);
           setSession(rest.length ? { ...current, ops: rest, baseVersion: fresh.version, requestId: uuid() } : null);
         }
-        qc.setQueryData(["official", user?.id, op.orgId], fresh);
+        qc.setQueryData(key, fresh);
         void qc.invalidateQueries({ queryKey: ["official", "audit", user?.id, op.orgId] });
       }
       const preserved = sessionRef.current;
@@ -249,6 +266,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       await clearDraftLocal("operation:" + scope);
       if (latestContext.current.scope === scope) { operationRef.current = null; setPendingOperation(null); }
+      measureSavePhase('reconcile',reconcileStarted);
       setSaveState(sessionRef.current?.ops.length ? "dirty" : "saved");
       setSaveMsg(sessionRef.current?.ops.length ? "Operação salva com sucesso. Outras alterações continuam não salvas." : "Salvo com sucesso.");
     } catch(e) { setSaveState("error"); setSaveMsg("Confirmação não concluída; operação recuperável, sem falso sucesso."); throw e; }

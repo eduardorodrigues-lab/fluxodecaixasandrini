@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { CatSubFields, ConditionPicker, Field, Section, SidePanel, SupplierSearch, guardClose, type SaveAs } from "./NotaPanel";
 import { DateInput, MoneyInput } from "./kit";
 import { useApp, uid } from "@/lib/store";
-import { applyManaged, managedDocument, flowImpact, validateManualRemaining, type LaunchRef, type ManagedParcel } from "@/lib/manageLaunch";
+import { applyManaged, managedDocument, validateManualRemaining, type LaunchRef, type ManagedParcel } from "@/lib/manageLaunch";
 import { eligiblePlanned } from "@/lib/manageLaunchPresentation";
 import { applySuggestion, batchPreview, effectivateBatch, duplicateBatchDocuments, heldNotes, type BatchNote, type RestLine, type Suggestion } from "@/lib/efetivacao";
 import { planVsActual } from "@/lib/planVsActual";
@@ -20,6 +20,8 @@ import { fmtDate } from "@/lib/dates";
 import { todaySP } from "@/lib/engine/actions";
 import { HistoryView } from "./HistoryView";
 import type { ScenarioData, Supplier } from "@/lib/engine/types";
+import { produce } from 'immer';
+import { measureSavePhase } from '@/lib/saveTiming';
 
 export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onClose: () => void }) {
   const { active, official, canEdit, user, audit, allSims } = useApp();
@@ -56,7 +58,7 @@ export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onCl
   const [reason, setReason] = useState("");
   const [mode, setMode] = useState<Suggestion>("manter");
   const [error, setError] = useState("");
-  const [review, setReview] = useState<{ before: ScenarioData; data: ScenarioData; impact: ReturnType<typeof flowImpact> } | null>(null);
+  const [review, setReview] = useState<{ before: ScenarioData; data: ScenarioData } | null>(null);
   const [effId, setEffId] = useState(() => `ef-${uid()}`);
   const protection = useFormDraft({user:user?.id??"",org:official.orgId,mode:active.id,form:"planned",record:launch.id},
     {initial,context,savedNotes,initialRows,rows,fields,total,baseDate,kind,selected,allNotes,showNotes,remaining,reason,mode,effId,localSuppliers,saveCondition}, v=>{
@@ -147,7 +149,7 @@ export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onCl
     effectivateBatch(next,{id:effId,plannedId:launch.id,at:new Date().toISOString(),by:user?.email??"",selected,notes:effNotes.map(n=>({...n,parcels:n.parcels.map(({selected:_s,...p})=>p)})),rest:restLines.map(({where:_w,...p})=>p),remaining,confirmed:checked,reason,scopeConfirmed,duplicateConfirmed,reference:refValue});
 
   };
-  const prepare = () => { try { const next=structuredClone(d); build(next); if(saveCondition)saveSupplierCondition(next,fields.supplierId,saveCondition.terms,new Date().toISOString(),saveCondition.name,user?.email??'',saveCondition.from); next.suppliers=next.suppliers.filter(s=>!localSuppliers.some(l=>l.id===s.id) || s.id===fields.supplierId); setReview({ before:active.data, data:next, impact:flowImpact(active.data,next) }); setError(""); } catch(e) { setError((e as Error).message); } };
+  const prepare = () => { try { const started=performance.now(); const next=produce(d,next=>{build(next); if(saveCondition)saveSupplierCondition(next,fields.supplierId,saveCondition.terms,new Date().toISOString(),saveCondition.name,user?.email??'',saveCondition.from); if(localSuppliers.length)next.suppliers=next.suppliers.filter(s=>!localSuppliers.some(l=>l.id===s.id) || s.id===fields.supplierId);}); setReview({ before:active.data, data:next }); measureSavePhase('review',started); setError(""); } catch(e) { setError((e as Error).message); } };
   const table = (ps: ManagedParcel[], effective = false) => <table className="tbl vertical-parcels" aria-label={effective ? "Parcelas reais" : "Parcelas previstas"}><thead><tr>{!real && <th>Selecionar</th>}<th>Parcela</th><th>Número do boleto</th><th>Valor</th><th>Vencimento</th><th>Prorrogar para</th><th>Situação / ações</th></tr></thead><tbody>{ps.map(p => <tr key={p.key} className={p.key===launch.parcel ? "launch-focus" : ""}>
     {!real && <td><input type="checkbox" aria-label={`Selecionar parcela ${p.label}`} checked={selected.includes(p.key)} disabled={!canEdit || !eligible.some(e=>e.key===p.key)} onChange={e=>setSelected(e.target.checked ? [...selected,p.key] : selected.filter(k=>k!==p.key))}/></td>}
     <td>{p.label}<small className="block">{initialRows.some(b=>b.key===p.key) ? zeroGeneric.includes(p) ? "R$ 0,00 · substituída pelo detalhamento das notas" : "ID preservado" : "Nova linha"}</small></td>
@@ -165,9 +167,11 @@ export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onCl
     {error && <p ref={errRef} tabIndex={-1} role="alert" className="text-destructive">{error}</p>}
     {review ? <>
       <p>Pedido {fields.purchaseCode || "Não informado"} · Documento do planejamento <b>{fields.document || "Não informado"}</b></p>
+      {total!==initial.record.value && <p>Valor previsto: {fmtBRL(initial.record.value)} → {fmtBRL(total)}. A referência histórica comprovada não muda.</p>}
+      {"baseDate" in initial.record && baseDate!==initial.record.baseDate && <p>Data base: {fmtDate(initial.record.baseDate)} → {fmtDate(baseDate)}. Vencimentos mudam somente nas parcelas indicadas abaixo.</p>}
       {localSuppliers.filter(s=>s.id===fields.supplierId).map(s=><p key={s.id}>Cadastrar fornecedor <b>{s.name}</b> junto desta operação; cancelar não cria cadastro.</p>)}
       {saveCondition && <p>Cadastrar condição <b>{saveCondition.name}</b> junto desta operação; lançamentos existentes preservados.</p>}
-      <table className="tbl"><thead><tr><th>Parcela / escopo</th><th>Valor antes → depois</th><th>Data antes → depois</th><th>Número do boleto antes → depois</th><th>Ação</th></tr></thead><tbody>{rows.map(p=>{const b=initial.parcels.find(b=>b.key===p.key);return <tr key={p.key}><td>{p.label}</td><td>{fmtBRL(b?.amount)} → {fmtBRL(p.status==="cancelado" ? 0 : p.amount)}</td><td>{fmtDate(b?.extension??b?.date)} → {fmtDate(p.extension??p.date)}</td><td>{b?.boletoNumber || "Não informado"} → {p.boletoNumber || "Não informado"}</td><td>{real && selected.includes(p.key) ? "Substituída por nota efetivada" : zeroGeneric.includes(p) ? "Linha genérica R$ 0,00 substituída pelo detalhamento das notas (sem obrigação; histórico preservado)" : !b ? "Nova" : p.status==="cancelado" ? "Cancelada" : JSON.stringify(p)===JSON.stringify(b) ? "Não afetada" : "Alterada"}</td></tr>})}</tbody></table>
+      <table className="tbl"><thead><tr><th>Parcela / escopo</th><th>Valor antes → depois</th><th>Data antes → depois</th><th>Número do boleto antes → depois</th><th>Ação</th></tr></thead><tbody>{rows.filter(p=>JSON.stringify(p)!==JSON.stringify(initial.parcels.find(b=>b.key===p.key)) || selected.includes(p.key) || zeroGeneric.includes(p)).map(p=>{const b=initial.parcels.find(b=>b.key===p.key);return <tr key={p.key}><td>{p.label}</td><td>{fmtBRL(b?.amount)} → {fmtBRL(p.status==="cancelado" ? 0 : p.amount)}</td><td>{fmtDate(b?.extension??b?.date)} → {fmtDate(p.extension??p.date)}</td><td>{b?.boletoNumber || "Não informado"} → {p.boletoNumber || "Não informado"}</td><td>{real && selected.includes(p.key) ? "Substituída por nota efetivada" : zeroGeneric.includes(p) ? "Linha genérica R$ 0,00 substituída pelo detalhamento das notas (sem obrigação; histórico preservado)" : !b ? "Nova" : p.status==="cancelado" ? "Cancelada" : JSON.stringify(p)===JSON.stringify(b) ? "Não afetada" : "Alterada"}</td></tr>})}</tbody></table>
       {notes && <Section title="Resumo final da operação"><table className="tbl" aria-label="Resumo final"><tbody>
         <tr><td>Valor de referência</td><td>{refValue===null ? "Não informado" : fmtBRL(refValue)}</td></tr>
         <tr><td>Efetivado anterior vinculado</td><td>{fmtBRL(priorTotal)}</td></tr>
@@ -179,9 +183,8 @@ export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onCl
       </tbody></table></Section>}
       {notes && <><p><b>Efetivar agora: {effNotes.length} nota(s) · {effNotes.reduce((s,n)=>s+n.parcels.length,0)} parcela(s) · {fmtBRL(realTotal)}</b>{heldParcels.length ? ` · ${heldParcels.length} parcela(s) de nota permanecem planejadas` : ""}</p>{effNotes.map(n=><Section key={n.id} title={`Nota ${n.document} · ${fmtBRL(n.total)}`}><p>Efetivação {fmtDate(n.effectiveDate)} · Base dos prazos {fmtDate(n.baseDate)} · {n.condition?.name || "Manual"}</p><table className="tbl"><thead><tr><th>Parcela</th><th>Número do boleto</th><th>Valor</th><th>Vencimento original</th><th>Prorrogação</th></tr></thead><tbody>{n.parcels.map((p,i)=><tr key={p.id}><td>{p.parcelNo ?? i+1}/{p.parcelCount ?? n.parcels.length}</td><td>{p.boletoNumber || "Não informado"}</td><td>{fmtBRL(p.amount)}</td><td>{fmtDate(p.date)}</td><td>{fmtDate(p.extension)}</td></tr>)}</tbody></table></Section>)}<Section title="Comparação do pedido"><p>Valor de referência {refValue===null ? "Não informado" : fmtBRL(refValue)}{initial.record.value!==refValue && refValue!==null ? " (revisão informada neste rascunho)" : ""} · Efetivado anterior {fmtBRL(priorTotal)} · Novas notas {fmtBRL(realTotal)} · Acumulado {fmtBRL(priorTotal+realTotal)} · Restante manual {fmtBRL(remaining)} · Total atual {fmtBRL(priorTotal+realTotal+plannedTotal)} · Diferença {refValue===null ? "Não comparável" : fmtBRL(priorTotal+realTotal+(remaining??plannedTotal)-refValue)}{preview.excess ? ` · Excedente ${fmtBRL(preview.excess)} (não gera previsão negativa)` : ""}. Não registra pagamento.</p></Section></>}
 
-      {JSON.stringify(fields)!==JSON.stringify(initial.fields) && <p>Dados compartilhados do planejamento: {Object.keys(fields).filter(k=>fields[k as keyof typeof fields]!==initial.fields[k as keyof typeof fields]).map(k=>`${k}: ${initial.fields[k as keyof typeof fields] || "Não informado"} → ${fields[k as keyof typeof fields] || "Não informado"}`).join("; ")}.</p>}
+      {JSON.stringify(fields)!==JSON.stringify(initial.fields) && <p>Dados compartilhados do planejamento: {Object.keys(fields).filter(k=>fields[k as keyof typeof fields]!==initial.fields[k as keyof typeof fields]).map(k=>`${({supplierId:"Fornecedor",categoryId:"Subgrupo",purchaseCode:"Pedido",document:"Documento",notes:"Descrição"})[k as keyof typeof fields]}: ${k==="supplierId" ? supplierIdentity(d,{supplierId:initial.fields.supplierId}).name : k==="categoryId" ? d.categories.find(c=>c.id===initial.fields.categoryId)?.name || "Não informado" : initial.fields[k as keyof typeof fields] || "Não informado"} → ${k==="supplierId" ? supplierIdentity(d,{supplierId:fields.supplierId}).name : k==="categoryId" ? d.categories.find(c=>c.id===fields.categoryId)?.name || "Não informado" : fields[k as keyof typeof fields] || "Não informado"}`).join("; ")}.</p>}
       <p>Justificativa: {reason}. A confirmação salva somente esta operação revisada. Outras pendências não são incluídas.</p>
-      <Section title="Efeito por data"><div className="max-h-64 overflow-auto"><table className="tbl"><thead><tr><th>Data</th><th>Saídas antes → depois</th><th>Saldo antes → depois</th></tr></thead><tbody>{review.impact.map(p=><tr key={p.date}><td>{fmtDate(p.date)}</td><td>{fmtBRL(p.before)} → {fmtBRL(p.after)}</td><td>{fmtBRL(p.balanceBefore)} → {fmtBRL(p.balanceAfter)}</td></tr>)}</tbody></table></div></Section>
     </> : <>
       {real ? <>
         <div className="eff-summary" aria-label="Resumo do pedido">

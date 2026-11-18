@@ -1,5 +1,6 @@
 import type { ScenarioData, Supplier, SupplierCondition } from "./engine/types";
 import { condPeriods, currentCondition, supplierConditions, syncTerms } from "./notas";
+import { copyValue } from './copyValue';
 
 export type ConditionChange =
   | { kind: "edit"; name: string; note: string; terms: (number | null)[] }
@@ -51,7 +52,7 @@ export function changeCondition(d: ScenarioData, supplierId: string, id: string,
   }
   const impact = change.kind === "edit" ? [] : conditionImpact(s, id, today, change.kind === "period" ? change.index : undefined);
   // Materializa o cadastro legado e congela previsões por prazos ANTES de mudar o padrão.
-  s.conditions = structuredClone(list);
+  s.conditions = list.map(copyValue);
   const c = s.conditions.find((x) => x.id === id);
   if (!c) return;
   const oldTerms = [...s.terms];
@@ -63,7 +64,7 @@ export function changeCondition(d: ScenarioData, supplierId: string, id: string,
   else {
     const event = { at, by, reason: change.reason.trim() };
     if (change.kind === "cancel") c.cancelled = event;
-    else { c.periods = structuredClone(condPeriods(c)); const period = c.periods[change.index]; if (period) period.cancelled = event; }
+    else { c.periods = condPeriods(c).map(copyValue); const period = c.periods[change.index]; if (period) period.cancelled = event; }
     if (change.replacementId) {
       const replacement = s.conditions.find((x) => x.id === change.replacementId);
       if (replacement) replacement.periods = [...condPeriods(replacement), ...impact.map((from) => ({ from, at, by }))];

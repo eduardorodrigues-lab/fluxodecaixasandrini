@@ -3,6 +3,7 @@
 import type { Committed, RemainingItem, RemainingNote, ScenarioData } from "@/lib/engine/types";
 import { distributePlanned, splitCents } from "@/lib/engine/engine";
 import { parseBRDate } from "@/lib/dates";
+import { copyValue } from './copyValue';
 
 export interface Parcel { key: string; amount: number; date: string; boletoNumber?: string | null | undefined } // parcela atual planejada, chave estável
 export interface EffLine { amount: number | null; date: string | null; boletoNumber?: string | null | undefined }
@@ -110,10 +111,10 @@ export function effectivateManual(d: ScenarioData, inp: ManualEffInput): void {
     d.committed.push(c);
   });
   const before: RemainingItem[] = parcels.map((p) => ({ id: p.key, amount: p.amount, date: p.date, ...(p.boletoNumber !== undefined ? { boletoNumber: p.boletoNumber } : {}) }));
-  const after: RemainingItem[] = inp.rest.map((x) => { const note = noteOf(x.id); return { id: x.id, amount: x.amount, date: x.date, ...(x.boletoNumber !== undefined ? { boletoNumber: x.boletoNumber } : {}), ...(note ? { note: structuredClone(note) } : {}) }; });
+  const after: RemainingItem[] = inp.rest.map((x) => { const note = noteOf(x.id); return { id: x.id, amount: x.amount, date: x.date, ...(x.boletoNumber !== undefined ? { boletoNumber: x.boletoNumber } : {}), ...(note ? { note: copyValue(note) } : {}) }; });
   const value = inp.eff.reduce((a, x) => a + x.amount, 0);
   d.effectivations.push({ id: inp.id, plannedId: pl.id, at: inp.at, kind: after.length ? "parcial" : "concluida", value, substituted: inp.substituted, committedIds: ids,
-    prev: { status: pl.status, remainingOverride: pl.remainingOverride ? structuredClone(pl.remainingOverride) : null }, manual: { effectiveDate: inp.effectiveDate, before, after, selected: [...inp.selected], rule: inp.rule }, reversedAt: null, reversalNote: "" });
+    prev: { status: pl.status, remainingOverride: pl.remainingOverride ? copyValue(pl.remainingOverride) : null }, manual: { effectiveDate: inp.effectiveDate, before, after, selected: [...inp.selected], rule: inp.rule }, reversedAt: null, reversalNote: "" });
   if (!after.length) { pl.status = "encerrado"; pl.remainingOverride = null; }
   else pl.remainingOverride = { value: after.reduce((a, x) => a + x.amount, 0), dates: after.map((x) => x.date), items: after };
 }
@@ -126,7 +127,7 @@ export function adjustPlanned(d: ScenarioData, plannedId: string, rest: { id: st
   const errs = validateDraft([], rest.map((x) => ({ ...x, origin: null })), 0, 0, "2000-01-01");
   if (errs.length) throw new Error(errs[0]);
   const prev = pl.remainingOverride?.items ?? [];
-  const items = rest.map((x) => { const note = prev.find((i) => i.id === x.id)?.note; return { ...x, ...(note ? { note: { ...structuredClone(note), extension: x.date !== note.dueDate ? x.date : note.extension } } : {}) }; });
+  const items = rest.map((x) => { const note = prev.find((i) => i.id === x.id)?.note; return { ...x, ...(note ? { note: { ...copyValue(note), extension: x.date !== note.dueDate ? x.date : note.extension } } : {}) }; });
   pl.remainingOverride = { value: items.reduce((a, x) => a + x.amount, 0), dates: items.map((x) => x.date), items };
 }
 
@@ -154,7 +155,7 @@ export function heldNotes(d: ScenarioData, plannedId: string): BatchNote[] {
   const out = new Map<string, BatchNote>();
   for (const it of pl?.status === "ativo" ? pl.remainingOverride?.items ?? [] : []) {
     if (!it.note) continue;
-    const n = out.get(it.note.noteId) ?? { id: it.note.noteId, document: it.note.document, total: 0, effectiveDate: it.note.effectiveDate, baseDate: it.note.baseDate, condition: structuredClone(it.note.condition ?? null), parcels: [] };
+    const n = out.get(it.note.noteId) ?? { id: it.note.noteId, document: it.note.document, total: 0, effectiveDate: it.note.effectiveDate, baseDate: it.note.baseDate, condition: copyValue(it.note.condition ?? null), parcels: [] };
     const boletoNumber = pl?.boletoNumbers && it.id in pl.boletoNumbers ? pl.boletoNumbers[it.id] : it.boletoNumber;
     n.parcels.push({ id: it.id, amount: it.amount, date: it.note.dueDate, extension: it.note.extension, boletoNumber: boletoNumber ?? null, selected: false, parcelNo: it.note.parcelNo, parcelCount: it.note.parcelCount });
     n.total = (n.total ?? 0) + it.amount; out.set(n.id, n);
@@ -206,12 +207,12 @@ export function effectivateBatch(d: ScenarioData, input: BatchInput): void {
     const errors = validateDraft(n.parcels, [], substituted, substituted, n.effectiveDate);
     if (errors.length || n.parcels.some(p => !p.date || !parseBRDate(p.date) || (p.extension && (!parseBRDate(p.extension) || p.extension < p.date)))) throw new Error(errors.join(" ") || "Confira vencimentos e prorrogações.");
     if (n.parcels.reduce((s,p) => s+(p.amount ?? 0),0) !== n.total) throw new Error(`Parcelas da nota ${n.document} diferem do total.`);
-    n.parcels.forEach((p,i) => titles.push({ id:p.id, noteId:n.id, parcelNo:p.parcelNo ?? i+1, parcelCount:p.parcelCount ?? n.parcels.length, supplierId:pl.supplierId, categoryId:pl.categoryId, purchaseCode:pl.purchaseCode, document:n.document.trim(), value:p.amount ?? 0, dueDate:p.date ?? "", effectiveDate:n.effectiveDate ?? "", baseDate:n.baseDate ?? "", condition:structuredClone(n.condition ?? null), extensionDate:p.extension, extensionHistory:p.extension ? [{at:input.at,from:null,to:p.extension,note:input.reason}] : [], extensionInfo:"", legacyAbatement:null, origin:"efetivacao", plannedId:pl.id, effectivationId:input.id, notes:pl.notes, status:"ativo", boletoNumber:p.boletoNumber }));
+    n.parcels.forEach((p,i) => titles.push({ id:p.id, noteId:n.id, parcelNo:p.parcelNo ?? i+1, parcelCount:p.parcelCount ?? n.parcels.length, supplierId:pl.supplierId, categoryId:pl.categoryId, purchaseCode:pl.purchaseCode, document:n.document.trim(), value:p.amount ?? 0, dueDate:p.date ?? "", effectiveDate:n.effectiveDate ?? "", baseDate:n.baseDate ?? "", condition:copyValue(n.condition ?? null), extensionDate:p.extension, extensionHistory:p.extension ? [{at:input.at,from:null,to:p.extension,note:input.reason}] : [], extensionInfo:"", legacyAbatement:null, origin:"efetivacao", plannedId:pl.id, effectivationId:input.id, notes:pl.notes, status:"ativo", boletoNumber:p.boletoNumber }));
   }
-  const after: RemainingItem[] = input.rest.map(p => ({id:p.id,amount:p.amount ?? 0,date:p.date ?? "",boletoNumber:p.boletoNumber,...(p.note ? {note:structuredClone(p.note)} : {})}));
+  const after: RemainingItem[] = input.rest.map(p => ({id:p.id,amount:p.amount ?? 0,date:p.date ?? "",boletoNumber:p.boletoNumber,...(p.note ? {note:copyValue(p.note)} : {})}));
   // Linhas genéricas R$ 0,00 que não seguem no restante: substituídas pelo detalhamento das notas (sem obrigação); ficam no histórico do evento/editLog.
   const replacedZero = origins.filter(o => !scope.includes(o.key) && !after.some(a => a.id === o.key) && o.amount === 0);
-  const event: ScenarioData["effectivations"][number] = {id:input.id,plannedId:pl.id,at:input.at,kind:after.length ? "parcial" : "concluida",value:titles.reduce((s,p) => s+p.value,0),substituted,committedIds:titles.map(p => p.id),prev:{status:pl.status,remainingOverride:structuredClone(pl.remainingOverride)},manual:{effectiveDate:input.notes[0]?.effectiveDate ?? "",before:origins.map(p => ({id:p.key,amount:p.amount,date:p.date,boletoNumber:p.boletoNumber})),after,selected:[...input.selected],rule:input.reason,notes:input.notes.map(n => ({id:n.id,document:n.document,total:n.total ?? 0,effectiveDate:n.effectiveDate ?? "",baseDate:n.baseDate ?? ""}))},reversedAt:null,reversalNote:""};
+  const event: ScenarioData["effectivations"][number] = {id:input.id,plannedId:pl.id,at:input.at,kind:after.length ? "parcial" : "concluida",value:titles.reduce((s,p) => s+p.value,0),substituted,committedIds:titles.map(p => p.id),prev:{status:pl.status,remainingOverride:copyValue(pl.remainingOverride)},manual:{effectiveDate:input.notes[0]?.effectiveDate ?? "",before:origins.map(p => ({id:p.key,amount:p.amount,date:p.date,boletoNumber:p.boletoNumber})),after,selected:[...input.selected],rule:input.reason,notes:input.notes.map(n => ({id:n.id,document:n.document,total:n.total ?? 0,effectiveDate:n.effectiveDate ?? "",baseDate:n.baseDate ?? ""}))},reversedAt:null,reversalNote:""};
   // Evidence starts with NEW confirmations only; later revisions never overwrite the first evidence.
   if (titles.length && reference !== null && !d.effectivations.some(e=>e.plannedId===pl.id)) event.referenceEvidence={value:reference,source:"Referência conferida na primeira efetivação",at:input.at,by:input.by,plannedId:pl.id,beforeValue:pl.value,afterValue:reference};
   d.committed.push(...titles); if (titles.length) d.effectivations.push(event);

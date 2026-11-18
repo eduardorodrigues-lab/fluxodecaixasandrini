@@ -1,1 +1,2 @@
 - Planned management uses the existing vertical form with effectivation and remaining drafts together; explicit selection and suggestion application prevent hidden mutations.
+- Launch reviews prepare operation changes with structural sharing, never daily flow simulation — avoids unrelated accumulated-balance calculations while preserving the official flow engine.

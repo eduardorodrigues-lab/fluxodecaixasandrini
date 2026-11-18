@@ -50,8 +50,7 @@ export function FornecedorManager({ supplierId, onClose }: { supplierId: string;
   };
   const saveChanges = async () => {
     const at = new Date().toISOString(); const by = user?.email ?? "";
-    const before=structuredClone(d);
-    if(originalSupplier)before.suppliers=before.suppliers.map(s=>s.id===supplierId?originalSupplier:s);
+    const before=originalSupplier ? {...d,suppliers:d.suppliers.map(s=>s.id===supplierId?originalSupplier:s)} : d;
     const ok = await saving.saveMutation(before, (x) => {
       if (!op) { editSupplier(x, supplierId, { name, aliases: aliases.split("\n").map((v) => v.trim()).filter(Boolean), note }); return; }
       if (op.kind === "new") addSupplierCondition(x, supplierId, { name: cn, terms, note: cnote, from }, at, by, today);
@@ -81,13 +80,13 @@ export function FornecedorManager({ supplierId, onClose }: { supplierId: string;
       {!op && <div role="tablist" className="grid grid-cols-2 gap-1 border-b border-border pb-2">{[["dados", "Dados do fornecedor"], ["condicoes", "Condições de pagamento"]].map(([id, label]) => <Button key={id} role="tab" aria-selected={tab === id} variant={tab === id ? "default" : "outline"} className="h-auto min-h-9 whitespace-normal" onClick={() => { setTab(id ?? "dados"); setReview(false); setError(""); }}>{label}</Button>)}</div>}
       {(op || tab === "dados") && <>
         <h3 className="text-sm font-semibold">{review ? `Revisar: ${title}` : title}</h3>
-        {!op ? review ? <div className="space-y-2"><p>{name}</p>{aliases && <p>{aliases}</p>}{note && <p>{note}</p>}</div> : <>
+        {!op ? review ? <div className="space-y-2">{name!==originalSupplier?.name && <p>Nome: {originalSupplier?.name || "Não informado"} → {name}</p>}{aliases!==(originalSupplier?.aliases??[]).join("\n") && <p>Apelidos: {originalSupplier?.aliases?.join("; ") || "Não informado"} → {aliases || "Não informado"}</p>}{note!==(originalSupplier?.note??"") && <p>Observação: {originalSupplier?.note || "Não informado"} → {note || "Não informado"}</p>}</div> : <>
           <Field l="Nome *"><input className="inp w-full" value={name} onChange={(e) => setName(e.target.value)} /></Field>
           <Field l="Apelidos (um por linha)"><textarea className="inp min-h-20 w-full" value={aliases} onChange={(e) => setAliases(e.target.value)} /></Field>
           <Field l="Observação"><textarea className="inp min-h-20 w-full" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
           <Actions label="Outras ações"><DropdownMenuItem onSelect={() => start({ kind: supplierActive(s, today) ? "inativar" : "reativar" })}>{supplierActive(s, today) ? "Inativar" : "Reativar"}</DropdownMenuItem><DropdownMenuItem onSelect={() => start({ kind: "excluir" })}>Excluir fornecedor</DropdownMenuItem></Actions>
         </> : <>
-          {draft && (review ? <div className="space-y-2"><p className="font-semibold">{cn}</p><p>{termsLabel(terms).replaceAll("/", " / ")} dias</p>{cnote && <p>{cnote}</p>}{op.kind === "new" && <p>Vigência: {fmtDate(from)}</p>}{op.kind === "edit" && <p>Versão anterior preservada. Lançamentos existentes não serão recalculados.</p>}</div> : <>
+          {draft && (review ? <div className="space-y-2"><p className="font-semibold">{op.kind==="edit" ? `${selected?.name || "Não informado"} → ` : "Nova condição: "}{cn}</p><p>{op.kind==="edit" ? `${termsLabel(selected?.terms??[])} → ` : ""}{termsLabel(terms).replaceAll("/", " / ")} dias</p>{cnote!==selected?.note && <p>Observação: {selected?.note || "Não informado"} → {cnote || "Não informado"}</p>}{op.kind === "new" && <p>Vigência: {fmtDate(from)}</p>}{op.kind === "edit" && <p>Versão anterior preservada. Lançamentos existentes não serão recalculados.</p>}</div> : <>
             <Field l="Nome da condição *"><input className="inp w-full" value={cn} onChange={(e) => setCn(e.target.value)} /></Field>
             <Field l="Observação"><textarea className="inp min-h-16 w-full" value={cnote} onChange={(e) => setCnote(e.target.value)} /></Field>
             {op.kind === "new" && <Field l="Início da vigência"><DateInput value={from} onChange={setFrom} /></Field>}

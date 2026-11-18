@@ -9,7 +9,7 @@ export function supplierOperation(before: ScenarioData, after: ScenarioData, pen
   operationDependencies(before, delta).filter(r=>r.entity==='Fornecedor').forEach(r=>ids.add(r.id));
   delta.forEach(o=>{ for (const r of [o.before,o.after]) if(r && typeof r==='object' && 'supplierId' in r && typeof r.supplierId==='string') ids.add(r.supplierId); });
   const recovered = pending.filter(p=>p.entity==='Fornecedor' && ids.has(p.id));
-  const original = structuredClone(before);
+  const original = recovered.length ? {...before,suppliers:[...before.suppliers]} : before;
   for (const p of recovered) {
     original.suppliers = original.suppliers.filter(s=>s.id!==p.id);
     if(p.before) original.suppliers.push(structuredClone(p.before) as ScenarioData['suppliers'][number]);

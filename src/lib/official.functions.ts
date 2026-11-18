@@ -5,6 +5,7 @@ import { applyOps, diffData, summarize, type Change } from "./diff";
 import type { ScenarioData } from "./engine/types";
 import { pickOrg, SHARED_ORG_ID } from "./team";
 import { dependenciesMatch, type ReviewedOperation } from './operationSave';
+import { NORMALIZATION_REVISION, patchDigest } from './commitReceipt';
 
 // Base OFICIAL compartilhada: leitura sob RLS do próprio usuário; gravação apenas via servidor
 // (verifica papel, versão esperada, idempotência e grava auditoria antes/depois).
@@ -28,7 +29,7 @@ export const getOfficial = createServerFn({ method: "GET" })
     const m = await myOrg(context.supabase, context.userId, input.orgId);
     const { data, error } = await context.supabase.from("official_data").select("data, version, updated_at").eq("org_id", m.org_id).single();
     if (error || !data) throw new Error("Falha ao ler os dados da organização.");
-    return { orgId: m.org_id, orgName: m.organizations?.name ?? "", role: m.role, version: data.version, updatedAt: data.updated_at, dataJson: JSON.stringify(normalizeData(data.data)) };
+    return { orgId: m.org_id, orgName: m.organizations?.name ?? "", role: m.role, version: data.version, updatedAt: data.updated_at, normalization: NORMALIZATION_REVISION, dataJson: JSON.stringify(normalizeData(data.data)) };
   });
 
 export const listAudit = createServerFn({ method: "GET" })
@@ -91,25 +92,35 @@ export const commitOps = createServerFn({ method: "POST" })
     try { ops = JSON.parse(input.opsJson) as Change[]; if (!Array.isArray(ops)) throw new Error(); } catch { throw new Error("Dados inválidos."); }
     const { data: cur, error } = await context.supabase.from("official_data").select("data, version").eq("org_id", m.org_id).single();
     if (error || !cur) throw new Error("Falha ao ler os dados da organização.");
+    const base = normalizeData(cur.data);
     if(input.dependenciesJson) {
       const dependencies=JSON.parse(input.dependenciesJson) as ReviewedOperation['dependencies'];
       if(!Array.isArray(dependencies))throw new Error('Dependências inválidas.');
-      if(!dependenciesMatch(normalizeData(cur.data),{scope:'',orgId:m.org_id,requestId:input.requestId,ops,dependencies})) {
+      if(!dependenciesMatch(base,{scope:'',orgId:m.org_id,requestId:input.requestId,ops,dependencies})) {
         return {status:'conflict' as const,version:cur.version,conflictsJson:JSON.stringify(ops.map(change=>({change,server:'Dependências alteradas (título, pagamentos ou vínculo). Releia e revise.'})))};
       }
     }
-    const r = applyOps(normalizeData(cur.data), ops, true);
+    const r = applyOps(base, ops, true);
     if (r.conflicts.length) return { status: "conflict" as const, version: cur.version, conflictsJson: JSON.stringify(r.conflicts) };
     if (!r.applied.length) return { status: "noop" as const, version: cur.version, conflictsJson: "[]" };
     const summary = summarize(r.applied);
+    const next = normalizeData(r.data);
+    // Canonical transition includes normalization side effects, not merely the submitted operations.
+    const changesJson = JSON.stringify(diffData(base, next));
+    const digest = await patchDigest(changesJson);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const email = typeof context.claims?.email === "string" ? context.claims.email : null;
     const { data: res, error: e2 } = await supabaseAdmin.rpc("commit_official", {
       _org: m.org_id, _user: context.userId, _email: email ?? "", _expected: cur.version,
-      _data: normalizeData(r.data) as never, _request: input.requestId, _summary: summary, _changes: r.applied as never,
+      _data: next as never, _request: input.requestId, _summary: summary, _changes: r.applied as never,
     });
     if (e2) { console.error(e2); throw new Error("Falha ao gravar."); }
     const x = res as { status: "ok" | "conflict" | "duplicate" | "forbidden"; version: number };
     // "conflict" aqui = outra gravação entrou entre a leitura e o bloqueio; o cliente repete (mesmo requestId).
-    return { status: x.status === "conflict" ? ("retry" as const) : x.status, version: x.version ?? -1, conflictsJson: "[]" };
+    // SQL stores exactly _data and confirms expected+1; duplicates must be reconciled by reading.
+    const receipt = x.status === 'ok' && x.version === cur.version + 1 ? {
+      orgId: m.org_id, userId: context.userId, requestId: input.requestId, fromVersion: cur.version,
+      version: x.version, normalization: NORMALIZATION_REVISION, changesJson, digest,
+    } : undefined;
+    return { status: x.status === "conflict" ? ("retry" as const) : x.status, version: x.version ?? -1, conflictsJson: "[]", receipt };
   });

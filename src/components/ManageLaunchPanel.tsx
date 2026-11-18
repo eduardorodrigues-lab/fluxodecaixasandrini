@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { DateInput, MoneyInput } from "@/components/kit";
 import { CatSubFields, Field, SidePanel, SupplierSearch } from "@/components/NotaPanel";
 import { BaixasList, PagamentoPanel } from "@/components/BancoPanels";
-import { applyManaged, flowImpact, managedDocument, redistributeSelected, validateManualRemaining, type LaunchRef, type ManagedParcel } from "@/lib/manageLaunch";
+import { applyManaged, managedDocument, redistributeSelected, validateManualRemaining, type LaunchRef, type ManagedParcel } from "@/lib/manageLaunch";
 import { eligiblePlanned, selectedPlanned, parcelSituation, launchSummary } from "@/lib/manageLaunchPresentation";
 import { HistoryView } from "@/components/HistoryView";
 import { askConfirm } from "@/lib/decisions";
@@ -23,6 +23,8 @@ import type { ScenarioData } from "@/lib/engine/types";
 import { createLaunchDates, formatLaunchTime } from '@/lib/launchFilters';
 
 import { PlannedLaunchForm } from "./PlannedLaunchForm";
+import { produce } from 'immer';
+import { measureSavePhase } from '@/lib/saveTiming';
 
 export function ManageLaunchPanel({ launch, onClose }: { launch: LaunchRef; onClose: () => void }) {
   return launch.kind === "planned" ? <PlannedLaunchForm launch={launch} onClose={onClose} /> : <ExistingLaunchPanel launch={launch} onClose={onClose} />;
@@ -39,7 +41,7 @@ function ExistingLaunchPanel({ launch, onClose }: { launch: LaunchRef; onClose: 
   const [eff, setEff] = useState(false), [selected, setSelected] = useState<string[]>([]);
   const [remaining, setRemaining] = useState<number | null>(null), [checked, setChecked] = useState(false);
   const [effectiveDate, setEffectiveDate] = useState<string | null>(todaySP());
-  const [review, setReview] = useState<{ before: ScenarioData; data: ScenarioData; impacts: ReturnType<typeof flowImpact> } | null>(null);
+  const [review, setReview] = useState<{ before: ScenarioData; data: ScenarioData } | null>(null);
   const [error, setError] = useState(""), [pay, setPay] = useState<ManagedParcel | null>(null);
   const [effId] = useState(() => `ef-${uid()}`);
   const [spreadTotal, setSpreadTotal] = useState<number | null>(null);
@@ -83,7 +85,7 @@ function ExistingLaunchPanel({ launch, onClose }: { launch: LaunchRef; onClose: 
     chosen.forEach((p, i) => { const title = base.committed.find((c) => c.id === `${effId}-${i + 1}`); if (title && p.extension) { title.extensionDate = p.extension; title.extensionHistory.push({ at: new Date().toISOString(), from: null, to: p.extension, note: reason }); } });
   };
   const prepare = () => {
-    try { const next = structuredClone(d); build(next); setReview({ before:d, data: next, impacts: flowImpact(d, next) }); setError(""); } catch (e) { setError((e as Error).message); }
+    try { const started=performance.now(); const next = produce(d, build); setReview({ before:d, data: next }); measureSavePhase('review',started); setError(""); } catch (e) { setError((e as Error).message); }
   };
   const confirm = async () => { if(review && await saving.save(review.before,review.data)) onClose(); };
   const changeSelection = (keys: string[]) => { setSelected(keys); setRemaining(null); setChecked(false); };
@@ -99,11 +101,11 @@ function ExistingLaunchPanel({ launch, onClose }: { launch: LaunchRef; onClose: 
     {saving.error && <p role="alert" className="text-destructive">{saving.error}</p>}
     {error && <p role="alert" className="text-destructive">{error}</p>}
     {review ? <>
-      <table className="tbl"><thead><tr><th>Parcela</th><th>Escopo</th><th>Antes → depois</th><th>Vencimento → depois</th><th>Status → depois</th><th>Número do boleto antes → depois</th></tr></thead><tbody>{parcels.map((p) => { const b = initial.parcels.find((x) => x.key === p.key); return <tr key={p.key}><td>{p.label}</td><td>{chosenKeys.includes(p.key) && eff ? "Efetivar" : JSON.stringify(b) === JSON.stringify(p) ? "Não afetada" : "Alterada"}</td><td>{fmtBRL(b?.original)} → {fmtBRL(p.amount)}</td><td>{fmtDate(b?.extension ?? b?.date)} → {fmtDate(p.extension ?? p.date)}</td><td>{b?.status} → {eff && chosenKeys.includes(p.key) ? "Efetivado" : p.status === "cancelado" ? "Cancelado (efeito futuro zero)" : p.status}</td><td>{b?.boletoNumber || "Não informado"} → {p.boletoNumber || "Não informado"}</td></tr>; })}</tbody></table>
+      <table className="tbl"><thead><tr><th>Parcela</th><th>Escopo</th><th>Antes → depois</th><th>Vencimento → depois</th><th>Status → depois</th><th>Número do boleto antes → depois</th></tr></thead><tbody>{parcels.filter(p=>JSON.stringify(p)!==JSON.stringify(initial.parcels.find(b=>b.key===p.key)) || eff && chosenKeys.includes(p.key)).map((p) => { const b = initial.parcels.find((x) => x.key === p.key); return <tr key={p.key}><td>{p.label}</td><td>{chosenKeys.includes(p.key) && eff ? "Efetivar" : JSON.stringify(b) === JSON.stringify(p) ? "Não afetada" : "Alterada"}</td><td>{fmtBRL(b?.original)} → {fmtBRL(p.amount)}</td><td>{fmtDate(b?.extension ?? b?.date)} → {fmtDate(p.extension ?? p.date)}</td><td>{b?.status} → {eff && chosenKeys.includes(p.key) ? "Efetivado" : p.status === "cancelado" ? "Cancelado (efeito futuro zero)" : p.status}</td><td>{b?.boletoNumber || "Não informado"} → {p.boletoNumber || "Não informado"}</td></tr>; })}</tbody></table>
       {JSON.stringify(fields) !== JSON.stringify(initial.fields) && <div><h3 className="font-semibold">Dados compartilhados — documento inteiro</h3>{(Object.keys(fields) as (keyof typeof fields)[]).filter((k) => fields[k] !== initial.fields[k]).map((k) => <p key={k}>{({ supplierId: "Fornecedor", categoryId: "Subgrupo", purchaseCode: "Pedido", document: "Documento", notes: "Descrição" })[k]}: {k === "supplierId" ? supplierIdentity(d, { supplierId: initial.fields[k] }).name : k === "categoryId" ? d.categories.find((c) => c.id === initial.fields[k])?.name : initial.fields[k]} → {k === "supplierId" ? supplierIdentity(d, { supplierId: fields[k] }).name : k === "categoryId" ? d.categories.find((c) => c.id === fields[k])?.name : fields[k]}</p>)}</div>}
       {eff && <p>Saldo restante previsto confirmado manualmente: <b>{fmtBRL(remaining)}</b>. Efetivar não registra pagamento.</p>}
       <p>Justificativa: {reason || "Alteração de dados do documento"}</p>
-      <p className="text-muted-foreground">A confirmação salva somente esta operação revisada; outras pendências permanecem não salvas.</p><h3 className="font-semibold">Impacto por data no fluxo</h3><div className="max-h-64 overflow-auto"><table className="tbl"><thead><tr><th>Data</th><th>Saídas antes → depois</th><th>Saldo final antes → depois</th></tr></thead><tbody>{review.impacts.map((p) => <tr key={p.date}><td>{fmtDate(p.date)}</td><td>{fmtBRL(p.before)} → {fmtBRL(p.after)}</td><td>{fmtBRL(p.balanceBefore)} → {fmtBRL(p.balanceAfter)}</td></tr>)}</tbody></table>{!review.impacts.length && <p>Sem alteração financeira no período 2025–2030.</p>}</div>
+      <p className="text-muted-foreground">A confirmação salva somente esta operação revisada; outras pendências permanecem não salvas.</p>
     </> : <>
       <div className="flex flex-wrap gap-1 border-b border-border pb-2">{labels.map((l) => <Button key={l} size="sm" variant={tab === l ? "default" : "outline"} onClick={() => setTab(l)}>{l}</Button>)}</div>
       {tab === "Resumo" && <>
