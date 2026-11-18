@@ -1,12 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import { produce, setAutoFreeze } from 'immer';
-import { emptyData } from './engine/actions';
+import { emptyData, normalizeData, normalizeTransition } from './engine/actions';
 import { applyManaged, managedDocument } from './manageLaunch';
 import { effectivateBatch, heldNotes } from './efetivacao';
 import { changeCondition } from './condicoes';
 import { diffData } from './diff';
 setAutoFreeze(false);
 describe('preparação compartilhada sem cópia global',()=>{
+  it('transição canônica preserva referências intactas, zero/cancelamento e paridade integral',()=>{
+    const base=emptyData();base.planned=[{id:'p',supplierId:'',categoryId:'',purchaseCode:'',document:'',value:83078,baseDate:'2026-11-11',notes:'Antes',status:'ativo',remainingOverride:null}];
+    const next=produce(base,d=>{const p=d.planned[0];if(p){p.value=0;p.status='cancelado';}});
+    const canonical=normalizeTransition(next);
+    expect(canonical).toEqual(normalizeData(next));expect(canonical.planned).toBe(next.planned);
+    expect(canonical.suppliers).toBe(base.suppliers);expect(diffData(base,canonical)).toHaveLength(1);expect(base.planned[0]?.value).toBe(83078);
+  });
+  it('normalização compartilhada mantém migrações existentes e todos os efeitos no patch canônico',()=>{
+    const legacy={params:{profile:'legado',startDate:'2026-11-11',saldoInicial:18505},platforms:['Geral antiga'],targets:{'2026-11':100000},receipts:[{id:'r',date:'2026-11-11',general:0,platforms:{'Geral antiga':123},notes:''}],categories:[{id:'c',kind:'planejada',name:'Compra'}],planned:[{id:'p',value:0}],committed:[{id:'t',extensionDate:'2026-11-23',legacyAbatement:0}]};
+    const original=JSON.stringify(legacy);
+    const shared=normalizeTransition(legacy as unknown as import('./engine/types').ScenarioData);
+    expect(shared).toEqual(normalizeData(legacy));expect(shared.receipts[0]?.general).toBe(0);expect(shared.committed[0]?.extensionHistory).toHaveLength(1);expect(shared.targetConfigs['2026-11']).toBeDefined();expect(JSON.stringify(legacy)).toBe(original);
+  });
   it('edição de descrição mantém valores/datas e só copia a coleção afetada',()=>{
     const base=emptyData();base.suppliers=[{id:'s',name:'Fixture',group:'',terms:[30]}];
     base.planned=[{id:'p',supplierId:'s',categoryId:'',purchaseCode:'',document:'NF',value:315840,baseDate:'2026-11-07',notes:'Antes',status:'ativo',remainingOverride:null}];

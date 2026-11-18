@@ -1,10 +1,30 @@
 import { describe,it,expect,vi } from 'vitest';
-import { bounded,pollConfirmation } from './saveRecovery';
+import { bounded,pollConfirmation,confirmSubmission } from './saveRecovery';
 import { operationReview } from './operationReview';
 import { emptyData } from './engine/actions';
 import { diffData,applyOps } from './diff';
 import { rebasePending } from './operationSave';
 describe('Confirmação e pacote revisado',()=>{
+  it('aproveita confirmação original tardia sem outro envio nem releitura integral',async()=>{
+    vi.useFakeTimers();
+    try {
+      const send=vi.fn(()=>new Promise<{status:string;version:number}>(resolve=>setTimeout(()=>resolve({status:'ok',version:184}),21_000)));
+      const read=vi.fn().mockResolvedValue(null);
+      const result=confirmSubmission(send(),read);
+      await vi.advanceTimersByTimeAsync(21_000);
+      expect(await result).toEqual({status:'ok',version:184});expect(send).toHaveBeenCalledTimes(1);
+      const reads=read.mock.calls.length;await vi.advanceTimersByTimeAsync(10_000);expect(read).toHaveBeenCalledTimes(reads);
+    } finally {vi.useRealTimers();}
+  });
+  it('preserva conflito tardio e não inventa confirmação após falha de rede',async()=>{
+    vi.useFakeTimers();
+    try {
+      const result=confirmSubmission(new Promise(resolve=>setTimeout(()=>resolve({status:'conflict',version:185}),21_000)),vi.fn().mockResolvedValue(null));
+      await vi.advanceTimersByTimeAsync(21_000);expect(await result).toEqual({status:'conflict',version:185});
+      const absent=confirmSubmission(Promise.reject(new Error('offline')),vi.fn().mockResolvedValue(null));
+      await vi.advanceTimersByTimeAsync(4_000);expect(await absent).toBeNull();
+    } finally {vi.useRealTimers();}
+  });
   it('limita espera sem cancelar a confirmação tardia',async()=>{
     let confirmed=false;const work=new Promise<string>(resolve=>setTimeout(()=>{confirmed=true;resolve('ok');},25));
     await expect(bounded(work,1)).rejects.toThrow('Tempo');expect(confirmed).toBe(false);await work;expect(confirmed).toBe(true);

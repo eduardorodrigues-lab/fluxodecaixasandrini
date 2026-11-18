@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { normalizeData } from "./engine/actions";
+import { normalizeData, normalizeTransition } from "./engine/actions";
 import { applyOps, diffData, summarize, type Change } from "./diff";
 import type { ScenarioData } from "./engine/types";
 import { pickOrg, SHARED_ORG_ID } from "./team";
@@ -120,7 +120,7 @@ export const commitOps = createServerFn({ method: "POST" })
     if (r.conflicts.length) return { status: "conflict" as const, version: cur.version, conflictsJson: JSON.stringify(r.conflicts) };
     if (!r.applied.length) return { status: "noop" as const, version: cur.version, conflictsJson: "[]" };
     const summary = summarize(r.applied);
-    const next = normalizeData(r.data);
+    const next = normalizeTransition(r.data);
     // Canonical transition includes normalization side effects, not merely the submitted operations.
     const changesJson = JSON.stringify(diffData(base, next));
     const digest = await patchDigest(changesJson);

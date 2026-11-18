@@ -3,17 +3,29 @@ import { addDays } from "../dates";
 import { stampReceiptAccounts } from "./banco";
 import { defaultMonthTarget, distributePlanned, effectivatedOf, paymentsFor, platformActiveOn, titleStatus } from "./engine";
 import type { Committed, Expense, MonthTarget, Payment, Platform, ScenarioData } from "./types";
+import { Immer } from 'immer';
+const transitionImmer = new Immer({ autoFreeze: false });
 
 const DEF_PARAMS = { profile: "legado", legacyReducer: 0.25, webR1: 0.25, webR2: 0.18, divisorLegado: "30", divisorWeb: "dias", lagDays: 10, startDate: "2026-10-01", saldoInicial: 0 } as const;
 
 // Normaliza dados antigos/parciais (incl. `{}` de organização nova) sem inventar valores financeiros.
 // Compatibilidade: efetuada antiga com M preenchido → origin "legado"; sem M → "manual" (M continua ausente).
 export function normalizeData(raw: unknown): ScenarioData {
+  return normalizeInPlace(raw && typeof raw === 'object' ? JSON.parse(JSON.stringify(raw)) : {});
+}
+
+/** Complete canonical transition without copying untouched records. */
+export function normalizeTransition(data: ScenarioData): ScenarioData {
+  return transitionImmer.produce(data, draft => { normalizeInPlace(draft); });
+}
+
+function normalizeInPlace(raw: unknown): ScenarioData {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const d: any = raw && typeof raw === "object" ? JSON.parse(JSON.stringify(raw)) : {};
+  const d: any = raw && typeof raw === "object" ? raw : {};
   const { webExpenseUseExtension: _ignored, ...params } = d.params ?? {};
   void _ignored;
-  d.params = { ...DEF_PARAMS, ...params };
+  const nextParams = { ...DEF_PARAMS, ...params };
+  if (JSON.stringify(d.params) !== JSON.stringify(nextParams)) d.params = nextParams;
   for (const k of ["platforms", "suppliers", "categories", "planned", "committed", "expenses", "effectivations", "payments", "receipts", "adjustments", "importLog", "bankAccounts", "cards", "transfers", "cardOps"]) d[k] ??= [];
   // Migração: categorias antigas por ETAPA (planejada/comprometida) viram subgrupos de Compra; vínculos (IDs) preservados.
   for (const c of d.categories) { if (c.kind === "planejada" || c.kind === "comprometida") c.kind = "compra"; c.group ??= ""; }

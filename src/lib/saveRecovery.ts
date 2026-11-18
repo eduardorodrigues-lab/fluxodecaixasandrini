@@ -14,11 +14,27 @@ export async function bounded<T>(work: Promise<T>, ms = 15_000): Promise<T> {
   } finally { if (timer) clearTimeout(timer); }
 }
 /** Only reads are retried. A missing audit row is NOT proof that a write failed. */
-export async function pollConfirmation<T>(read: () => Promise<T | null>, delays = [0, 1000, 3000]): Promise<T | null> {
+export async function pollConfirmation<T>(read: () => Promise<T | null>, delays = [0, 1000, 3000], active = () => true): Promise<T | null> {
   for (const delay of delays) {
     if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+    if (!active()) return null;
     try { const result = await bounded(read(), 5000); if (result) return result; }
     catch { /* network/timeout: preserve uncertainty and check within the bounded budget */ }
   }
   return null;
+}
+
+/** Keep the original response alive after timeout; recovery never submits another write. */
+export async function confirmSubmission<T>(submission: Promise<T>, read: () => Promise<T | null>, ms = 20_000, waiting = async () => {}): Promise<T | null> {
+  try { return await bounded(submission, ms); }
+  catch {
+    await waiting();
+    let active = true;
+    try {
+      return await Promise.race([
+        submission.catch(() => new Promise<never>(() => {})),
+        pollConfirmation(read, [0, 1000, 3000], () => active),
+      ]);
+    } finally { active = false; }
+  }
 }

@@ -1,5 +1,11 @@
 # Roadmap
 
+## Confirmação lenta e erro na revisão — autorizado 18/11/2026 17:55 UTC
+- [x] Resposta tardia reproduzida/corrigida em fixture; consulta na própria revisão sem reenvio e sem faixa residual após confirmação
+- [x] Normalização/diff fictício ~12 MB mediana 118,0→58,2 ms; navegador completo 2.086,2→2.048,0 ms (sem ganho perceptível comprovado); 41 testes e browser global/isolado
+- [x] Evidências/limites em docs/salvamento-confirmacao-tardia-2026-11-18.md; compilação OK, sem escrita real/publicação
+- [ ] Causa e tempo do incidente hospedado não comprovados; pacote real não consultado/reenviado e banco real não medido
+
 ## Fluxo sem recortes e recuperação acionável — autorizado 18/11/2026 17:24 UTC
 - [x] Remover filtros Fornecedor/Grupo do Fluxo e ignorar estado antigo sem limpar preferências de outros módulos
 - [x] Consulta manual read-only independente de rejected, estados/motivos claros, pacote desconhecido bloqueado, exportação legada e conflito revisável; captura recusada arquivada

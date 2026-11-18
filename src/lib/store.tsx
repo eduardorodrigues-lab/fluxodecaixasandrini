@@ -14,7 +14,7 @@ import { pickOrg, SHARED_ORG_ID, canWrite } from "./team";
 import { isolateOperation, rebasePending, sendOperation, type ReviewedOperation } from "./operationSave";
 import { migrateSims, purgeUser, scopeKey, type SimStore } from "./session";
 import { NORMALIZATION_REVISION, reconcileReceipt } from './commitReceipt';
-import { bounded, pollConfirmation, type OperationPhase } from './saveRecovery';
+import { bounded, pollConfirmation, confirmSubmission, type OperationPhase } from './saveRecovery';
 import { operationReview } from './operationReview';
 import { confirmationBlockReason, definitiveRejection } from './recoveryActions';
 import { measureSavePhase } from './saveTiming';
@@ -248,14 +248,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const confirmationStarted=performance.now();
       let r: {status:string;version:number;conflictsJson?:string;receipt?:import('./commitReceipt').CommitReceipt | undefined};
-      if(confirmedVersion!==undefined)r={status:'duplicate',version:confirmedVersion};
-      else if(op.confirmation)r=op.confirmation;
+      if(op.confirmation)r=op.confirmation;
+      else if(confirmedVersion!==undefined)r={status:'duplicate',version:confirmedVersion};
       else if(op.submittedAt || operationRef.current?.requestId===op.requestId && op.phase && op.phase!=='reviewing')r=await readConfirmation();
       else {
         op.submittedAt=new Date().toISOString(); await phase('sending');
-        try {
-          r=await bounded(sendOperation(op, o => commitFn({ data: { orgId: o.orgId, requestId: o.requestId, opsJson: JSON.stringify(o.ops), ...(o.dependencies ? {dependenciesJson:JSON.stringify(o.dependencies)} : {}) } })),20_000);
-        } catch { r=await readConfirmation(); }
+        const result=await confirmSubmission(sendOperation(op, o => commitFn({ data: { orgId: o.orgId, requestId: o.requestId, opsJson: JSON.stringify(o.ops), ...(o.dependencies ? {dependenciesJson:JSON.stringify(o.dependencies)} : {}) } })),async()=>{
+          const checked=await checkRequest({data:{orgId:op.orgId,requestId:op.requestId}});
+          return checked ? {status:'duplicate',version:checked.version,conflictsJson:'[]'} : null;
+        },20_000,()=>phase('checking'));
+        if(!result){await phase('unknown');throw new Error('Resultado ainda desconhecido. Use Consultar resultado nesta revisão; nenhum novo envio. Pacote e preenchimento preservados.');}
+        r=result;
       }
       measureSavePhase('confirmation',confirmationStarted);
       if (!["ok", "duplicate", "noop"].includes(r.status)) {
@@ -318,6 +321,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try { await runSaveOperation(captured,confirmedVersion); }
       finally { // Inform the originating form without modifying its immutable submitted payload.
         op.rejected=captured.rejected ?? false;
+        if(captured.submittedAt)op.submittedAt=captured.submittedAt;
         if(captured.confirmation)op.confirmation=captured.confirmation;
         if(captured.conflicts)op.conflicts=captured.conflicts;
         if(captured.phase)op.phase=captured.phase;
