@@ -338,9 +338,11 @@ export function DadosNotaPanel({ d, init, siblings, onCancel, onSave, saving=fal
   const [f, setF] = useState(init);
   const up = (p: Partial<NoteFields>) => setF({ ...f, ...p });
   const dirty = JSON.stringify(f) !== JSON.stringify(init);
+  const shown = (key:keyof NoteFields, value:NoteFields) => key==='supplierId' ? supplierIdentity(d,{supplierId:value.supplierId}).name : key==='categoryId' ? d.categories.find(c=>c.id===value.categoryId)?.name || 'Não informado' : key==='kind' ? value.kind==='compra' ? 'Compra' : 'Despesa' : value[key] || 'Não informado';
+  const changes = (Object.keys(f) as (keyof NoteFields)[]).filter(key=>f[key]!==init[key]).map(key=>`${({kind:'Categoria',categoryId:'Subgrupo',supplierId:'Fornecedor',purchaseCode:'Pedido',document:'Documento',notes:'Descrição'})[key]}: ${shown(key,init)} → ${shown(key,f)}`).join('\n');
   const cancel = guardClose(dirty, onCancel);
   return (
-    <SidePanel wide title="Editar dados gerais da nota" sub={siblings > 1 ? `Aplica às ${siblings} parcelas desta nota` : "Aplica a este lançamento"} onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" disabled={saving || !f.categoryId || !f.supplierId} onClick={async () => await askConfirm(`Os dados gerais serão aplicados a ${siblings} parcela(s) desta nota. Outras notas não serão alteradas.`, { title: "Salvar dados da nota?", action: "Salvar dados da nota" }) && onSave(f)}>{saving ? "Salvando…" : saveError !== undefined ? "Confirmar e salvar" : "Salvar dados da nota"}</button></>}>
+    <SidePanel wide title="Editar dados gerais da nota" sub={siblings > 1 ? `Aplica às ${siblings} parcelas desta nota` : "Aplica a este lançamento"} onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" disabled={saving || !dirty || !f.categoryId || !f.supplierId} onClick={async () => await askConfirm(`${changes}\nOs dados gerais serão aplicados a ${siblings} parcela(s) desta nota. Outras notas não serão alteradas.`, { title: "Salvar dados da nota?", action: "Salvar dados da nota" }) && onSave(f)}>{saving ? "Salvando…" : saveError !== undefined ? "Confirmar e salvar" : "Salvar dados da nota"}</button></>}>
       {saveError && <p role="alert" className="text-destructive">{saveError}</p>}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <CatSubFields d={d} kind={f.kind} categoryId={f.categoryId} onChange={(kind, categoryId) => up({ kind, categoryId })} />

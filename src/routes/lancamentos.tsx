@@ -387,7 +387,7 @@ function EfetivarPanel({ data, planned, mode, preselect, onDone, onCancel, savin
         {touched && errs.length > 0 && <ul className="mt-2 list-disc pl-5 text-destructive">{errs.map((e) => <li key={e}>{e}</li>)}</ul>}
       </> : <div className="space-y-3">
         <div className="overflow-x-auto"><table className="tbl w-full"><thead><tr><th>Parcela</th><th>Situação</th><th className="num">Antes</th><th>Venc. antes</th><th className="num">Depois</th><th>Venc. depois</th></tr></thead><tbody>
-          {diff.map((r, i) => <tr key={i} className={r.kind === "mantida" ? "" : "font-medium"}><td>{r.before ? pName(r.before.key) : "nova"}</td><td>{KIND[r.kind]}</td><td className="num">{r.before ? fmtBRL(r.before.amount) : "—"}</td><td>{r.before ? fmtDate(r.before.date) : "—"}</td><td className="num">{r.after ? fmtBRL(r.after.amount) : "—"}</td><td>{r.after?.date ? fmtDate(r.after.date) : "—"}</td></tr>)}
+          {diff.filter(r=>r.kind!=="mantida").map((r, i) => <tr key={i} className="font-medium"><td>{r.before ? pName(r.before.key) : "nova"}</td><td>{KIND[r.kind]}</td><td className="num">{r.before ? fmtBRL(r.before.amount) : "—"}</td><td>{r.before ? fmtDate(r.before.date) : "—"}</td><td className="num">{r.after ? fmtBRL(r.after.amount) : "—"}</td><td>{r.after?.date ? fmtDate(r.after.date) : "—"}</td></tr>)}
         </tbody></table></div>
         {mode !== "ajustar" && <table className="tbl w-auto"><thead><tr><th colSpan={2}>Novos compromissos em Efetivado</th></tr></thead><tbody>{eff.map((l, n) => <tr key={n}><td>{n + 1}. vencimento {l.date ? fmtDate(l.date) : "—"}</td><td className="num">{fmtBRL(l.amount ?? 0)}</td></tr>)}</tbody></table>}
         <table className="tbl w-auto"><tbody>

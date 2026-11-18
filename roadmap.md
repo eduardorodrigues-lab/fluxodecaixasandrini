@@ -3,6 +3,7 @@
 ## Salvamento pontual — autorizado 18/11/2026
 - [x] Remover cálculo diário da revisão; manter alterações da operação e histórico
 - [x] Resposta canônica confirmada com aplicação por versão exata e releitura segura nas exceções
+- [x] Conferência por leitura dos acessos alternativos; revisão antiga filtra mantidas e Dados da nota explicita antes/depois; 30 testes e compilação OK; inventário em docs/salvamento-conferencia-acessos.md
 - [x] 96 testes distintos, compilação, navegador ~12 MB: descrição mediana 5,29→2,03s; fornecedor/condição/inline/reload, 12 parcelas/datas e perda de resposta/retry/fallback. Evidências em docs/salvamento-medicoes-2026-11-18.md; sem publicação/escrita real
 - [ ] Medianas antes/depois individuais de todos os cenários e duas abas concorrentes no navegador não executadas nesta rodada; banco hospedado não medido por proibição de gravações reais
 
