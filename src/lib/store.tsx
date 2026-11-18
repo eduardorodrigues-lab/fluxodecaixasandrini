@@ -316,7 +316,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const stored=await loadDraft<ReviewedOperation>('operation:'+scope);
       if(stored && stored.requestId!==op.requestId)throw new Error('Outra aba tem uma operação em confirmação. Preenchimento preservado; confira essa operação antes de enviar.');
       const captured=stored ?? operationRef.current ?? op;
-      if(captured.rejected && confirmedVersion === undefined)throw new Error('Envio recusado. Consulte o resultado ou revise o conflito comprovado; nenhum reenvio.');
+      if(definitiveRejection(captured) && confirmedVersion === undefined)throw new Error('Envio recusado. Consulte o resultado ou revise o conflito comprovado; nenhum reenvio.');
       if(stored && !stored.phase && !stored.confirmation)captured.phase='unknown';
       try { await runSaveOperation(captured,confirmedVersion); }
       finally { // Inform the originating form without modifying its immutable submitted payload.
@@ -410,7 +410,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if(operationRef.current || inflight.current)throw new Error('Há uma operação em confirmação. Confira o resultado na faixa de recuperação antes de revisar Recebimentos.');
       if(!current || current.scope!==scope || !active.isBase)return false;
       for(const requestId of current.legacyRequestIds ?? [current.requestId]) {
-        const result=await checkRequest({data:{orgId:official.orgId,requestId}});
+        const result=await bounded(checkRequest({data:{orgId:official.orgId,requestId}}),5000);
         if(!result)continue;
         const ops=JSON.parse(result.opsJson) as Change[];
         await saveOperation({scope:`${user?.id}:${official.orgId}`,orgId:official.orgId,requestId,ops},result.version);

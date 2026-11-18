@@ -42,7 +42,7 @@ function Page() {
   const visibleSuppliers = d.suppliers.filter((s) => (statusFilter === "todos" || supplierActive(s, today) === (statusFilter === "ativos")) && [s.name, ...(s.aliases ?? [])].some((name) => normalizeSupplierName(name).includes(normalizeSupplierName(search))));
   return (
     <div className="space-y-3">
-      {newSup && <FornecedorPanel recordId={supplierId} saving={saving.saving} onCancel={() => {if(saving.reset())setNewSup(false);}} onSave={async (f) => { const ok=await saving.saveMutation(d,x=>addSupplier(x,{id:supplierId,...f})); if(ok){setNewSup(false);setCondOf(supplierId);const id=uid();setSupplierId(id);try{sessionStorage.setItem('fluxo:new-supplier-id',id);}catch{/* local apenas */}} return ok ? null : "Confirmação não concluída. Preenchimento preservado; tente novamente."; }} />}
+      {newSup && <FornecedorPanel recordId={supplierId} saving={saving.saving} saveLabel={saving.saving || saving.retrying ? saving.saveLabel : undefined} onCancel={() => {if(saving.reset())setNewSup(false);}} onSave={async (f) => { const ok=await saving.saveMutation(d,x=>addSupplier(x,{id:supplierId,...f})); if(ok){setNewSup(false);setCondOf(supplierId);const id=uid();setSupplierId(id);try{sessionStorage.setItem('fluxo:new-supplier-id',id);}catch{/* local apenas */}} return ok ? null : "Confirmação não concluída. Preenchimento preservado; tente novamente."; }} />}
       {saving.error && <p role="alert" className="text-destructive">{saving.error}</p>}
       {condOf && <FornecedorManager key={condOf} supplierId={condOf} onClose={() => setCondOf(null)} />}
       <PageHeader title="Cadastros" />
@@ -84,7 +84,7 @@ function Page() {
   );
 }
 
-function FornecedorPanel({ initial, onCancel, onSave, saving=false, recordId }: { recordId:string; saving?:boolean; initial?: Supplier | undefined; onCancel: () => void; onSave: (f: { name: string; aliases: string[]; note: string }) => Promise<string | null> }) {
+function FornecedorPanel({ initial, onCancel, onSave, saving=false, saveLabel, recordId }: { recordId:string; saving?:boolean; saveLabel?:string | undefined; initial?: Supplier | undefined; onCancel: () => void; onSave: (f: { name: string; aliases: string[]; note: string }) => Promise<string | null> }) {
   const app=useApp();
   const [name, setName] = useState(initial?.name ?? "");
   const [note, setNote] = useState(initial?.note ?? "");
@@ -92,12 +92,12 @@ function FornecedorPanel({ initial, onCancel, onSave, saving=false, recordId }: 
   const [review, setReview] = useState(false);
   const [err, setErr] = useState("");
   const protection=useFormDraft({user:app.user?.id??'',org:app.official.orgId,mode:app.active.id,form:'novo-fornecedor',record:recordId},{name,note,aliases},v=>{setName(v.name);setNote(v.note);setAliases(v.aliases);setReview(false);});
-  const discard=()=>{if(protection.clear())onCancel();};
+  const discard=()=>{if(!saving && !app.pendingOperation && protection.clear())onCancel();};
   const bad = invalidSupplierName(name);
   const dirty = name !== (initial?.name ?? "") || note !== (initial?.note ?? "") || JSON.stringify(aliases) !== JSON.stringify(initial?.aliases ?? []);
   return (
     <SidePanel centered={review} title={review ? "Revisar fornecedor" : initial ? "Editar fornecedor" : "Novo fornecedor"} onClose={discard} dirty={dirty} footer={review
-      ? <><Button variant="outline" disabled={saving} onClick={() => setReview(false)}>Cancelar</Button><Button disabled={saving} onClick={async () => {const error=await onSave({name,aliases,note});setErr(error??'');if(!error)protection.clear();}}>{saving ? "Salvando…" : "Confirmar fornecedor"}</Button></>
+      ? <><Button variant="outline" disabled={saving} onClick={() => {if(!app.pendingOperation)setReview(false);}}>Cancelar</Button><Button disabled={saving} onClick={async () => {const error=await onSave({name,aliases,note});setErr(error??'');if(!error)protection.clear();}}>{saveLabel ?? (saving ? "Salvando…" : "Confirmar fornecedor")}</Button></>
       : <><button className="btn" onClick={guardClose(dirty, discard)}>Cancelar</button><button className="btn btn-primary" disabled={bad} onClick={() => setReview(true)}>Revisar e confirmar</button></>}>
       {protection.recovered && <p role="status">Preenchimento recuperado; revise antes de confirmar.</p>}{protection.warning && <p role="alert" className="text-destructive">{protection.warning}</p>}
       {review ? <div className="space-y-2"><div><span className="lbl">Nome do fornecedor</span><div className="font-medium">{name.trim()}</div></div><div><span className="lbl">Observação</span><div>{note.trim() || "—"}</div></div><div><span className="lbl">Apelidos</span><div>{aliases.join("; ") || "—"}</div></div>{initial && <div className="border-t border-border pt-2">Antes: {initial.name} · {initial.aliases?.join("; ") || "sem apelidos"} · {initial.note || "sem observação"}</div>}</div>

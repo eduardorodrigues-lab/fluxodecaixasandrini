@@ -68,12 +68,12 @@ export function FornecedorManager({ supplierId, onClose }: { supplierId: string;
   const title = !op ? "Dados do fornecedor" : ({ new: "Nova condição", edit: "Editar condição", activate: "Usar como vigente", cancel: "Cancelar condição", period: "Cancelar ativação de vigência", delete: "Excluir condição", inativar: "Inativar fornecedor", reativar: "Reativar fornecedor", excluir: "Excluir fornecedor" }[op.kind]);
   const editing = !!op || tab === "dados";
   const dirty = !!op || name !== s.name || aliases !== (s.aliases ?? []).join("\n") || note !== (s.note ?? "");
-  const close = guardClose(dirty, () => {if(protection.clear())onClose();});
+  const close = guardClose(dirty, () => {if(!saving.protected && protection.clear())onClose();});
   const destructive = !!op && ["delete", "excluir", "cancel", "period", "inativar"].includes(op.kind);
   const action = !op ? "Salvar fornecedor" : draft ? "Salvar condição" : title;
   return <SidePanel centered={review} title={review ? `${action}?` : "Gerenciar fornecedor"} sub={s.name} onClose={()=>void close()} dirty={false} footer={<>
-    {review ? <Button variant="outline" onClick={() => setReview(false)}>Cancelar</Button> : editing && op ? <Button variant="outline" onClick={guardClose(dirty, () => { setOp(null); setError(""); })}>Cancelar edição</Button> : <Button variant="outline" onClick={close}>Fechar</Button>}
-    {editing && <Button variant={review && destructive ? "destructive" : "default"} disabled={!valid || !canEdit || saving.saving} onClick={() => review ? void saveChanges() : setReview(true)}>{saving.saving ? "Salvando…" : review ? action : "Revisar e confirmar"}</Button>}
+    {review ? <Button variant="outline" disabled={saving.saving} onClick={() => {if(saving.reset())setReview(false);}}>Cancelar</Button> : editing && op ? <Button variant="outline" onClick={guardClose(dirty, () => { setOp(null); setError(""); })}>Cancelar edição</Button> : <Button variant="outline" onClick={close}>Fechar</Button>}
+    {editing && <Button variant={review && destructive ? "destructive" : "default"} disabled={!valid || !canEdit || saving.saving} onClick={() => review ? void saveChanges() : setReview(true)}>{saving.saving || review && saving.retrying ? saving.saveLabel : review ? action : "Revisar e confirmar"}</Button>}
   </>}>
     <div className="min-w-0 space-y-4 break-words [overflow-wrap:anywhere]">
       {protection.recovered && <p role="status">Preenchimento recuperado; revise novamente antes de salvar.</p>}{protection.warning && <p role="alert" className="text-destructive">{protection.warning}</p>}

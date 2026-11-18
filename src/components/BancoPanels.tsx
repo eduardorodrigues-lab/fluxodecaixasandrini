@@ -58,7 +58,7 @@ export function PagamentoPanel({ d, kind, titleId, label, onCancel, onConfirm, s
   const dirty = form !== "" || !!note.trim();
   const cancel = guardClose(dirty, onCancel);
   const footer = review
-    ? <><button className="btn" disabled={saving} onClick={() => setReview(false)}>Cancelar</button><button className="btn btn-primary" disabled={saving} onClick={() => onConfirm(result())}>{saving ? "Salvando…" : saveLabel ?? "Confirmar pagamento"}</button></>
+    ? <><button className="btn" disabled={saving} onClick={() => setReview(false)}>Cancelar</button><button className="btn btn-primary" disabled={saving} onClick={() => onConfirm(result())}>{saveLabel ?? (saving ? "Salvando…" : "Confirmar pagamento")}</button></>
     : <><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" onClick={() => { setTried(true); if (!errs.length) setReview(true); }}>Revisar e confirmar</button></>;
   const formL = form ? FORM_LABEL[form] : "—";
   return (

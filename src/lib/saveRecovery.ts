@@ -4,6 +4,10 @@ export const operationPhaseLabel: Record<OperationPhase, string> = {
   confirmed: 'Confirmado — atualizando a tela', conflict: 'Conflito',
   failed: 'Falha recuperável — envio recusado', unknown: 'Resultado desconhecido — preenchimento preservado',
 };
+export function confirmationAction(saving: boolean, phase: OperationPhase | undefined, submitted: boolean, initial = 'Confirmar e salvar') {
+  if (saving) return phase === 'checking' ? 'Consultando confirmação…' : phase === 'confirmed' ? 'Confirmado — atualizando…' : 'Enviando…';
+  return submitted ? 'Consultar resultado' : initial;
+}
 /** Timeouts never cancel/authorize another write: the original packet stays protected. */
 export async function bounded<T>(work: Promise<T>, ms = 15_000): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;

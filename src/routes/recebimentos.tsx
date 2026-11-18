@@ -20,6 +20,7 @@ import type { ReviewedOperation } from '@/lib/operationSave';
 import { measureSavePhase } from '@/lib/saveTiming';
 import { OperationReviewTable } from '@/components/OperationReviewTable';
 import { operationReview } from '@/lib/operationReview';
+import { confirmationAction } from '@/lib/saveRecovery';
 
 export const Route = createFileRoute("/recebimentos")({
   validateSearch: pendingSearch,
@@ -113,7 +114,7 @@ function Page() {
       </div>}
       {review && <DecisionWindow wide title="Revisar recebimentos" description="Somente os recebimentos abaixo serão salvos. Outras alterações permanecem separadas." footer={<div className="flex gap-2">
         <Button variant="outline" disabled={saving || !!app.pendingOperation} onClick={()=>setReview(null)}>Voltar à edição</Button>
-        <Button disabled={saving || (!!app.pendingOperation && (app.pendingOperation.requestId!==review.requestId || !!app.pendingOperation.rejected))} onClick={()=>void confirm()}>{saving?'Salvando…':app.pendingOperation?'Tentar novamente a confirmação':'Confirmar e salvar'}</Button>
+        <Button disabled={saving || (!!app.pendingOperation && app.pendingOperation.requestId!==review.requestId)} onClick={()=>void confirm()}>{confirmationAction(saving,app.pendingOperation?.phase,!!review.submittedAt)}</Button>
       </div>}>
         {err && <p role="alert" className="text-sm text-destructive">{err}</p>}
         <OperationReviewTable rows={operationReview(review.ops,d)} />

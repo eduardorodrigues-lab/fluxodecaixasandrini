@@ -68,7 +68,7 @@ export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onCl
       setRows(v.rows);setFields(v.fields);setTotal(v.total);setBaseDate(v.baseDate);setKind(v.kind);setSelected(v.selected);setNotes(v.allNotes);setShowNotes(v.showNotes);setRemaining(v.remaining);setReason(v.reason);setMode(v.mode);setEffId(v.effId);
       setChecked(false);setReview(null);setScopeConfirmed(false);setDuplicateConfirmed(false);
     });
-  const discard = async()=>{if(saving.saving)return;if(await askConfirm("Descartar este preenchimento? O planejamento salvo não muda.",{title:"Descartar rascunho?",action:"Descartar",destructive:true})){if(protection.clear())onClose();}};
+  const discard = async()=>{if(saving.protected)return;if(await askConfirm("Descartar este preenchimento? O planejamento salvo não muda.",{title:"Descartar rascunho?",action:"Descartar",destructive:true})){if(protection.clear())onClose();}};
   const original = initial.parcels.reduce((s,p) => s + (p.amount ?? 0),0);
   const dirty = JSON.stringify(allNotes ?? []) !== JSON.stringify(savedNotes) || JSON.stringify(rows) !== JSON.stringify(initialRows) || JSON.stringify(fields) !== JSON.stringify(initial.fields) || total !== initial.record.value || ("baseDate" in initial.record && baseDate !== initial.record.baseDate);
   const eligible = eligiblePlanned(launch, rows).filter(p => initialRows.some(b => b.key === p.key));

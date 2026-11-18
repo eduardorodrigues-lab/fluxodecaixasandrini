@@ -1,5 +1,9 @@
 # Roadmap
 
+## Conferência dos demais acessos de salvamento — 18/11/2026
+- [x] Inventário por leitura dos caminhos compartilhados/legados; estados propagados, descarte de rascunho protegido e consulta legada limitada
+- [x] Regressões fictícias global/isolado, recuperação nove estados e resposta tardia; docs/salvamento-conferencia-geral-2026-11-18.md; limites hospedados preservados
+
 ## Confirmação lenta e erro na revisão — autorizado 18/11/2026 17:55 UTC
 - [x] Resposta tardia reproduzida/corrigida em fixture; consulta na própria revisão sem reenvio e sem faixa residual após confirmação
 - [x] Normalização/diff fictício ~12 MB mediana 118,0→58,2 ms; navegador completo 2.086,2→2.048,0 ms (sem ganho perceptível comprovado); 41 testes e browser global/isolado

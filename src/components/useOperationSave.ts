@@ -7,6 +7,7 @@ import { supplierOperation } from '@/lib/supplierOperation';
 import { askConfirm } from '@/lib/decisions';
 import { produce } from 'immer';
 import { measureSavePhase } from '@/lib/saveTiming';
+import { confirmationAction } from '@/lib/saveRecovery';
 
 /** The reviewed payload is frozen on first submission, including generated IDs/timestamps. */
 export function useOperationSave() {
@@ -40,8 +41,8 @@ export function useOperationSave() {
     } catch(e) { setError((e as Error).message); return false; }
     finally { lock.current = false; setSaving(false); }
   };
-  return { save, saving, error, retrying: !!request.current,
-    saveLabel: saving ? (app.pendingOperation?.phase === 'checking' ? 'Consultando confirmação…' : app.pendingOperation?.phase === 'confirmed' ? 'Confirmado — atualizando…' : 'Enviando…') : request.current?.submittedAt ? 'Consultar resultado' : 'Confirmar e salvar',
+  return { save, saving, error, retrying: !!request.current, protected: saving || !!app.pendingOperation,
+    saveLabel: confirmationAction(saving, app.pendingOperation?.phase, !!request.current?.submittedAt),
     saveMutation: async (before: ScenarioData, fn: (d:ScenarioData)=>void, supplierIds: string[] = []) => {
       try { if(request.current?.rejected && !app.pendingOperation) mutation.current=null; if (!mutation.current) { const after=produce(before,fn); mutation.current={before,after}; } return await save(mutation.current.before,mutation.current.after,supplierIds); }
       catch(e) { setError((e as Error).message); return false; }

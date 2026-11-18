@@ -92,7 +92,7 @@ function ExistingLaunchPanel({ launch, onClose }: { launch: LaunchRef; onClose: 
   const labels = ["Resumo", "Parcelas", "Dados do documento", "Histórico"];
   const finance = [["Planejado original", launch.kind === "planned" ? initial.record.value : null], ["Saldo restante previsto", summary.remaining], ["Efetivado", summary.effective], ["Pago", summary.paid], ["Efetivado em aberto", summary.open]] as const;
   const startEffectivation = (keys: string[]) => { changeSelection(keys); setEff(true); setSpreadKeys([]); setError(""); };
-  if (pay) return <PagamentoPanel d={d} kind={launch.kind === "expense" ? "expense" : "committed"} titleId={pay.id} label={`${initial.fields.document} · ${pay.label}`} saving={saving.saving} saveError={saving.error} saveLabel="Confirmar e salvar" onCancel={() => {if(!saving.saving){saving.reset();setPay(null);}}} onConfirm={async (r) => {
+  if (pay) return <PagamentoPanel d={d} kind={launch.kind === "expense" ? "expense" : "committed"} titleId={pay.id} label={`${initial.fields.document} · ${pay.label}`} saving={saving.saving} saveError={saving.error} saveLabel={saving.saveLabel} onCancel={() => {if(!saving.saving){saving.reset();setPay(null);}}} onConfirm={async (r) => {
     const kind = launch.kind === "expense" ? "expense" : "committed";
     const ok = await saving.saveMutation(d, x => r.origin === "conta" ? registerPaymentBatch(x, { batchId: uid(), titleKind: kind, titleId: pay.id, lines: r.lines, note: r.note, form: r.form }) : coverTitleWithCard(x, { id: uid(), at: new Date().toISOString(), by: user?.email ?? "", titleKind: kind, titleId: pay.id, cardId: r.cardId, date: r.date, amount: r.amount, fee: r.fee, installments: r.installments, form: "boleto" }));
     if(ok)onClose(); return ok;

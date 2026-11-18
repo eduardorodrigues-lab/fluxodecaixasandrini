@@ -141,7 +141,7 @@ export function CatSubFields({ d, kind, categoryId, onChange }: { d: ScenarioDat
 const termsTxt = (t: (number | null)[]) => t.filter((x) => x !== null).join(", ");
 const parseTerms = (s: string) => s.split(/[,;\s]+/).filter(Boolean).map(Number).filter((n) => Number.isFinite(n));
 
-export function NovaNota({ d: source, isBase, onCancel, onConfirm, onManagePlanned, saving = false, saveError }: { d: ScenarioData; stage?: "planned" | "committed"; isBase: boolean; onCancel: () => void; onConfirm: (n: NoteDraft, saveAs: SaveAs | null) => boolean | Promise<boolean>; saving?: boolean; saveError?: string; onManagePlanned?: (id: string) => void }) {
+export function NovaNota({ d: source, isBase, onCancel, onConfirm, onManagePlanned, saving = false, saveError, saveLabel }: { d: ScenarioData; stage?: "planned" | "committed"; isBase: boolean; onCancel: () => void; onConfirm: (n: NoteDraft, saveAs: SaveAs | null) => boolean | Promise<boolean>; saving?: boolean; saveError?: string; saveLabel?: string | undefined; onManagePlanned?: (id: string) => void }) {
   const [chosen, setChosen] = useState(false);
   const app = useApp();
   const [draftId] = useState(() => { try { const k=`fluxo:new-id:${app.user?.id}:${app.official.orgId}:${app.active.id}`; const v=sessionStorage.getItem(k) ?? `novo-${uid()}`; sessionStorage.setItem(k,v); return v; } catch { return `novo-${uid()}`; } });
@@ -156,7 +156,7 @@ export function NovaNota({ d: source, isBase, onCancel, onConfirm, onManagePlann
   const up = (p: Partial<NoteDraft>) => { setN({ ...n, ...p }); setChecked(false); };
   const protection = useFormDraft({user:app.user?.id??"",org:app.official.orgId,mode:app.active.id,form:"novo-lancamento",record:draftId},{chosen,n,saveAs,how,qty},v=>{setChosen(v.chosen);setN(v.n);setSaveAs(v.saveAs);setHow(v.how);setQty(v.qty);setReview(false);setChecked(false);});
   const done = async (ok:boolean|Promise<boolean>) => { if(await ok){protection.clear();try{sessionStorage.removeItem(`fluxo:new-id:${app.user?.id}:${app.official.orgId}:${app.active.id}`);}catch{/* local apenas */}} return ok; };
-  const discard = async () => { if(!chosen || await askConfirm("Descartar este preenchimento? Nada será salvo.",{title:"Descartar rascunho?",action:"Descartar",destructive:true})){ if(protection.clear()){try{sessionStorage.removeItem(`fluxo:new-id:${app.user?.id}:${app.official.orgId}:${app.active.id}`);}catch{/* local apenas */} onCancel();} } };
+  const discard = async () => { if(saving || app.pendingOperation)return; if(!chosen || await askConfirm("Descartar este preenchimento? Nada será salvo.",{title:"Descartar rascunho?",action:"Descartar",destructive:true})){ if(protection.clear()){try{sessionStorage.removeItem(`fluxo:new-id:${app.user?.id}:${app.official.orgId}:${app.active.id}`);}catch{/* local apenas */} onCancel();} } };
   const stage = n.stage;
   const sup = d.suppliers.find((s) => s.id === n.supplierId);
   const setP = (i: number, p: Partial<DraftParcel>) => up({ parcels: n.parcels.map((x, k) => (k === i ? { ...x, ...p } : x)) });
@@ -185,7 +185,7 @@ export function NovaNota({ d: source, isBase, onCancel, onConfirm, onManagePlann
   const title = chosen && stage === "planned" ? review ? "Revisar novo planejamento" : "Novo planejamento" : !chosen ? "Novo lançamento" : review ? `Revisar · Novo lançamento · ${stageL}` : `Novo lançamento · ${stageL}`;
   const cancel = () => void discard();
   const footer = !chosen ? <button className="btn" onClick={cancel}>Cancelar</button> : review
-    ? <><button className="btn" disabled={saving} onClick={() => { setReview(false); setChecked(false); }}>Voltar</button><button className="btn btn-primary" disabled={saving || (stage === "committed" && !checked)} title={stage === "committed" && !checked ? "Confirme a conferência dos valores e vencimentos" : ""} onClick={() => void done(onConfirm(n, saveAs))}>{saving ? "Salvando…" : isBase ? "Confirmar e salvar" : "Confirmar na simulação"}</button></>
+    ? <><button className="btn" disabled={saving} onClick={() => { setReview(false); setChecked(false); }}>Voltar</button><button className="btn btn-primary" disabled={saving || (stage === "committed" && !checked)} title={stage === "committed" && !checked ? "Confirme a conferência dos valores e vencimentos" : ""} onClick={() => void done(onConfirm(n, saveAs))}>{saveLabel ?? (saving ? "Salvando…" : isBase ? "Confirmar e salvar" : "Confirmar na simulação")}</button></>
     : <><button className="btn" onClick={backToType}>Trocar tipo</button><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" onClick={next}>Revisar e confirmar</button></>;
   return (
     <SidePanel expanded centered={review} wide title={title} sub={isBase ? "Grava no fluxo real ao confirmar" : "Simulação — não altera o fluxo real"} onClose={cancel} dirty={false} footer={footer}>
@@ -296,13 +296,13 @@ function ParcelTable({ parcels, real }: { parcels: DraftParcel[]; real?: boolean
 }
 
 /** Prorrogação individual de uma parcela, com justificativa obrigatória. */
-export function ProrrogarPanel({ label, current, original, history, isBase, onCancel, onSave, saving=false, saveError }: { saving?:boolean; saveError?:string; label: string; current: string | null; original: string | null; history: { from: string | null; to: string | null; at: string; note: string }[]; isBase: boolean; onCancel: () => void; onSave: (to: string | null, note: string) => void }) {
+export function ProrrogarPanel({ label, current, original, history, isBase, onCancel, onSave, saving=false, saveError, saveLabel }: { saving?:boolean; saveError?:string; saveLabel?:string | undefined; label: string; current: string | null; original: string | null; history: { from: string | null; to: string | null; at: string; note: string }[]; isBase: boolean; onCancel: () => void; onSave: (to: string | null, note: string) => void }) {
   const [to, setTo] = useState<string | null>(current);
   const [note, setNote] = useState("");
   const dirty = to !== current || !!note.trim();
   const cancel = guardClose(dirty, onCancel);
   return (
-    <SidePanel title="Prorrogar parcela" sub={label} onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" disabled={saving || !note.trim() || to === current} onClick={async () => await askConfirm(`A programação de ${label} será alterada para ${fmtDate(to) || "o vencimento original"}. ${isBase ? "O vencimento original e o histórico serão preservados." : "Somente esta simulação será alterada."}`, { title: "Prorrogar parcela?", action: isBase ? "Confirmar prorrogação" : "Aplicar na simulação" }) && onSave(to, note)}>{saving ? "Salvando…" : saveError !== undefined ? isBase ? "Confirmar e salvar" : "Confirmar na simulação" : isBase ? "Confirmar prorrogação" : "Aplicar teste na simulação"}</button></>}>
+    <SidePanel title="Prorrogar parcela" sub={label} onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" disabled={saving || !note.trim() || to === current} onClick={async () => await askConfirm(`A programação de ${label} será alterada para ${fmtDate(to) || "o vencimento original"}. ${isBase ? "O vencimento original e o histórico serão preservados." : "Somente esta simulação será alterada."}`, { title: "Prorrogar parcela?", action: isBase ? "Confirmar prorrogação" : "Aplicar na simulação" }) && onSave(to, note)}>{saveLabel ?? (saving ? "Salvando…" : saveError !== undefined ? isBase ? "Confirmar e salvar" : "Confirmar na simulação" : isBase ? "Confirmar prorrogação" : "Aplicar teste na simulação")}</button></>}>
       {saveError && <p role="alert" className="text-destructive">{saveError}</p>}
       <p className={isBase ? "text-muted-foreground" : "font-medium text-destructive"}>{isBase ? "Prorrogação confirmada altera a programação real somente desta parcela; o vencimento original é preservado." : "Teste de prorrogação: vale apenas nesta simulação."}</p>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -314,7 +314,7 @@ export function ProrrogarPanel({ label, current, original, history, isBase, onCa
     </SidePanel>
   );
 }
-export function ParcelaPanel({ label, amount, date, onCancel, onSave, saving=false, saveError }: { saving?:boolean; saveError?:string; label: string; amount: number; date: string; onCancel: () => void; onSave: (amount: number, date: string, note: string) => void }) {
+export function ParcelaPanel({ label, amount, date, onCancel, onSave, saving=false, saveError, saveLabel }: { saving?:boolean; saveError?:string; saveLabel?:string | undefined; label: string; amount: number; date: string; onCancel: () => void; onSave: (amount: number, date: string, note: string) => void }) {
   const [a, setA] = useState<number | null>(amount);
   const [dt, setDt] = useState<string | null>(date);
   const [note, setNote] = useState("");
@@ -322,7 +322,7 @@ export function ParcelaPanel({ label, amount, date, onCancel, onSave, saving=fal
   const dirty = changed || !!note.trim();
   const cancel = guardClose(dirty, onCancel);
   return (
-    <SidePanel title="Editar esta parcela" sub={label} onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" disabled={saving || !a || a <= 0 || !dt || !changed || !note.trim()} title={changed && !note.trim() ? "Informe a justificativa da alteração" : ""} onClick={async () => { if (a && dt && await askConfirm(`${label}: ${fmtBRL(amount)} → ${fmtBRL(a)}; vencimento ${fmtDate(date)} → ${fmtDate(dt)}.\nJustificativa: ${note.trim()}`, { title: "Salvar parcela?", action: "Salvar parcela" })) onSave(a, dt, note.trim()); }}>{saving ? "Salvando…" : saveError !== undefined ? "Confirmar e salvar" : "Salvar parcela"}</button></>}>
+    <SidePanel title="Editar esta parcela" sub={label} onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" disabled={saving || !a || a <= 0 || !dt || !changed || !note.trim()} title={changed && !note.trim() ? "Informe a justificativa da alteração" : ""} onClick={async () => { if (a && dt && await askConfirm(`${label}: ${fmtBRL(amount)} → ${fmtBRL(a)}; vencimento ${fmtDate(date)} → ${fmtDate(dt)}.\nJustificativa: ${note.trim()}`, { title: "Salvar parcela?", action: "Salvar parcela" })) onSave(a, dt, note.trim()); }}>{saveLabel ?? (saving ? "Salvando…" : saveError !== undefined ? "Confirmar e salvar" : "Salvar parcela")}</button></>}>
       {saveError && <p role="alert" className="text-destructive">{saveError}</p>}
       <p className="text-muted-foreground">Altera somente esta parcela; as demais parcelas da nota não mudam.</p>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -334,7 +334,7 @@ export function ParcelaPanel({ label, amount, date, onCancel, onSave, saving=fal
   );
 }
 export interface NoteFields { kind: CategoryKind; categoryId: string; supplierId: string; purchaseCode: string; document: string; notes: string }
-export function DadosNotaPanel({ d, init, siblings, onCancel, onSave, saving=false, saveError }: { saving?:boolean; saveError?:string; d: ScenarioData; init: NoteFields; siblings: number; onCancel: () => void; onSave: (f: NoteFields) => void }) {
+export function DadosNotaPanel({ d, init, siblings, onCancel, onSave, saving=false, saveError, saveLabel }: { saving?:boolean; saveError?:string; saveLabel?:string | undefined; d: ScenarioData; init: NoteFields; siblings: number; onCancel: () => void; onSave: (f: NoteFields) => void }) {
   const [f, setF] = useState(init);
   const up = (p: Partial<NoteFields>) => setF({ ...f, ...p });
   const dirty = JSON.stringify(f) !== JSON.stringify(init);
@@ -342,7 +342,7 @@ export function DadosNotaPanel({ d, init, siblings, onCancel, onSave, saving=fal
   const changes = (Object.keys(f) as (keyof NoteFields)[]).filter(key=>f[key]!==init[key]).map(key=>`${({kind:'Categoria',categoryId:'Subgrupo',supplierId:'Fornecedor',purchaseCode:'Pedido',document:'Documento',notes:'Descrição'})[key]}: ${shown(key,init)} → ${shown(key,f)}`).join('\n');
   const cancel = guardClose(dirty, onCancel);
   return (
-    <SidePanel wide title="Editar dados gerais da nota" sub={siblings > 1 ? `Aplica às ${siblings} parcelas desta nota` : "Aplica a este lançamento"} onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" disabled={saving || !dirty || !f.categoryId || !f.supplierId} onClick={async () => await askConfirm(`${changes}\nOs dados gerais serão aplicados a ${siblings} parcela(s) desta nota. Outras notas não serão alteradas.`, { title: "Salvar dados da nota?", action: "Salvar dados da nota" }) && onSave(f)}>{saving ? "Salvando…" : saveError !== undefined ? "Confirmar e salvar" : "Salvar dados da nota"}</button></>}>
+    <SidePanel wide title="Editar dados gerais da nota" sub={siblings > 1 ? `Aplica às ${siblings} parcelas desta nota` : "Aplica a este lançamento"} onClose={onCancel} dirty={dirty} footer={<><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" disabled={saving || !dirty || !f.categoryId || !f.supplierId} onClick={async () => await askConfirm(`${changes}\nOs dados gerais serão aplicados a ${siblings} parcela(s) desta nota. Outras notas não serão alteradas.`, { title: "Salvar dados da nota?", action: "Salvar dados da nota" }) && onSave(f)}>{saveLabel ?? (saving ? "Salvando…" : saveError !== undefined ? "Confirmar e salvar" : "Salvar dados da nota")}</button></>}>
       {saveError && <p role="alert" className="text-destructive">{saveError}</p>}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <CatSubFields d={d} kind={f.kind} categoryId={f.categoryId} onChange={(kind, categoryId) => up({ kind, categoryId })} />

@@ -25,6 +25,15 @@ describe('Confirmação e pacote revisado',()=>{
       await vi.advanceTimersByTimeAsync(4_000);expect(await absent).toBeNull();
     } finally {vi.useRealTimers();}
   });
+  it('limita consulta legada que nunca responde sem liberar nova escrita',async()=>{
+    vi.useFakeTimers();
+    try {
+      const read=vi.fn(()=>new Promise<null>(()=>{}));
+      const result=pollConfirmation(read);
+      await vi.advanceTimersByTimeAsync(19_000);
+      expect(await result).toBeNull();expect(read).toHaveBeenCalledTimes(3);
+    } finally {vi.useRealTimers();}
+  });
   it('limita espera sem cancelar a confirmação tardia',async()=>{
     let confirmed=false;const work=new Promise<string>(resolve=>setTimeout(()=>{confirmed=true;resolve('ok');},25));
     await expect(bounded(work,1)).rejects.toThrow('Tempo');expect(confirmed).toBe(false);await work;expect(confirmed).toBe(true);
