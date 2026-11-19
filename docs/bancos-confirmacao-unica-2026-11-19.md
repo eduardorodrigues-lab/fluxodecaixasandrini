@@ -20,3 +20,30 @@ Também havia um defeito compartilhado: o store clonava o pacote capturado, mas 
 
 ## Limites reais
 Nenhuma conta real foi enviada, nenhum storage do usuário foi limpo, nenhum navegador do usuário recarregado, nenhum dado oficial/auditoria/acesso/importação alterado e nenhuma publicação. Concorrência hospedada entre usuários e indisponibilidade real do armazenamento não foram testadas. Compras/cobertura/faturas e transição de saldo usam o mesmo contrato mas não foram percorridas individualmente nesta rodada de navegador; regras bancárias cobertas pelos testes puros existentes. O draft real já preenchido depende de revisão explícita da equipe em Bancos, não foi salvo pela assistente.
+
+## Conferência complementar por caminho
+Regra: confirmar uma operação grava somente ela, sem segundo Salvar e sem apagar outras pendências. O pedido original limita alterações a Bancos e ao contrato compartilhado; os demais módulos abaixo foram inspecionados, não migrados sem autorização.
+
+| Local inspecionado agora | Resultado por leitura de código |
+|---|---|
+| Bancos: criar/editar/inativar/reativar conta e recuperação legada | `act → bankOperation → useOperationSave`; segue confirmação isolada. Navegador fictício executado novamente. |
+| Bancos: cartão, transferência e estorno | Mesmo caminho; cartão/transferência executados no navegador. Estorno lido, não executado nesta rodada. |
+| Bancos: compra no cartão, cobertura de título, fechar/reabrir fatura, estorno no cartão | Todos chamam `act/done` isolado; código lido. Não percorridos individualmente no navegador. Nenhuma fatura paga foi alterada. |
+| Bancos: origem do saldo, transição para contas e retorno à origem | Havia uma decisão anterior à revisão compartilhada (confirmação duplicada); removida. Origem executada em navegador: R$1→R$0, uma revisão/uma gravação fictícia de parâmetros. Transição/retorno apenas lidos, regras puras testadas. |
+| Bancos: X da revisão e consultar resultado | X passa pelo bloqueio de pacote em andamento; consulta prossegue reconhecimento no formulário, nunca novo pacote. Retry e ACKs executados no navegador. |
+| Lançamentos/Gerenciar: pagamento por contas/cartão e estorno | `saveMutation/save` isolado, não `update`; segue contrato por leitura dos chamadores e de `PagamentoPanel`/`BaixasList`. Não executado nesta rodada de navegador. |
+| Fornecedores/condições | Cadastro e `FornecedorManager` chamam `saveMutation`; seguem contrato por leitura. |
+| Recebimentos: revisão dos registros | `prepareReceiptOperation → saveOperation`; reconhece ACK mesmo com erro de atualização. Código lido. |
+| Recebimentos: contas do recebimento/conta padrão e plataformas | Conta do recebimento é edição de rascunho, salva pela revisão de Recebimentos; conta padrão e outras confirmações de plataforma usam `act → update`, exigem salvar depois. Afetado fora do escopo de Bancos; não alterado. |
+| Fluxo: ajustes manuais de saldo | `SaldoAdjustments` confirma e chama `update`, exige segundo Salvar. Afetado fora do escopo; não alterado. Entrada Geral inline é rascunho, não confirmação de gravação. |
+| Metas | `Confirmar metas → update`, fecha revisão e exige Salvar global. Afetado fora do escopo; não alterado. |
+| Consultas/Pagamentos do Dia: observação | Confirma observação e chama `update`, exige segundo Salvar. Afetado fora do escopo; não alterado. Não tocamos pagamentos já liquidados. |
+| Cadastros: categorias/subgrupos | Edição inline usa `update`; rascunho global, sem confirmação própria de gravação. Não alterado. |
+| Histórico: restaurar exclusão | Explicitamente informa recuperação apenas em rascunho; não promete gravação. Código lido, sem restauração executada. |
+| Simulações | Operações locais/histórico próprio; `useOperationSave` usa `saveSimulationOperation`, não envia ao real. Código lido. |
+| Dashboard/Relatório de despesas/Extrato | Consultas sem gravação própria; código lido. |
+| Store: proteção, reconhecimento, releitura e segundo plano | Código lido: captura isolada; remoção apenas por `rebasePending`; consulta automática só leitura, uma por requestId; reenvio apenas explícito. Sem job periódico financeiro encontrado na busca do código. |
+| Servidor `commitOps`/`commitOfficial`, `checkCommitRequest`, `getOfficial` | Código lido: membership/org explícita, owner/editor, dependências/conflitos, reconhecimento auditado; consulta não grava. Não chamados com escrita real. |
+| SQL `commit_official` | Migração local lida: bloqueio de linha, versão, auditoria/snapshot e privilégio apenas servidor; definição hospedada atual não relida nesta rodada. Sem alteração SQL/permissões. |
+
+Resultado complementar: 37 testes pertinentes passaram; navegador fictício executou 11 commits em memória, zero erros de página. Build mais recente: OK. Captura final mostra a faixa somente porque as pendências independentes de conta/fornecedor foram deliberadamente preservadas; a operação de saldo já está salva. Não foi feita validação hospedada de concorrência, indisponibilidade de storage ou escrita real. Equipe/login/convites e importação/substituição são contratos fora desta correção e não foram reexecutados nem alterados.

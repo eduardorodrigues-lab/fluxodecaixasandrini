@@ -40,6 +40,7 @@ def field(x,k):
    if z is not None:return z
 def apply(ops):
  for op in ops:
+  if op['entity']=='Parâmetros':S['data']['params']=op['after'];continue
   tab=TABLES[op['entity']];rows=S['data'].setdefault(tab,[])
   S['data'][tab]=[x for x in rows if x['id']!=op['id']]
   if op.get('after'):S['data'][tab].append(op['after'])
@@ -52,7 +53,8 @@ async def handler(route):
   if S['refetch_fail']>0:S['refetch_fail']-=1;return await route.abort()
   d=S['data']
   for k in ['platforms','effectivations','payments','receipts','adjustments','importLog','bankAccounts','cards','transfers','cardOps','expenses','committed','planned','suppliers','categories']:d.setdefault(k,[])
-  d.setdefault('targets',{});d.setdefault('targetConfigs',{});d['params']={'profile':'legado','legacyReducer':0.25,'webR1':0.25,'webR2':0.18,'divisorLegado':'30','divisorWeb':'dias','lagDays':10,'startDate':'2026-11-01','saldoInicial':0}
+  d.setdefault('targets',{});d.setdefault('targetConfigs',{});
+  if not d.get('params'):d['params']={'profile':'legado','legacyReducer':0.25,'webR1':0.25,'webR2':0.18,'divisorLegado':'30','divisorWeb':'dias','lagDays':10,'startDate':'2026-11-01','saldoInicial':100}
   v={'orgId':ORG,'orgName':'Grupo Sandrini','role':S['role'],'version':S['version'],'updatedAt':'','normalization':1,'dataJson':json.dumps(d)}
  elif name=='listAudit':v=[]
  elif name=='checkCommitRequest':
@@ -124,6 +126,16 @@ async def main():
   else:
    print('BUTTONS',await page.get_by_role('button').all_text_contents());await page.screenshot(path='/tmp/browser/bancos-confirmacao/retry.png');raise AssertionError('Explicit retry absent')
   await page.get_by_role('button',name='Transferências',exact=True).click();await page.get_by_role('button',name='+ Transferência',exact=True).click();dl=page.get_by_role('dialog',name='Transferir entre contas');await dl.get_by_label('Conta de origem',exact=True).fill('Banco Fictício · Editada');await dl.get_by_label('Conta de origem',exact=True).press('Enter');await dl.get_by_label('Conta de destino',exact=True).fill('Banco Fictício · ACK perdido');await dl.get_by_label('Conta de destino',exact=True).press('Enter');await dl.locator('input.num').fill('1,00');await dl.locator('input.num').blur();await dl.get_by_role('button',name='Revisar e confirmar').click();await confirm(page.get_by_role('dialog',name='Revisar operação de Bancos'));assert len(S['data']['transfers'])==1;assert S['data']['transfers'][0]['amount']==100
+  await page.get_by_role('button',name='Saldo inicial do fluxo',exact=True).click()
+  money=page.locator('input.num');await money.fill('0,00');await money.blur()
+  await page.get_by_role('button',name='Revisar e salvar',exact=True).click()
+  dl=page.get_by_role('dialog',name='Revisar operação de Bancos');await dl.wait_for()
+  assert await page.get_by_role('dialog').count()==1
+  await confirm(dl)
+  assert S['commits']==11 and S['sent'][-1]['entities']==['Parâmetros']
+  assert S['data']['params']['saldoInicial']==0
+  assert await page.get_by_role('button',name='Revisar conta Independente',exact=True).count()==1
+  print('PASS saldo origem: uma revisão, um commit, zero explícito e outras pendências preservadas')
   print('PASS inactivate/reactivate/card/legacy account+two independent drafts/failure preserved; errors',errors)
   print('PASS create, edit, reopen, reload, last-key keep, lost ACK, post-ACK refresh failure;',S['commits'],'synthetic commits;',len(errors),'page errors')
   await page.screenshot(path='/tmp/browser/bancos-confirmacao/final.png');await browser.close()

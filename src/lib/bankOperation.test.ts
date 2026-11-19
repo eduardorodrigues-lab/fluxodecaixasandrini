@@ -44,4 +44,14 @@ describe('Bancos: operação revisada isolada', () => {
     const changed=produce(before,d=>{updateAccount(d,'b',{active:false},'inativada','2026-11-19');});
     expect(dependenciesMatch(changed,{...trans,scope:'u:o',orgId:'o',requestId:'r'})).toBe(false);
   });
+  it('saldo de origem zero envia só parâmetros sem incluir cartão pendente', () => {
+    const official=setup();
+    const draft=produce(official,d=>{addCard(d,{id:'k',accountId:'a',name:'Pendente',last4:'0001',closingDay:10,dueDay:20,active:true});});
+    const after=produce(draft,d=>{d.params.saldoInicial=0;d.params.startDate='2026-11-20';});
+    const op=bankOperation(draft,after,diffData(official,draft));
+    expect(op.ops.map(o=>o.entity)).toEqual(['Parâmetros']);
+    const saved=applyOps(official,op.ops,true).data;
+    expect(saved.params.saldoInicial).toBe(0);expect(saved.params.startDate).toBe('2026-11-20');
+    expect(saved.cards).toEqual([]);expect(saved.payments).toEqual([]);
+  });
 });

@@ -1,6 +1,7 @@
 # Roadmap
 
 ## Bancos — confirmação única autorizada 19/11/2026
+- [x] Conferência complementar dos caminhos de Bancos e inventário dos módulos fora do escopo; 37 testes e navegador fictício (11 commits); autorização separada necessária para Metas/ajustes/plataformas/observações
 - [x] Migrar ações de Bancos do update global para revisão isolada; recuperação explícita de conta legada e proteção local
 - [x] Testes de operação/ACK/retry/contexto e navegador fictício (10 commits só em memória); sem escrita oficial/publicação; limites em docs/bancos-confirmacao-unica-2026-11-19.md
 
