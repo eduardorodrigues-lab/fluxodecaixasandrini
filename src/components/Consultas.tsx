@@ -6,7 +6,7 @@ import { supplierIdentity } from "@/lib/supplierIdentity";
 import { ColumnFilter, columnTest, DetailReport, Pager, ReportSearch, SortHead, suggestFrom, useColumnFilter, usePager, useReportState, type FilterCol } from "@/components/ReportControls";
 import { dateValue, parcelValue, queryReport, reportCSV } from "@/lib/reportTable";
 import { PagamentosDia } from "@/components/PagamentosDia";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { DateInput } from "@/components/kit";
 import { committedByCode, distributePlanned, NO_TITLES, titleStatus } from "@/lib/engine/engine";
 import type { ExtensionEvent, Payment, ScenarioData } from "@/lib/engine/types";
@@ -113,9 +113,12 @@ export function groupByDocument(rows: ConsultaRow[]): ConsultaRow[] {
 
 export function Consultas({ d, onManage }: { d: ScenarioData; onManage?: ((ref: LaunchRef) => void) | undefined }) {
   const [rep, setRep] = useState<"boletos" | "dia">("boletos");
+  // Hidden sub-report keeps its filters but does not rebuild after saves; it catches up when shown again.
+  const lastBoletos = useRef(d); if (rep === "boletos") lastBoletos.current = d;
+  const boletosData = rep === "boletos" ? d : lastBoletos.current;
   return <div>
     <div className="mb-2 flex flex-wrap gap-1 text-xs">{([["boletos", "Boletos e pagamentos"], ["dia", "Relatório de Pagamentos do Dia"]] as const).map(([k, l]) => <Button key={k} variant={rep === k ? "default" : "outline"} onClick={() => setRep(k)}>{l}</Button>)}<Button asChild variant="outline"><Link to="/lancamentos" search={(prev) => ({ ...prev, tab: "pva" })}>Planejado × Efetivado</Link></Button></div>
-    <div hidden={rep !== "dia"}><PagamentosDia /></div><div hidden={rep !== "boletos"}><ConsultaBoletos d={d} onManage={onManage} /></div>
+    <div hidden={rep !== "dia"}><PagamentosDia /></div><div hidden={rep !== "boletos"}><ConsultaBoletos d={boletosData} onManage={onManage} /></div>
   </div>;
 }
 const cT = (label: string, type: FilterCol["type"] = "text"): FilterCol => ({ label, type });

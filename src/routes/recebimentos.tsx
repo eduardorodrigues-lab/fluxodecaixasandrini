@@ -67,7 +67,10 @@ function Page() {
     if(!review || saving)return;
     setSaving(true);setErr('');
     try{await app.saveOperation(review);setReview(null);setSaved(true);}
-    catch(e){setErr((e as Error).message);setReview(null);}finally{setSaving(false);}
+    catch(e){
+      // Server ACK verified, only the screen refresh failed: the receipts ARE saved (the strip offers a refresh, never a resend).
+      if(review.confirmation){setReview(null);setSaved(true);setErr('Gravação confirmada; a atualização da tela está pendente. Use Consultar resultado na faixa superior, sem reenviar.');return;}
+      setErr((e as Error).message);setReview(null);}finally{setSaving(false);}
   };
   const act = (fn: Parameters<typeof update>[0]) => { setSaved(false); const e = update(fn); setErr(e ?? ""); return !e; };
   const [pStart, setPStart] = useState<string | null>(ui.start);
