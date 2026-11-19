@@ -119,7 +119,7 @@ export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onCl
   }, [mode, rows, real, selected]);
   const linked = useMemo(() => d.committed.filter(c => c.plannedId === launch.id || d.effectivations.some(e => e.plannedId === launch.id && e.committedIds.includes(c.id))), [d, launch.id]);
   const priorTotal = linked.filter(c=>c.status!=="cancelado").reduce((s,c)=>s+c.value,0);
-  const priorUnpaid = linked.filter(c=>c.status!=="cancelado").reduce((s,c)=>s+titleStatus(c.value,c.status,paymentsFor(d,"committed",c.id)).open,0);
+  const priorUnpaid = useMemo(() => linked.filter(c=>c.status!=="cancelado").reduce((s,c)=>s+titleStatus(c.value,c.status,paymentsFor(d,"committed",c.id)).open,0), [linked, d]);
   // Current budget is editable; historical comparison uses evidence from the first confirmed effectivation.
   const refValue = total;
   const preview = batchPreview(refValue, priorTotal, realTotal);

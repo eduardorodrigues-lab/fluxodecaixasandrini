@@ -1,5 +1,5 @@
 import { addDays } from "../dates";
-import { committedDate, distributePlanned, expenseDate, paymentsFor, titleStatus } from "./engine";
+import { committedByCode, committedDate, distributePlanned, expenseDate, NO_TITLES, paymentsFor, titleStatus } from "./engine";
 import type { Day, FlowResult, ScenarioData } from "./types";
 import { matchesSupplier, supplierIdentity } from "../supplierIdentity";
 
@@ -56,11 +56,12 @@ export function computeDashboard(d: ScenarioData, flow: FlowResult, today: strin
   const within = (n: number) => dated.filter((t) => t.due! >= today && t.due! <= addDays(today, n));
   const inPeriod = dated.filter((t) => t.due! >= scope.start && t.due! <= scope.end);
   const parcels: PlannedParcel[] = [];
+  const byCode = committedByCode(d.committed);
   for (const pl of d.planned) {
     if (pl.status !== "ativo") continue;
     if (!matchesSupplier(d, pl, scope.supplierId)) continue;
     if (scope.group && d.suppliers.find((s) => s.id === pl.supplierId)?.group !== scope.group) continue;
-    for (const p of distributePlanned(pl, d.suppliers.find((s) => s.id === pl.supplierId), d.committed, d.params.profile, d.effectivations).parcels)
+    for (const p of distributePlanned(pl, d.suppliers.find((s) => s.id === pl.supplierId), byCode.get(pl.purchaseCode) ?? NO_TITLES, d.params.profile, d.effectivations).parcels)
       if (p.date >= scope.start && p.date <= scope.end) parcels.push({ plannedId: pl.id, supplier: supplierIdentity(d, pl).name, code: pl.purchaseCode, date: p.date, amount: p.amount });
   }
   parcels.sort((a, b) => a.date.localeCompare(b.date));

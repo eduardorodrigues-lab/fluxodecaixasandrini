@@ -1,5 +1,5 @@
 import { addDays, fmtDate } from "@/lib/dates";
-import { committedDate, distributePlanned, expenseDate, lagFor } from "@/lib/engine/engine";
+import { committedByCode, committedDate, distributePlanned, expenseDate, lagFor, NO_TITLES } from "@/lib/engine/engine";
 import type { ScenarioData, Severity, Warning } from "@/lib/engine/types";
 
 type Destination = "/metas" | "/lancamentos" | "/recebimentos" | "/bancos" | "/referencias";
@@ -61,7 +61,7 @@ export function buildPendencias(warnings: Warning[], data: ScenarioData, start: 
     const supplier = data.suppliers.find((s) => s.id === (pl ?? c ?? e)?.supplierId)?.name ?? "Fornecedor não informado";
     let dates = w.affectedDates ?? (w.date ? [w.date] : pl ? distributePlanned(pl, data.suppliers.find((s) => s.id === pl.supplierId), data.committed, data.params.profile, data.effectivations).parcels.map((p) => p.date) : c ? [committedDate(c)] : e ? [expenseDate(e) ?? e.baseDate] : []);
     if (w.code === "PAG_ANTES_INICIO") dates = data.payments.filter((p) => !p.reversedAt && p.method !== "cartao" && p.date < data.params.startDate).map((p) => p.date);
-    if (w.code === "ANTES_INICIO") dates = [...data.planned.flatMap((p) => distributePlanned(p, data.suppliers.find((s) => s.id === p.supplierId), data.committed, data.params.profile, data.effectivations).parcels.map((p) => p.date)), ...data.committed.map(committedDate), ...data.expenses.map(expenseDate).filter((d): d is string => !!d)].filter((d) => d < data.params.startDate);
+    if (w.code === "ANTES_INICIO") dates = [...((byCode) => data.planned.flatMap((p) => distributePlanned(p, data.suppliers.find((s) => s.id === p.supplierId), byCode.get(p.purchaseCode) ?? NO_TITLES, data.params.profile, data.effectivations).parcels.map((p) => p.date)))(committedByCode(data.committed)), ...data.committed.map(committedDate), ...data.expenses.map(expenseDate).filter((d): d is string => !!d)].filter((d) => d < data.params.startDate);
     const label = receipt ? `Recebimento de ${fmtDate(receipt.date)}` : pl || c || e ? `${supplier} · ${(pl ?? c ?? e)?.document || pl?.purchaseCode || "Sem documento"}` : "Informação do fluxo";
     // Only named record data is rendered; raw warning messages can contain internal IDs.
     const note = w.code === "ARRED" ? w.message.match(/ajuste de .+?centavo\(s\)/)?.[0] ?? "Resíduo aplicado na última parcela." : w.code === "PLAT_RESIDUAL" && receipt ? Object.values(receipt.residual ?? {}).map((r) => r.note).join(" · ") : "";

@@ -76,6 +76,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [user, setUser] = useState<Ctx["user"]>(null);
+  const userIdRef = useRef<string | null | undefined>(undefined);
   const [session, setSessionState] = useState<OpsSession | null>(null);
   const sessionRef = useRef<OpsSession | null>(null);
   const setSession = (value: OpsSession | null | ((s: OpsSession | null) => OpsSession | null)) => {
@@ -91,6 +92,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const checkingRef = useRef(false);
   const [confirmationChecking, setConfirmationChecking] = useState(false);
   const restored = useRef(new Set<string>());
+  const ackChannel = useRef<BroadcastChannel | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveMsg, setSaveMsg] = useState("");
   const [ui, setUiS] = useState<UiState>({ view: "horizontal", start: "2026-10-01", end: "2026-11-30", supplierId: "", group: "", flowMode: "consolidada" });
@@ -115,16 +117,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch { /* ignora dados locais corrompidos */ }
     try { setOrgIdS(localStorage.getItem("fluxo.orgId")); } catch { /* sem storage */ }
     setHydrated(true);
-    supabase.auth.getUser().then(({ data }) => setUser(data.user ? { id: data.user.id, email: data.user.email ?? "" } : null)).catch(() => setUser(null)).finally(() => setAuthReady(true));
+    supabase.auth.getUser().then(({ data }) => { const u = data.user ? { id: data.user.id, email: data.user.email ?? "" } : null; if (userIdRef.current === undefined) userIdRef.current = u?.id ?? null; setUser(u); }).catch(() => setUser(null)).finally(() => setAuthReady(true));
     const { data: sub } = supabase.auth.onAuthStateChange((ev, session) => {
       if (ev !== "SIGNED_IN" && ev !== "SIGNED_OUT" && ev !== "USER_UPDATED") return;
       const nu = session?.user ? { id: session.user.id, email: session.user.email ?? "" } : null;
-      setUser((prev) => {
-        // Troca de conta: nenhum cache oficial, rascunho ou simulação do usuário anterior é reutilizado.
-        if (prev?.id !== nu?.id) { qc.removeQueries({ queryKey: ["official"] }); setSession(null); if (prev) setLocal((l) => ({ ...l, sims: purgeUser(l.sims, prev.id), activeId: "base" })); }
-        return nu;
-      });
-      if (ev !== "SIGNED_OUT") qc.invalidateQueries({ queryKey: ["official"] });
+      const prevId = userIdRef.current ?? null; userIdRef.current = nu?.id ?? null;
+      const switched = prevId !== (nu?.id ?? null);
+      // Troca de conta: nenhum cache oficial, rascunho ou simulação do usuário anterior é reutilizado.
+      if (switched) { qc.removeQueries({ queryKey: ["official"] }); setSession(null); if (prevId) setLocal((l) => ({ ...l, sims: purgeUser(l.sims, prevId), activeId: "base" })); }
+      setUser(nu);
+      // SIGNED_IN repeats for the SAME account on load/tab focus: re-downloading the ~12 MB document there doubled load time.
+      if (ev === "USER_UPDATED" || (ev === "SIGNED_IN" && switched)) qc.invalidateQueries({ queryKey: ["official"] });
     });
     return () => sub.subscription.unsubscribe();
   }, [qc]);
@@ -198,25 +201,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }, 300);
     return () => clearTimeout(t);
   }, [cur, scope]);
-  // Recupera rascunho após falha/recarga, aplicando-o sobre a base atual.
+  // Recupera rascunho e pacote em confirmação após falha/recarga, NA MESMA ETAPA (sem corrida entre os dois):
+  // um pacote com confirmação do servidor já guardada e cuja versão a base atual alcançou é retirado, e somente as
+  // alterações dele saem do rascunho; edições posteriores e outras pendências permanecem.
   useEffect(() => {
     if (!scope || !baseData || restored.current.has(scope)) return;
-    loadDraft<OpsSession>("draft:" + scope).then((v) => {
+    const loadedVersion = offQ.data?.version ?? -1;
+    let alive = true;
+    Promise.all([loadDraft<OpsSession>("draft:" + scope), loadDraft<ReviewedOperation>("operation:" + scope)]).then(async ([v, op]) => {
+      if (!alive) return;
+      let ops = v?.ops ?? [];
+      if (op?.confirmation && loadedVersion >= op.confirmation.version) {
+        if (!op.rebased) ops = rebasePending(ops, op.ops, op.recoveredPending ?? []);
+        if (ops.length && v) await saveDraftLocal("draft:" + scope, { ...v, ops }); else await clearDraftLocal("draft:" + scope);
+        await clearDraftLocal("operation:" + scope);
+        setSaveState(ops.length ? "dirty" : "saved"); setSaveMsg("Gravação confirmada anteriormente; a base atual já contém a operação.");
+        op = null;
+      }
       restored.current.add(scope);
-      if (v?.ops?.length) { setSession((s) => s ?? { ...v, scope, legacyRequestIds:v.legacyRequestIds ?? (v.submissionModel==='reviewed'?[]:[v.requestId]) }); setSaveState("dirty"); setSaveMsg("Rascunho recuperado — ainda não salvo."); }
+      if (ops.length && v) { setSession((s) => s ?? { ...v, ops, scope, legacyRequestIds:v.legacyRequestIds ?? (v.submissionModel==='reviewed'?[]:[v.requestId]) }); if (!op) { setSaveState("dirty"); setSaveMsg("Rascunho recuperado — ainda não salvo."); } }
+      operationRef.current = op ?? null; setPendingOperation(op ?? null);
+      if (op) { setSaveState("error"); setSaveMsg(op.confirmation ? "Gravação confirmada; atualização da tela pendente." : "Pacote recuperado; confira o resultado sem reenviar."); }
     }).catch((e: Error) => { restored.current.add(scope); setProtectErr(`Não foi possível ler o rascunho protegido (${e.message}).`); });
+    return () => { alive = false; };
   }, [scope, baseData]);
 
   const latestContext = useRef({ scope, activeId: active.id });
   latestContext.current = { scope, activeId: active.id };
+  // Outra aba confirmou um pacote: retira somente aquele pacote/alterações aqui e relê a base (sem limpar o resto).
   useEffect(() => {
-    if (!scope || !baseData) return;
-    let alive = true;
-    loadDraft<ReviewedOperation>("operation:" + scope).then(op => {
-      if (alive) { operationRef.current = op ?? null; setPendingOperation(op ?? null); if(op) { setSaveState("error"); setSaveMsg(op.confirmation ? "Gravação confirmada; atualização da tela pendente." : "Pacote recuperado; confira o resultado sem reenviar."); } }
-    }).catch(() => setProtectErr("Não foi possível recuperar a operação em confirmação."));
-    return () => { alive = false; };
-  }, [scope, !!baseData]);
+    if (!scope || typeof BroadcastChannel === "undefined") return;
+    const ch = new BroadcastChannel("sandrini:ack:" + scope);
+    ch.onmessage = (e: MessageEvent<{ requestId: string; version: number; ops: Change[]; recovered: Change[] }>) => {
+      const m = e.data; if (!m?.requestId) return;
+      if (operationRef.current?.requestId === m.requestId && !inflight.current) { operationRef.current = null; setPendingOperation(null); }
+      const current = sessionRef.current;
+      if (current?.scope === scope) { const rest = rebasePending(current.ops, m.ops, m.recovered); if (rest.length !== current.ops.length || rest.some((o, i) => o !== current.ops[i])) setSession(rest.length ? { ...current, ops: rest, requestId: uuid() } : null); }
+      void qc.invalidateQueries({ queryKey: ["official", user?.id] });
+      setSaveMsg("Outra aba confirmou uma gravação; base atualizada.");
+    };
+    ackChannel.current = ch;
+    return () => { ch.close(); if (ackChannel.current === ch) ackChannel.current = null; };
+  }, [scope]);
   const saveSimulationOperation = (before: ScenarioData, ops: Change[]): string | null => {
     if (!sim || !scope) return "Simulação indisponível.";
     const result = applyOps(sim.data, ops, true);
@@ -282,6 +308,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw new Error(r.status === "forbidden" ? "Sem permissão para salvar. Nenhuma gravação." : "Envio recusado por concorrência. Nada foi gravado; libere o pacote para nova revisão.");
       }
       op.confirmation={status:r.status,version:r.version,receipt:r.receipt}; await phase('confirmed');
+      // Verified ACK: the server holds exactly op.ops. Remove only those changes from the local draft NOW, before any
+      // (possibly slow/failed) screen refresh, so a confirmed change never resurfaces as "Alterações não salvas".
+      if (!op.rebased && latestContext.current.scope === scope) {
+        const current = sessionRef.current;
+        if (current?.scope === scope) {
+          const rest = rebasePending(current.ops, op.ops, op.recoveredPending ?? []);
+          const next = rest.length ? { ...current, ops: rest, requestId: uuid() } : null;
+          setSession(next);
+          if (next) await saveDraftLocal("draft:" + scope, next); else await clearDraftLocal("draft:" + scope);
+        }
+        op.rebased = true; await saveDraftLocal("operation:" + scope, op);
+      }
       // Apply only the server-confirmed canonical transition to the exact cached version.
       const reconcileStarted=performance.now();
       await qc.cancelQueries({queryKey:["official",user?.id,op.orgId]});
@@ -300,10 +338,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (newer && newer.version > fresh.version) fresh = newer;
       if (latestContext.current.scope === scope) {
         const current = sessionRef.current;
-        if (current?.scope === scope) {
-          const rest = rebasePending(current.ops, op.ops, op.recoveredPending??[]);
-          setSession(rest.length ? { ...current, ops: rest, baseVersion: fresh.version, requestId: uuid() } : null);
-        }
+        if (current?.scope === scope) setSession({ ...current, baseVersion: fresh.version });
         qc.setQueryData(key, fresh);
         // Mark history stale without downloading it now; history screens re-read when opened or refreshed.
         void qc.invalidateQueries({ queryKey: ["official", "audit", user?.id, op.orgId], refetchType: "none" });
@@ -315,6 +350,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       await clearDraftLocal("operation:" + scope);
       if (latestContext.current.scope === scope) { operationRef.current = null; setPendingOperation(null); setGlobalReview(null); }
+      try { ackChannel.current?.postMessage({ requestId: op.requestId, version: r.version, ops: op.ops, recovered: op.recoveredPending ?? [] }); } catch { /* sem outras abas */ }
       measureSavePhase('reconcile',reconcileStarted);
       setSaveState(sessionRef.current?.ops.length ? "dirty" : "saved");
       setSaveMsg(sessionRef.current?.ops.length ? "Operação salva com sucesso. Outras alterações continuam não salvas." : "Salvo com sucesso.");

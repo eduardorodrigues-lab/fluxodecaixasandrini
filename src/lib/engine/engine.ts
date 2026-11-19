@@ -117,6 +117,14 @@ export interface PlannedDist {
 export function effectivatedOf(pl: Planned, effs: Effectivation[] = []) {
   return effs.filter((e) => e.plannedId === pl.id && !e.reversedAt);
 }
+/** Buckets titles by purchase code (order preserved). distributePlanned only reads titles whose code equals the plan's code,
+ *  so passing `committedByCode(c).get(pl.purchaseCode) ?? []` gives the identical result without scanning every title per plan. */
+export function committedByCode(committed: Committed[]): Map<string, Committed[]> {
+  const m = new Map<string, Committed[]>();
+  for (const c of committed) { if (!c.purchaseCode) continue; const l = m.get(c.purchaseCode); if (l) l.push(c); else m.set(c.purchaseCode, [c]); }
+  return m;
+}
+export const NO_TITLES: Committed[] = [];
 export function distributePlanned(pl: Planned, sup: Supplier | undefined, committed: Committed[], profile: Profile, effs: Effectivation[] = []): PlannedDist {
   const warnings: Warning[] = [];
   const myEffs = effectivatedOf(pl, effs);
@@ -227,9 +235,10 @@ export function computeFlow(data: ScenarioData, opt: FlowOptions): FlowResult {
   const supName = (row: ScenarioData["planned"][number] | ScenarioData["committed"][number] | ScenarioData["expenses"][number]) => supplierIdentity(data, row).name;
   let prePaid = 0;
 
+  const byCode = committedByCode(data.committed);
   for (const pl of data.planned) {
     if (pl.status === "cancelado") continue;
-    const dist = distributePlanned(pl, supMap.get(pl.supplierId), data.committed, p.profile, data.effectivations);
+    const dist = distributePlanned(pl, supMap.get(pl.supplierId), byCode.get(pl.purchaseCode) ?? NO_TITLES, p.profile, data.effectivations);
     warnings.push(...dist.warnings);
     if (!pass(pl.supplierId, pl)) continue;
     for (const pc of dist.parcels)

@@ -2,7 +2,7 @@ import { splitOrigin } from "@/lib/originText";
 import { supplierIdentity, supplierIdentityOptions } from "@/lib/supplierIdentity";
 import { askCloseDraft, askConfirm } from "@/lib/decisions";
 import { DecisionWindow } from "@/components/DecisionDialog";
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { TermsEditor } from "@/components/TermsEditor";
 import { Button } from "@/components/ui/button";
@@ -53,14 +53,17 @@ export const Field = ({ l, full, children }: { l: string; full?: boolean; childr
  *  A lista abre em portal acima do painel, sem cortá-lo nem fechá-lo. */
 export function SupplierSearch({ d, value, onChange, onCreate, existing = false, allowAll = false, placeholder, allowCreate = false, historical = false }: { onCreate?:(s:Supplier)=>void; historical?: boolean; d: ScenarioData; value: string; onChange: (id: string) => void; existing?: boolean; allowAll?: boolean; placeholder?: string; allowCreate?: boolean }) {
   const [creating, setCreating] = useState<{ name: string; aliases: string; note: string; err: string } | null>(null);
-  const cur = (historical ? supplierIdentityOptions(d).find((s) => s.key === value)?.name : d.suppliers.find((s) => s.id === value)?.name) ?? "";
+  // Historical identities scan every record: computed only when this filter variant needs them, never per keystroke elsewhere.
+  const identities = useMemo(() => historical ? supplierIdentityOptions(d) : [], [historical, historical ? d : null]); // eslint-disable-line react-hooks/exhaustive-deps
+  const cur = (historical ? identities.find((s) => s.key === value)?.name : d.suppliers.find((s) => s.id === value)?.name) ?? "";
   const [t, setT] = useState(cur);
   const [open, setOpen] = useState(false);
   const [hi, setHi] = useState(0);
   const box = useRef<HTMLInputElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number; width: number } | null>(null);
   useEffect(() => setT(cur), [cur]);
-  const opts = filterSuppliers(d, t, { includeInactive: existing, date: existing ? undefined : todaySP() });
+  // The option list is built only while the list is open: typing elsewhere in the form no longer rebuilds it.
+  const opts = useMemo(() => open ? filterSuppliers(d, t, { includeInactive: existing, date: existing ? undefined : todaySP() }) : [], [open, d.suppliers, t, existing]); // eslint-disable-line react-hooks/exhaustive-deps
   const show = open && document.activeElement === box.current;
   const place = () => { const r = box.current?.getBoundingClientRect(); if (r) setPos({ left: r.left, top: r.bottom + 2, width: Math.max(r.width, 260) }); };
   useLayoutEffect(() => { if (show) place(); }, [show, t]);
@@ -70,14 +73,14 @@ export function SupplierSearch({ d, value, onChange, onCreate, existing = false,
     document.addEventListener("mousedown", down);
     return () => document.removeEventListener("mousedown", down);
   }, [show]);
-  const pick = (id: string) => { if (id === "__new") { setCreating({ name: t.trim(), aliases: "", note: "", err: "" }); setOpen(false); return; } onChange(id); setT(id ? (historical ? supplierIdentityOptions(d).find((s) => s.key === id)?.name : d.suppliers.find((s) => s.id === id)?.name) ?? "" : ""); setOpen(false); };
-  const items: { id: string; label: ReactNode }[] = [
+  const pick = (id: string) => { if (id === "__new") { setCreating({ name: t.trim(), aliases: "", note: "", err: "" }); setOpen(false); return; } onChange(id); setT(id ? (historical ? identities.find((s) => s.key === id)?.name : d.suppliers.find((s) => s.id === id)?.name) ?? "" : ""); setOpen(false); };
+  const items: { id: string; label: ReactNode }[] = !open ? [] : [
     ...(allowAll ? [{ id: "", label: <span className="font-medium">Todos</span> }] : []),
     ...opts.map((s) => ({
       id: s.id,
       label: <span>{s.name}{!supplierActive(s, todaySP()) && <span className="tag tag-warn ml-1">inativo</span>}{s.aliases?.length ? <span className="block text-[11px] text-muted-foreground">Apelidos: {s.aliases.join(", ")}</span> : null}</span>,
     })),
-    ...(historical ? supplierIdentityOptions(d).filter((s) => !d.suppliers.some((x) => x.id === s.key) && s.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().includes(t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase())).map((s) => ({ id: s.key, label: <span>{s.name}{s.pending && <small className="block text-muted-foreground">Vínculo pendente</small>}</span> })) : []),
+    ...(historical ? identities.filter((s) => !d.suppliers.some((x) => x.id === s.key) && s.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().includes(t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase())).map((s) => ({ id: s.key, label: <span>{s.name}{s.pending && <small className="block text-muted-foreground">Vínculo pendente</small>}</span> })) : []),
     ...(allowCreate && t.trim() && !opts.some((s) => s.name.trim().toLocaleLowerCase("pt-BR") === t.trim().toLocaleLowerCase("pt-BR")) ? [{ id: "__new", label: <span className="font-medium text-primary">+ Cadastrar fornecedor “{t.trim()}”</span> }] : []),
   ];
   const total = items.length;
@@ -146,7 +149,8 @@ export function NovaNota({ d: source, isBase, onCancel, onConfirm, onManagePlann
   const app = useApp();
   const [draftId] = useState(() => { try { const k=`fluxo:new-id:${app.user?.id}:${app.official.orgId}:${app.active.id}`; const v=sessionStorage.getItem(k) ?? `novo-${uid()}`; sessionStorage.setItem(k,v); return v; } catch { return `novo-${uid()}`; } });
   const [n, setN] = useState<NoteDraft>({ stage: "planned", kind: "compra", categoryId: "", supplierId: "", purchaseCode: "", document: "", description: "", total: null, baseDate: null, parcels: [], plannedNotes: [], plannedId: null, closeRest: false });
-  const d={...source,suppliers:[...source.suppliers,...(n.localSuppliers??[]).filter(s=>!source.suppliers.some(x=>x.id===s.id))]};
+  const localSuppliers = n.localSuppliers;
+  const d = useMemo(() => localSuppliers?.length ? {...source,suppliers:[...source.suppliers,...localSuppliers.filter(s=>!source.suppliers.some(x=>x.id===s.id))]} : source, [source, localSuppliers]);
   const [saveAs, setSaveAs] = useState<SaveAs | null>(null);
   const [review, setReview] = useState(false);
   const [tried, setTried] = useState(false);
@@ -174,7 +178,8 @@ export function NovaNota({ d: source, isBase, onCancel, onConfirm, onManagePlann
   const sub = d.categories.find((c) => c.id === n.categoryId)?.name ?? "—";
   const stageL = stage === "planned" ? "Planejada" : "Efetivado";
   // Previsões ativas e conciliadas que podem ser substituídas (mesmas regras do motor de efetivação).
-  const prevs = stage === "committed" ? d.planned.filter((p) => p.status === "ativo").flatMap((p) => { try { const r = plannedRemaining(d, p.id); return r.health === "ok" && r.value > 0 ? [{ p, rem: r.value }] : []; } catch { return []; } }) : [];
+  // Scans every active plan against all committed titles: computed once per base/stage, never on each keystroke.
+  const prevs = useMemo(() => stage === "committed" ? source.planned.filter((p) => p.status === "ativo").flatMap((p) => { try { const r = plannedRemaining(source, p.id); return r.health === "ok" && r.value > 0 ? [{ p, rem: r.value }] : []; } catch { return []; } }) : [], [stage, source]);
   const link = prevs.find((x) => x.p.id === n.plannedId);
   const rest = link ? Math.max(0, link.rem - (n.total ?? 0)) : 0;
   const pick = (st: "planned" | "committed") => { setHow(null); setChecked(false); setN({ ...n, stage: st, plannedId: null, closeRest: false }); setChosen(true); setTried(false); };

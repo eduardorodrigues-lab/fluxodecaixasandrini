@@ -1,7 +1,7 @@
 import { documentGroups } from "./documentGroups";
 import { supplierIdentity } from "./supplierIdentity";
 import { accountName, NO_ACCOUNT } from "./engine/banco";
-import { distributePlanned, titleStatus } from "./engine/engine";
+import { committedByCode, distributePlanned, NO_TITLES, titleStatus } from "./engine/engine";
 import type { ScenarioData, CategoryKind } from "./engine/types";
 import { addDays, fmtDate } from "./dates";
 import { fmtBRL } from "./money";
@@ -34,8 +34,9 @@ export function createLaunchPresentation(d: ScenarioData, audit: LaunchAudit[] =
   const getGroups = () => cachedGroups ??= documentGroups(d);
   const buildPlanned = () => {
   // ---- Planejada: uma linha por parcela ----
+  const byCode = committedByCode(d.committed);
   const plannedSource = d.planned.flatMap((p) => {
-    const r = distributePlanned(p, sup(p.supplierId), d.committed, d.params.profile, d.effectivations);
+    const r = distributePlanned(p, sup(p.supplierId), byCode.get(p.purchaseCode) ?? NO_TITLES, d.params.profile, d.effectivations);
     const inst = p.installments?.length && !p.remainingOverride ? p.installments : null;
     const parts = r.parcels.length ? r.parcels : [null];
     return parts.map((pc, i) => ({ p, r, pc, i, n: parts.length, it: inst && pc ? inst[pc.idx ?? i] ?? null : null, idx: pc?.idx ?? i }));

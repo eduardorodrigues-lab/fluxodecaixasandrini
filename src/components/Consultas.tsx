@@ -8,7 +8,7 @@ import { dateValue, parcelValue, queryReport, reportCSV } from "@/lib/reportTabl
 import { PagamentosDia } from "@/components/PagamentosDia";
 import { useMemo, useState } from "react";
 import { DateInput } from "@/components/kit";
-import { distributePlanned, paymentsFor, titleStatus } from "@/lib/engine/engine";
+import { committedByCode, distributePlanned, NO_TITLES, titleStatus } from "@/lib/engine/engine";
 import type { ExtensionEvent, Payment, ScenarioData } from "@/lib/engine/types";
 import { addDays, fmtDate } from "@/lib/dates";
 import { SupplierSearch } from "@/components/NotaPanel";
@@ -23,13 +23,20 @@ export interface ConsultaRow {
 /** Uma linha por título (parcela/boleto) a partir dos lançamentos existentes — sem duplicar dados. */
 export function buildConsulta(d: ScenarioData): ConsultaRow[] {
   const index = documentGroups(d);
-  const cat = (id: string) => d.categories.find((c) => c.id === id);
+  // Indexes built once per base: same rows as scanning, without O(títulos × baixas) on every rebuild.
+  const cats = new Map(d.categories.map((c) => [c.id, c]));
+  const cat = (id: string) => cats.get(id);
+  const paymentsByTitle = new Map<string, Payment[]>();
+  for (const p of d.payments ?? []) { const k = `${p.titleKind}:${p.titleId}`; const l = paymentsByTitle.get(k); if (l) l.push(p); else paymentsByTitle.set(k, [p]); }
+  const committedById = new Map(d.committed.map((c) => [c.id, c])), expenseById = new Map(d.expenses.map((e) => [e.id, e]));
+  const suppliersById = new Map(d.suppliers.map((x) => [x.id, x]));
+  const byCode = committedByCode(d.committed);
   const rows: ConsultaRow[] = [];
   const push = (kind: "committed" | "expense", id: string, supplierId: string, document: string, groupKey: string, value: number, status: string, due: string | null, ext: string | null, categoryId: string, history: ExtensionEvent[], srcName?: string) => {
-    const ts = titleStatus(value, status, paymentsFor(d, kind, id));
+    const ts = titleStatus(value, status, paymentsByTitle.get(`${kind}:${id}`) ?? []);
     const c = cat(categoryId);
     const pays = [...ts.payments].sort((a, b) => a.date.localeCompare(b.date));
-    const source = kind === "committed" ? d.committed.find((r) => r.id === id) : d.expenses.find((r) => r.id === id);
+    const source = kind === "committed" ? committedById.get(id) : expenseById.get(id);
     const identity = supplierIdentity(d, source);
     rows.push({ launch: { kind, id, parcel: id }, key: `${kind}:${id}|${groupKey}`, supplierId: identity.key, supplier: identity.name, document, boletoNumber: source?.boletoNumber ?? null, parcel: "", category: c ? (c.kind === "compra" ? "Compra" : "Despesa") : "—", sub: c?.name ?? "—", value, due, extended: ext, effective: ext || due, paid: ts.paid, open: Math.max(0, ts.open), state: ts.state === "Parcial" ? "Parcialmente pago" : ts.state, lastPay: pays.at(-1)?.date ?? null, payments: pays, history });
   };
@@ -41,7 +48,7 @@ export function buildConsulta(d: ScenarioData): ConsultaRow[] {
   }
   // número da parcela: ordem por vencimento dentro de fornecedor+código+documento
   const groups = new Map<string, ConsultaRow[]>();
-  for (const r of rows) { const g = r.key.split("|").slice(1).join("|"); groups.set(g, [...(groups.get(g) ?? []), r]); }
+  for (const r of rows) { const g = r.key.split("|").slice(1).join("|"); const l = groups.get(g); if (l) l.push(r); else groups.set(g, [r]); }
   for (const g of groups.values()) {
     g.sort((a, b) => (a.due ?? "").localeCompare(b.due ?? ""));
     g.forEach((r, i) => (r.parcel = `${i + 1}/${g.length}`));
@@ -49,11 +56,11 @@ export function buildConsulta(d: ScenarioData): ConsultaRow[] {
   for (const r of rows) {
     const titleId = r.key.split("|")[0]?.split(":")[1];
     if (titleId && index.byId.has(titleId)) r.parcel = index.byId.get(titleId)?.labels.get(titleId) ?? "1/1";
-    const t = d.committed.find((c) => c.id === titleId) ?? d.expenses.find((e) => e.id === titleId);
-    r.search = [t?.boletoNumber ?? "", t?.document ?? "",...(d.suppliers.find((s) => s.id === r.supplierId)?.aliases ?? []), t?.notes ?? "", t && "purchaseCode" in t ? t.purchaseCode : ""];
+    const t = titleId ? committedById.get(titleId) ?? expenseById.get(titleId) : undefined;
+    r.search = [t?.boletoNumber ?? "", t?.document ?? "",...(suppliersById.get(r.supplierId)?.aliases ?? []), t?.notes ?? "", t && "purchaseCode" in t ? t.purchaseCode : ""];
   }
   for(const p of d.planned ?? []){
-    const dist=distributePlanned(p,d.suppliers.find(s=>s.id===p.supplierId),d.committed,d.params.profile,d.effectivations);
+    const dist=distributePlanned(p,suppliersById.get(p.supplierId),byCode.get(p.purchaseCode) ?? NO_TITLES,d.params.profile,d.effectivations);
     const identity=supplierIdentity(d,p), category=cat(p.categoryId);
     dist.parcels.forEach((part,i)=>{
       const item=p.remainingOverride?.items?.[i], own=p.installments?.[part.idx??i];
