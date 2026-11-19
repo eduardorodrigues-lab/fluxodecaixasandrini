@@ -198,3 +198,12 @@ Pendências externas: gravação oficial do XLSM (login de Eduardo + organizaç�
 
 ## Pedido 1852 — efetivação seletiva bloqueada por linhas R$ 0,00
 - [x] Linhas genéricas 0 substituídas pelo detalhamento; notas não selecionadas planejadas com NF/IDs; salvar notas sem efetivar; resumo final na revisão; testes e navegador (fixture)
+
+## Salvamento lento, fornecedor inline e editores (19/11)
+- [x] Histórico/auditoria fora da carga e do salvamento normais; carregado sob demanda em Histórico, Metas, painel e tabela de lançamentos
+- [x] Leitura grande no servidor só após membership validada; commit com nova tentativa limitada só em corrida de versão comprovada
+- [x] Fechar janelas na hora sem edição; com edição: Continuar / Manter rascunho e fechar / Descartar; fechar durante envio mantém acompanhamento
+- [x] Rascunho local fora do caminho da digitação, com gravação da última tecla ao fechar/recarregar
+- [x] Pacote congelado só após captura; reenvio explícito do mesmo pacote após consulta sem confirmação
+- [x] Fornecedor inline + lançamento gravados em uma confirmação (fixture)
+- [ ] Incidente real (resultado desconhecido) e tempos do banco hospedado: não verificados sem gravação real; identificador do pacote do navegador da usuária não disponível
