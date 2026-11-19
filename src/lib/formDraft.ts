@@ -1,6 +1,6 @@
-export interface FormScope { user: string; org: string; mode: string; form: string; record: string }
+export interface FormScope { user: string; org: string; mode: string; form: string; record: string; generation?: string | undefined }
 export interface FormEnvelope<T> { v: 1; revision: string; at: string; value: T }
-export const formDraftKey = (s: FormScope) => `fluxo:form:v1:${JSON.stringify([s.user,s.org,s.mode,s.form,s.record])}`;
+export const formDraftKey = (s: FormScope) => `fluxo:form:v1:${JSON.stringify(s.generation ? [s.user,s.org,s.mode,s.form,s.record,s.generation] : [s.user,s.org,s.mode,s.form,s.record])}`;
 export function readForm<T>(storage: Pick<Storage,"getItem">, key: string): FormEnvelope<T> | null {
   const raw = storage.getItem(key);
   if (!raw) return null;

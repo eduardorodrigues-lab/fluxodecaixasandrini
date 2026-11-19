@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useApp } from "@/lib/store";
 import { formDraftKey, readForm, writeForm, type FormScope } from "@/lib/formDraft";
 
 const DELAY = 400;
@@ -9,7 +10,8 @@ const DELAY = 400;
 /** `restore` may return false when the stored copy is already contained in the current base (e.g. confirmed earlier):
  *  the copy is then removed instead of reopening an already-saved change as unsaved. */
 export function useFormDraft<T>(scope:FormScope,value:T,restore:(value:T)=>void|boolean) {
-  const key = formDraftKey(scope);
+  const generation = useApp().base.data.params.baseGeneration;
+  const key = formDraftKey({ ...scope, generation });
   const state = useRef({key,ready:false,revision:null as string|null,last:"",stopped:false,backup:"",cleared:false,timer:0 as ReturnType<typeof setTimeout> | 0});
   const [recovered,setRecovered] = useState(false);
   const [warning,setWarning] = useState("");

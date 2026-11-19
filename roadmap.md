@@ -1,5 +1,10 @@
 # Roadmap
 
+## Substituição financeira pela fonte única ea1c4241 — autorizada 19/11/2026
+- [x] Regras finais: zero informado sem estimativa, centavos inteiros com resíduo por nota, geração da base nos rascunhos
+- [x] Backup v188 verificado; gravação única 188→189 (d4a04a50-07b9-53ac-a80a-4039272cf398) relida e conferida
+- [ ] 165 despesas com subgrupo provisório aguardam finalidade; baixas/contas/cartões/transferências a cadastrar pela equipe
+
 ## Estabilização abrir→editar→salvar→fechar→reabrir→reload — autorizado 19/11/2026
 - [x] Causa da lentidão pós-confirmação: aba Consultas escondida recalculava tudo (~4–6 s) e previsões varriam todos os títulos por pedido; corrigido sem mudar resultados (Consultas idêntica em base fictícia)
 - [x] Gravação confirmada com tela não atualizada: formulário trata como salvo e rascunho já contido na base não reaparece

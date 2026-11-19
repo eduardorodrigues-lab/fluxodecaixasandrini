@@ -4,6 +4,7 @@ import { applyImportRows } from "./importApply";
 import { classify, hashStr, mapRows, suggestMapping, type Cell, type Entity } from "./importer";
 import { adaptTargets, layoutMapping, normName, type SheetInfo } from "./xlsxImport";
 import type { ScenarioData } from "./engine/types";
+import { roundCents } from "./money";
 
 export const replacementSubgroups = ["Aluguéis e Locações", "Aquisição de Imobilizado", "Consultoria e Assessoria", "Consórcios", "Despesas Administrativas", "Despesas com Pessoal", "Despesas com Veículos", "Distribuição de Lucros", "Empréstimos Bancários", "Financiamentos", "Fretes e Logística", "Impostos e Tributos", "Investimentos Financeiros", "Manutenção e Conservação", "Materiais de Consumo e Limpeza", "Mútuos entre Empresas", "Obras e Construções", "Outras Despesas Operacionais", "Publicidade e Marketing", "Seguros", "Serviços Contábeis e Jurídicos", "Softwares e Tecnologia", "Tarifas e Serviços Bancários", "Taxas e Comissões de Marketplaces", "Utilidades e Telecomunicações"];
 export function classifyReplacementExpense(type: string, description: string) {
@@ -112,7 +113,7 @@ export function prepareReplacement(sheets: SheetInfo[], sourceHash: string, file
       if (entity === "expenses") { const record = data.expenses.at(-1); if (record) { record.importOrigin = origin; record.document = String(raw[1] ?? ""); } }
       if (entity === "receipts") {
         const record = data.receipts.at(-1);
-        if (record) { record.origin = origin; record.legacyZeroEstimate = true; record.realized = false; record.kind = normName(String(raw[0] ?? "")) === "REAL" ? "realizado" : "previsto"; }
+        if (record) { record.origin = origin; record.legacyZeroEstimate = false; record.realized = false; record.kind = normName(String(raw[0] ?? "")) === "REAL" ? "realizado" : "previsto"; }
       }
     }
   }
@@ -124,6 +125,7 @@ export function prepareReplacement(sheets: SheetInfo[], sourceHash: string, file
   if (!targetSheet) throw new Error("Previsão de vendas ausente");
   const targetRows = adaptTargets(targetSheet.rows);
   if (targetRows.reducerB2 === null || targetRows.lagC2 === null) throw new Error("Redutor/defasagem ausentes na fonte");
+  data.params.baseGeneration = `xlsm-${sourceHash}`;
   data.params.legacyReducer = targetRows.reducerB2; data.params.lagDays = targetRows.lagC2;
   for (const target of targetRows.rows) {
     const gross = targetSheet.rows.slice(6).reduce((sum, r) => sum + (typeof r[target.column] === "number" ? r[target.column] as number : 0), 0) * 100;
@@ -132,8 +134,55 @@ export function prepareReplacement(sheets: SheetInfo[], sourceHash: string, file
     data.targets[target.month] = gross;
     data.targetConfigs[target.month] = { gross, legacyReducer: targetRows.reducerB2, divisorLegado: "30", webR1: 0, webR2: 0, r2Base: "apos_r1", divisorWeb: "30", lagDays: targetRows.lagC2, sourceExact: true, version: 1, history: [] };
   }
-  return { data, entries, sourceHash, paymentRule: "Efetuadas = efetivado sem baixa; despesas = título importado com situação a confirmar, nunca pago por data. Nenhum cutoff. Recebimento REAL é rótulo da fonte, realized=false sem prova bancária." };
+  return { data, entries, sourceHash, zeroRule: "Zero explícito informado em RECEBIMENTOS permanece zero e não aciona estimativa; dia sem registro usa estimativa.", paymentRule: "Efetuadas = efetivado sem baixa; despesas = título importado com situação a confirmar, nunca pago por data. Nenhum cutoff. Recebimento REAL é rótulo da fonte, realized=false sem prova bancária." };
 }
 export function replacementFinancialEmpty(data: ScenarioData) {
   return [data.payments, data.effectivations, data.adjustments, data.transfers, data.bankAccounts, data.cards, data.cardOps].every(rows => rows.length === 0);
+}
+export interface CentDelta { entity: string; id: string; field: string; exact: number; rounded: number; delta: number; rule: string }
+/** Final monetary rule: integer cents, half away from zero (roundCents). Committed parcels of the SAME exact supplier+document
+ *  keep the rounded document total; the residual goes to the last parcel (latest due date, then source row). Different
+ *  documents are never pooled. Every change is returned for the manifest. */
+export function finalizeReplacementCents(data: ScenarioData): CentDelta[] {
+  const out: CentDelta[] = [];
+  const put = (entity: string, id: string, field: string, exact: number, rounded: number, rule: string) => { if (exact !== rounded) out.push({ entity, id, field, exact, rounded, delta: rounded - exact, rule }); return rounded; };
+  for (const p of data.planned) p.value = put("planned", p.id, "value", p.value, roundCents(p.value), "valor orçado arredondado; parcelas pelo motor com resíduo na última");
+  const groups = new Map<string, typeof data.committed>();
+  for (const c of data.committed) {
+    if (c.legacyAbatement !== null && c.legacyAbatement !== undefined) c.legacyAbatement = put("committed", c.id, "legacyAbatement", c.legacyAbatement, roundCents(c.legacyAbatement), "coluna M arredondada");
+    const key = c.document.trim() ? `${c.sourceSupplier ?? c.supplierId}\u0000${c.document.trim()}` : `row\u0000${c.id}`;
+    const list = groups.get(key) ?? []; list.push(c); groups.set(key, list);
+  }
+  for (const list of groups.values()) {
+    const row = (c: (typeof list)[number]) => c.importOrigin?.row ?? 0;
+    list.sort((a, b) => a.dueDate.localeCompare(b.dueDate) || row(a) - row(b));
+    const exact = list.map(c => c.value);
+    const total = roundCents(exact.reduce((a, b) => a + b, 0));
+    const parts = exact.map(roundCents);
+    parts[parts.length - 1]! += total - parts.reduce((a, b) => a + b, 0);
+    list.forEach((c, i) => { c.value = put("committed", c.id, "value", exact[i]!, parts[i]!, list.length > 1 ? `parcela da nota ${c.document.trim()} (${list.length} parcelas); total da nota preservado, resíduo na última` : "parcela única arredondada"); });
+  }
+  for (const e of data.expenses) e.value = put("expenses", e.id, "value", e.value, roundCents(e.value), "despesa arredondada por linha");
+  for (const r of data.receipts) {
+    for (const [k, v] of Object.entries(r.platforms)) if (typeof v === "number") r.platforms[k] = put("receipts", r.id, `platforms.${k}`, v, roundCents(v), "valor da plataforma no dia arredondado");
+    if (typeof r.general === "number") r.general = put("receipts", r.id, "general", r.general, roundCents(r.general), "valor geral arredondado");
+  }
+  data.adjustments.forEach((a, i) => { if (typeof a.value === "number") a.value = put("adjustments", `${a.date}#${i}`, "value", a.value, roundCents(a.value), "saldo origem da fonte arredondado"); });
+  data.params.saldoInicial = put("params", "saldoInicial", "saldoInicial", data.params.saldoInicial, roundCents(data.params.saldoInicial), "saldo origem inicial arredondado");
+  for (const [m, v] of Object.entries(data.targets)) data.targets[m] = put("targets", m, "gross", v, roundCents(v), "meta mensal arredondada");
+  for (const [m, c] of Object.entries(data.targetConfigs)) if (c) c.gross = roundCents(c.gross);
+  return out;
+}
+/** Paths of money fields that are not integer cents (must be empty before commit). */
+export function fractionalCentFields(data: ScenarioData): string[] {
+  const bad: string[] = [];
+  const chk = (path: string, v: unknown) => { if (typeof v === "number" && !Number.isInteger(v)) bad.push(path); };
+  data.planned.forEach(p => chk(`planned.${p.id}.value`, p.value));
+  data.committed.forEach(c => { chk(`committed.${c.id}.value`, c.value); chk(`committed.${c.id}.legacyAbatement`, c.legacyAbatement); });
+  data.expenses.forEach(e => chk(`expenses.${e.id}.value`, e.value));
+  data.receipts.forEach(r => { Object.entries(r.platforms).forEach(([k, v]) => chk(`receipts.${r.id}.${k}`, v)); chk(`receipts.${r.id}.general`, r.general); });
+  data.adjustments.forEach((a, i) => chk(`adjustments.${i}`, a.value));
+  Object.entries(data.targets).forEach(([m, v]) => chk(`targets.${m}`, v));
+  chk("params.saldoInicial", data.params.saldoInicial);
+  return bad;
 }

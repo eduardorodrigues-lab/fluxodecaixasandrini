@@ -15,6 +15,7 @@ export interface Params {
   // na data inicial. Só muda por transição revisada/confirmada (bankTransition). Nunca soma os dois.
   openingMode?: "legado" | "contas";
   bankTransition?: { at: string; by: string; legacyValue: number; accountsValue: number; note: string } | null;
+  baseGeneration?: string; // identificação da carga integral vigente; rascunhos de gerações anteriores não são reidratados
   financialDefaults?: FinancialConfig; // novos meses apenas; não modifica snapshots existentes
 }
 

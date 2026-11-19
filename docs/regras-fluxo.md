@@ -342,3 +342,10 @@ Notas do rascunho aparecem em painéis laterais com rolagem horizontal; cada not
 - Substituições de saldo do FLUXO só podem vir de células literais ou fórmulas aritméticas explícitas da própria fonte, documentadas célula a célula; não são ajustes compensatórios nem saldos bancários. Divergências de fórmulas de resultado não são corrigidas por lançamento artificial.
 - Reconciliação reconhece “Saldo disponível projetado” pelo rótulo; relatório local compara todo calendário, componentes e saldo, separando diferença nova e herdada. Cache incoerente nunca constitui paridade validada.
 - Testes sintéticos do adaptador e leitura não constituem execução oficial nem prova de restauração hospedada. Corte exige pausa acordada, backup da versão mais recente, restauração isolada comprovada e troca atômica/versionada/idempotente pelo caminho oficial existente.
+
+## Substituição pela fonte única (19/11/2026, versão 189)
+- Base ativa recriada só da fonte SHA256 ea1c4241…; pagamentos, efetivações, ajustes, contas e transferências antigos ficaram somente no backup v188 e no snapshot_before da auditoria.
+- Recebimentos importados: zero informado permanece zero (não aciona estimativa); dia sem registro usa estimativa.
+- Valores em centavos inteiros (meio para longe do zero); parcelas da mesma nota (fornecedor+documento exatos) preservam o total arredondado com resíduo na última; cada delta fica no manifesto.
+- Compras da aba EFETUADAS = efetivado sem baixa; despesas = título a confirmar, nunca pagas por data; sem cutoff.
+- Rascunhos do navegador de gerações anteriores da base não são reabertos.

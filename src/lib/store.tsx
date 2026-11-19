@@ -12,7 +12,7 @@ import { receiptOperation } from './receiptOperation';
 import { listMyOrgs } from "./team.functions";
 import { pickOrg, SHARED_ORG_ID, canWrite } from "./team";
 import { isolateOperation, rebasePending, sendOperation, type ReviewedOperation } from "./operationSave";
-import { migrateSims, purgeUser, scopeKey, type SimStore } from "./session";
+import { generationScope, migrateSims, purgeUser, scopeKey, type SimStore } from "./session";
 import { NORMALIZATION_REVISION, reconcileReceipt } from './commitReceipt';
 import { bounded, pollConfirmation, confirmSubmission, type OperationPhase } from './saveRecovery';
 import { operationReview } from './operationReview';
@@ -156,8 +156,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const baseData: ScenarioData | null = user ? offData : null; // nunca dados financeiros sem login
   const baseVersion = official.version;
-  const scope = scopeKey(user?.id, offQ.data?.orgId ?? null);
-  const allSims = (scope ? local.sims[scope] ?? [] : []) as Sim[];
+  const simScope = scopeKey(user?.id, offQ.data?.orgId ?? null);
+  const scope = generationScope(simScope, baseData?.params.baseGeneration);
+  const allSims = (simScope ? local.sims[simScope] ?? [] : []) as Sim[];
   const sims = allSims.filter((s) => !s.deletedAt);
   const cur = session && scope && session.scope === scope ? session : null;
   const draft = useMemo(() => (cur?.ops.length && baseData ? applyOps(baseData, cur.ops, false).data : null), [cur, baseData]);
@@ -176,7 +177,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (sim) {
         const next = editDraft(sim.data, null, fn);
         const ch = diffData(sim.data, next);
-        mutLocal((s) => { const x = scope ? s.sims[scope]?.find((i) => i.id === sim.id) as Sim | undefined : null; if (x) { x.data = next; if (ch.length) (x.history ??= []).unshift({ at: new Date().toISOString(), user: user?.email ?? "", changes: ch }); } });
+        mutLocal((s) => { const x = simScope ? s.sims[simScope]?.find((i) => i.id === sim.id) as Sim | undefined : null; if (x) { x.data = next; if (ch.length) (x.history ??= []).unshift({ at: new Date().toISOString(), user: user?.email ?? "", changes: ch }); } });
       } else {
         if (!baseData || !scope) return "Base ainda não carregada.";
         const from = draft ?? baseData;
@@ -501,9 +502,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveOperation, saveSimulationOperation, pendingOperation: pendingOperation?.scope === `${user?.id}:${official.orgId}` ? pendingOperation : null, abandonOperation,
     update, draft, draftBaseVersion: cur?.baseVersion ?? null, baseMoved: !!cur && cur.baseVersion !== official.version, changes, discardDraft, commitDraft, saveState, saveMsg, conflicts, resolveConflict, protectErr,
     reloadOfficial: () => { qc.invalidateQueries({ queryKey: ["official"] }); },
-    createSim: (name) => { if (!baseData) return; const id = uid(); if (!scope) return; mutLocal((s) => { (s.sims[scope] ??= []).push({ id, name, createdAt: new Date().toISOString(), createdBy: user?.email ?? "", data: clone(baseData), baseVersion }); s.activeId = id; }); },
-    discardSim: (id) => { if (!baseData) return; mutLocal((s) => { const x = scope ? s.sims[scope]?.find((i) => i.id === id) : null; if (x) { x.data = clone(baseData); x.baseVersion = baseVersion; } }); },
-    deleteSim: (id) => mutLocal((s) => { const x = scope ? s.sims[scope]?.find((i) => i.id === id) : null; if (x) { x.deletedAt = new Date().toISOString(); x.deletedBy = user?.email ?? ""; } if (s.activeId === id) s.activeId = "base"; }),
+    createSim: (name) => { if (!baseData) return; const id = uid(); if (!simScope) return; mutLocal((s) => { (s.sims[simScope] ??= []).push({ id, name, createdAt: new Date().toISOString(), createdBy: user?.email ?? "", data: clone(baseData), baseVersion }); s.activeId = id; }); },
+    discardSim: (id) => { if (!baseData) return; mutLocal((s) => { const x = simScope ? s.sims[simScope]?.find((i) => i.id === id) : null; if (x) { x.data = clone(baseData); x.baseVersion = baseVersion; } }); },
+    deleteSim: (id) => mutLocal((s) => { const x = simScope ? s.sims[simScope]?.find((i) => i.id === id) : null; if (x) { x.deletedAt = new Date().toISOString(); x.deletedBy = user?.email ?? ""; } if (s.activeId === id) s.activeId = "base"; }),
     requestAudit, resendPendingOperation,
     auditHistory: { entries: auditEntries, status: auditQ.isError ? "error" : auditQ.data ? "ready" : auditDemand > 0 ? "loading" : "idle", error: auditQ.isError ? "Não foi possível carregar o histórico. Tente novamente." : "", refresh: () => { void auditQ.refetch(); } },
   };

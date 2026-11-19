@@ -4,6 +4,11 @@ import type { ScenarioData } from "./engine/types";
 export function scopeKey(userId: string | null | undefined, orgId: string | null | undefined): string | null {
   return userId && orgId ? `oficial:${userId}:${orgId}` : null;
 }
+// Drafts/pending packets are bound to the base generation: after a full source replacement, packets from the previous
+// generation stay stored under their old key (recoverable/exportable) and are never rehydrated onto new records.
+export function generationScope(scope: string | null, generation: string | null | undefined): string | null {
+  return scope && generation ? `${scope}|gen:${generation}` : scope;
+}
 
 // Rascunho com SNAPSHOT da versão da base no primeiro edit: refetch posterior não muda expectedVersion.
 export interface DraftSession { scope: string; baseVersion: number; requestId: string; data: ScenarioData }

@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { prepareReplacement } from "../src/lib/replacementImport";
+import { finalizeReplacementCents, fractionalCentFields, prepareReplacement } from "../src/lib/replacementImport";
 import { computeFlow } from "../src/lib/engine/engine";
 import { excelSerialToISO } from "../src/lib/importer";
 import { reconcile, type SheetInfo } from "../src/lib/xlsxImport";
@@ -42,12 +42,16 @@ if (evidenceFile) {
     if (log) candidate.data.importLog.push(log);
   }
 }
+const centDeltas = finalizeReplacementCents(candidate.data);
+const fractional = fractionalCentFields(candidate.data);
+if (fractional.length) throw new Error(`Centavos fracionários restantes: ${fractional.slice(0, 5).join(", ")}`);
 const result = computeFlow(candidate.data, { start: first.date, end: last.date });
 const reconciliation = reconcile(flow.rows, result.days);
 mkdirSync(output, { recursive: true });
 const serialized = JSON.stringify(candidate.data);
 writeFileSync(`${output}/candidato.json`, serialized);
 writeFileSync(`${output}/manifesto.json`, JSON.stringify({ ...candidate, data: undefined, candidateSha256: createHash("sha256").update(serialized).digest("hex"), horizon: [first.date, last.date], reconciliation: { ...reconciliation, rows: undefined }, counts: Object.fromEntries(Object.entries(candidate.data).filter(([, v]) => Array.isArray(v)).map(([k, v]) => [k, (v as unknown[]).length])) }, null, 2));
+writeFileSync(`${output}/centavos.json`, JSON.stringify(centDeltas));
 writeFileSync(`${output}/conciliacao.json`, JSON.stringify(reconciliation));
 writeFileSync(`${output}/motor.json`, JSON.stringify(result));
-console.log(JSON.stringify({ counts: Object.fromEntries(Object.entries(candidate.data).filter(([, v]) => Array.isArray(v)).map(([k, v]) => [k, (v as unknown[]).length])), quarantine: candidate.entries.filter(e => e.errors.length), classificationPending: candidate.entries.filter(e => e.classificationPending).length, horizon: [first.date, last.date], reconciliation: reconciliation.message }));
+console.log(JSON.stringify({ centDeltas: centDeltas.length, centDeltaSum: centDeltas.reduce((a, d) => a + d.delta, 0), counts: Object.fromEntries(Object.entries(candidate.data).filter(([, v]) => Array.isArray(v)).map(([k, v]) => [k, (v as unknown[]).length])), quarantine: candidate.entries.filter(e => e.errors.length), classificationPending: candidate.entries.filter(e => e.classificationPending).length, horizon: [first.date, last.date], reconciliation: reconciliation.message }));
