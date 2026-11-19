@@ -216,7 +216,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (ops.length && v) await saveDraftLocal("draft:" + scope, { ...v, ops }); else await clearDraftLocal("draft:" + scope);
         await clearDraftLocal("operation:" + scope);
         setSaveState(ops.length ? "dirty" : "saved"); setSaveMsg("Gravação confirmada anteriormente; a base atual já contém a operação.");
-        op = null;
+        op = undefined;
       }
       restored.current.add(scope);
       if (ops.length && v) { setSession((s) => s ?? { ...v, ops, scope, legacyRequestIds:v.legacyRequestIds ?? (v.submissionModel==='reviewed'?[]:[v.requestId]) }); if (!op) { setSaveState("dirty"); setSaveMsg("Rascunho recuperado — ainda não salvo."); } }

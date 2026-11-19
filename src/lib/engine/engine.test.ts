@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { demoData } from "../../test/demoFixture";
-import { buildRows, computeFlow, dailyEstimate, distributePlanned, expenseDate, committedDate, receiptInformed, splitCents, toVertical } from "./engine";
+import { buildRows, committedByCode, computeFlow, dailyEstimate, distributePlanned, NO_TITLES, expenseDate, committedDate, receiptInformed, splitCents, toVertical } from "./engine";
 import { normalizeData } from "./actions";
 import type { Committed, Expense, ScenarioData } from "./types";
 import { macroCurrency } from "../money";
@@ -90,6 +90,12 @@ describe("Regra D — planejadas", () => {
     const r = distributePlanned(pl, sup, [mkC({ legacyAbatement: 200000 })], "legado");
     expect(r.P).toBe(450000); expect(r.Q).toBe(100000); expect(r.R).toBe(350000);
     expect(r.health).toBe("ok");
+  });
+  it("índice por código do pedido dá o mesmo abatimento que varrer todos os títulos", () => {
+    const all = [mkC({ id: "x", purchaseCode: "OUTRO", legacyAbatement: 900000 }), mkC({ id: "a", legacyAbatement: 120000 }), mkC({ id: "b", legacyAbatement: 80000 }), mkC({ id: "z", purchaseCode: "", legacyAbatement: 5 })];
+    const full = distributePlanned(pl, sup, all, "legado");
+    expect(full.Q).toBe(100000);
+    expect(distributePlanned(pl, sup, committedByCode(all).get(pl.purchaseCode) ?? NO_TITLES, "legado")).toEqual(full);
   });
   it("M ausente não produz valor saudável", () => {
     const r = distributePlanned(pl, sup, [mkC({ origin: "manual" })], "legado");

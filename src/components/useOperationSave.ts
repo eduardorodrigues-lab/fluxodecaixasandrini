@@ -39,6 +39,9 @@ export function useOperationSave() {
       }
       request.current = null; mutation.current = null; return true;
     } catch(e) {
+      // Server ACK verified (only the screen refresh failed): the data IS saved. Report success so the form clears its
+      // local draft and closes; the recovery strip keeps "atualização da tela pendente" without offering a resend.
+      if (request.current?.confirmation) { request.current = null; mutation.current = null; setError(''); return true; }
       // Rejected BEFORE capture (validation, isolation, context, lock): nothing was protected or sent,
       // so the next confirmation must re-prepare from the current form instead of a stale frozen payload.
       if (request.current && !request.current.phase && !request.current.submittedAt && !request.current.confirmation) { request.current = null; mutation.current = null; }

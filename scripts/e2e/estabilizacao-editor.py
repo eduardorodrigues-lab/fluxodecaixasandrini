@@ -86,7 +86,11 @@ async def login(page):
 async def goto(page,tab='planned',probe='FIX0 '):
  await page.goto(f'http://localhost:8080/lancamentos?tab={tab}');await page.get_by_role('row',name=re.compile(probe)).first.wait_for(timeout=120000)
 async def open_row(page,probe):
- s=await now(page);await page.get_by_role('row',name=re.compile(probe)).first.locator('td.txt').first.click();dl=page.get_by_role('dialog').last;await dl.wait_for(timeout=30000);return dl,await now(page)-s
+ s=await now(page)
+ try:await page.get_by_role('row',name=re.compile(probe)).first.locator('td.txt').first.click()
+ except Exception:
+  await page.screenshot(path=f'{OUT}/{ROLE}_fail_open.png');print('DEBUG dialogs=',[ (await x.inner_text())[:300].replace('\n',' | ') for x in await page.get_by_role('dialog').all()],'alertdialogs=',[(await x.inner_text())[:300].replace('\n',' | ') for x in await page.get_by_role('alertdialog').all()],flush=True);raise
+ dl=page.get_by_role('dialog').last;await dl.wait_for(timeout=30000);return dl,await now(page)-s
 async def type_desc(page,dl,text,committed=False):
  if committed:await dl.get_by_role('button',name='Dados do documento').click()
  d=dl.get_by_label('Descrição',exact=True);await d.fill('');s=await now(page);await d.press_sequentially(text,delay=0);return await now(page)-s
@@ -125,8 +129,11 @@ async def main():
   check('base baixada uma única vez na carga',S['reads']==1,f'leituras={S["reads"]}')
   await pick_ids(page)
   if ROLE=='viewer':
-   dl,_=await open_row(page,fx(1));await type_desc(page,dl,'leitor tenta')
-   btn=dl.get_by_role('button',name='Revisar e salvar',exact=True);check('leitor: salvar desabilitado',await btn.is_disabled());check('leitor: nenhum envio',not S['sent'])
+   dl,_=await open_row(page,fx(1));desc=dl.get_by_label('Descrição',exact=True)
+   check('leitor: campos bloqueados para edição',await desc.is_disabled())
+   btn=dl.get_by_role('button',name='Revisar e salvar',exact=True);check('leitor: salvar ausente ou desabilitado',(not await btn.count()) or await btn.is_disabled())
+   s=await now(page);await dl.get_by_role('button',name='Cancelar',exact=True).click();await page.get_by_role('dialog').first.wait_for(state='hidden',timeout=10000)
+   check('leitor: fecha sem pergunta',True,f'{round(await now(page)-s)}ms');check('leitor: nenhum envio',not S['sent'])
    await browser.close();return report(metrics)
   # 1) Planejada: 3 repetições de abrir→digitar→revisar→salvar→fechar→reabrir
   for r in range(3):
@@ -205,7 +212,13 @@ async def main():
   if await page.get_by_role('dialog').count():await page.get_by_role('dialog').last.get_by_role('button',name=re.compile('Fechar')).first.click()
   if await page.get_by_role('button',name='Revisar conflito').count():
    await page.get_by_role('button',name='Revisar conflito').click();await page.get_by_role('dialog').last.get_by_role('button',name='Revisar conflito').click();await page.wait_for_timeout(800)
-   if await page.get_by_role('button',name='Manter a do banco').count():await page.get_by_role('button',name='Manter a do banco').first.click()
+   await page.get_by_role('button',name='Manter a do banco').first.wait_for(timeout=30000)
+   for _ in range(10):
+    k=page.get_by_role('button',name='Manter a do banco')
+    if not await k.count():break
+    await k.first.wait_for();await page.wait_for_function("()=>{const b=[...document.querySelectorAll('button')].find(x=>x.textContent==='Manter a do banco');return !b||!b.disabled}",timeout=15000)
+    if await k.count():await k.first.click();await page.wait_for_timeout(300)
+   check('conflito resolvido mantendo a do banco: nada gravado, sem pendência',S['commits']==c0 and not await page.get_by_role('button',name='Manter a do banco').count() and rec('planned',pid(6))['notes']!='conflito',f'bar={await bar(page)}')
   # 9) Debounce tardio: digita e fecha na hora mantendo o rascunho → recarrega → última tecla preservada; descarta
   dl,_=await open_row(page,fx(7));d=dl.get_by_label('Descrição',exact=True);await d.fill('ultima tecla Z')
   await dl.get_by_role('button',name='Cancelar',exact=True).click();await page.get_by_role('dialog',name=re.compile('Fechar com alterações')).get_by_role('button',name='Manter rascunho e fechar').click()
@@ -213,7 +226,7 @@ async def main():
   check('rascunho local: última tecla preservada após recarregar, nada enviado',v=='ultima tecla Z' and rec('planned',pid(7))['notes']!='ultima tecla Z')
   await dl.get_by_role('button',name='Cancelar',exact=True).click();await page.get_by_role('dialog',name=re.compile('Fechar com alterações')).get_by_role('button',name='Descartar').click()
   # 10) Pendência independente intacta + duas abas
-  await page.goto('http://localhost:8080/referencias');await page.get_by_role('button',name='+ Subgrupo').click();await page.wait_for_timeout(600)
+  await page.goto('http://localhost:8080/referencias');await page.get_by_role('button',name='Categorias e subgrupos').click();await page.get_by_role('button',name='+ Subgrupo').click();await page.wait_for_timeout(600)
   b0=await bar(page);n_cat=len(S['data']['categories'])
   page2=await ctx.new_page();page2.on('pageerror',lambda e:ERR.append('pageerror tab2: '+str(e)));await goto(page2);reads0=S['reads']
   await goto(page);c0=S['commits'];dl,_=await open_row(page,fx(8));await type_desc(page,dl,'duas abas')

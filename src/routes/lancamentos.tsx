@@ -13,7 +13,7 @@ import { askConfirm, askText } from "@/lib/decisions";
 import { BaixasList, PagamentoPanel } from "@/components/BancoPanels";
 import { accountName, NO_ACCOUNT, registerPaymentBatch, coverTitleWithCard } from "@/lib/engine/banco";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Children, cloneElement, isValidElement, useMemo, memo, useState, useEffect, type ReactElement, type ReactNode } from "react";
+import { Children, cloneElement, isValidElement, useMemo, useRef, memo, useState, useEffect, type ReactElement, type ReactNode } from "react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { DateInput, MoneyInput, PageHeader } from "@/components/kit";
 import { ConditionPicker, DadosNotaPanel, Field, guardClose, NovaNota, ParcelaPanel, ProrrogarPanel, Section, SidePanel, type NoteFields } from "@/components/NotaPanel";
@@ -84,6 +84,12 @@ function Acoes({ children }: { children: ReactNode }) {
 
 const CachedConsultas = memo(Consultas);
 const CachedPva = memo(PlanVsActual);
+/** Hidden report tabs keep their filters but stop recomputing: they receive the base seen while visible and catch up when shown. */
+function useWhileVisible<T>(value: T, visible: boolean): T {
+  const last = useRef(value);
+  if (visible) last.current = value;
+  return visible ? value : last.current;
+}
 const EMPTY_ROWS: never[] = [];
 const EMPTY_GROUPS = { byId: new Map(), ambiguous: [] };
 const AmbiguousDocuments = memo(function AmbiguousDocuments({ d, groups, onManage }: { d: ScenarioData; groups: ReturnType<typeof createLaunchPresentation>["groups"]; onManage: (ref: LaunchRef) => void }) {
@@ -102,6 +108,9 @@ function Page() {
   const d = active.data;
   const tab = TABS.find((t) => t.k === target.tab)?.k ?? "planned";
   const [pvaVisited, setPvaVisited] = useState(tab === "pva");
+  const [consultasVisited, setConsultasVisited] = useState(tab === "consultas");
+  useEffect(() => { if (tab === "consultas") setConsultasVisited(true); }, [tab]);
+  const consultasData = useWhileVisible(d, tab === "consultas"), pvaData = useWhileVisible(d, tab === "pva");
   useEffect(() => { if (tab === "pva") setPvaVisited(true); }, [tab]);
   usePendingFocus(target.focus, tab);
   const [err, setErr] = useState("");
@@ -176,8 +185,8 @@ function Page() {
       <div className="mb-2 flex flex-wrap border-b border-border" aria-label="Abas de Lançamentos">{TABS.map((t) => <Link key={t.k} to="/lancamentos" search={(prev) => ({ ...prev, tab: t.k })} resetScroll={false} className={`tab whitespace-nowrap ${tab === t.k ? "tab-on" : ""}`} aria-current={tab === t.k ? "page" : undefined}>{t.l} {t.k === "consultas" || t.k === "pva" ? "" : `(${t.k === "committed" ? d.committed.length + d.expenses.length : d[t.k].length})`}</Link>)}</div>
       {(tab === "planned" || tab === "committed") && <LaunchFilterPanel key={tab} state={{ ...(tab === "planned" ? plannedFilters : committedFilters), setOrder: (v) => { (tab === "planned" ? plannedFilters : committedFilters).setOrder(v); report.setSort(null); }, clear: () => { (tab === "planned" ? plannedFilters : committedFilters).clear(); setFKind(""); cf.clear(); report.setQuery(""); } }} suppliers={supplierOptions} categories={d.categories} situations={situations} payments={tab === "committed" ? paymentSituations : undefined} count={tab === "planned" ? plannedRows.length : efetivados.length} total={(tab === "planned" ? plannedResult : committedResult).reduce((sum, r) => sum + (typeof r.values[7] === "number" ? r.values[7] : 0), 0)} onExport={exportFiltered} extra={<ColumnFilter cols={tab === "planned" ? PLANNED_COLS : COMMITTED_COLS} filter={cf} suggest={suggestions} />} />}
       {tab === "payments" && <div className="filter-bar"><ReportSearch value={report.query} onChange={report.setQuery} count={paymentRows.length} /><ColumnFilter cols={PAYMENT_COLS} filter={cf} suggest={suggestions} /><Button variant="outline" size="sm" onClick={() => { report.setQuery(""); cf.clear(); }}>Limpar filtros</Button></div>}
-      <div hidden={tab !== "consultas"}><CachedConsultas d={d} onManage={setManaged} /></div>
-      {(pvaVisited || tab === "pva") && <div hidden={tab !== "pva"}><CachedPva key={`${official.orgId}:${active.id}`} d={d} /></div>}
+      {(consultasVisited || tab === "consultas") && <div hidden={tab !== "consultas"}><CachedConsultas d={consultasData} onManage={setManaged} /></div>}
+      {(pvaVisited || tab === "pva") && <div hidden={tab !== "pva"}><CachedPva key={`${official.orgId}:${active.id}`} d={pvaData} /></div>}
       {(tab === "planned" || tab === "committed") && active.isBase && auditH.status !== "ready" && <p className="mb-1 text-xs text-muted-foreground" role="status">Colunas de cadastro/alteração: {auditH.status === "loading" ? "carregando auditoria…" : auditH.status === "error" ? auditH.error : "datas do próprio registro (auditoria carregada sob demanda)."} {auditH.status === "idle" && <button className="underline" onClick={() => setAuditDates(true)}>Incluir datas da auditoria</button>}</p>}
       {tab === "committed" && <AmbiguousDocuments d={d} groups={model.groups} onManage={setManaged} />}
       {tab === "consultas" || tab === "pva" ? null : <div className="card overflow-auto launch-table">

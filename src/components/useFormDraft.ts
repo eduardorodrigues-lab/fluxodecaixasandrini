@@ -6,7 +6,9 @@ const DELAY = 400;
 /** Form-only protection: never sends data, and never restores a reviewed authorization.
  *  Restores once on mount; writes are debounced off the typing path and flushed on close, route change
  *  (unmount), tab hide and page unload so the last keystroke is preserved. */
-export function useFormDraft<T>(scope:FormScope,value:T,restore:(value:T)=>void) {
+/** `restore` may return false when the stored copy is already contained in the current base (e.g. confirmed earlier):
+ *  the copy is then removed instead of reopening an already-saved change as unsaved. */
+export function useFormDraft<T>(scope:FormScope,value:T,restore:(value:T)=>void|boolean) {
   const key = formDraftKey(scope);
   const state = useRef({key,ready:false,revision:null as string|null,last:"",stopped:false,backup:"",cleared:false,timer:0 as ReturnType<typeof setTimeout> | 0});
   const [recovered,setRecovered] = useState(false);
@@ -31,7 +33,9 @@ export function useFormDraft<T>(scope:FormScope,value:T,restore:(value:T)=>void)
     try {let tab=sessionStorage.getItem("fluxo:form-tab");if(!tab){tab=crypto.randomUUID();sessionStorage.setItem("fluxo:form-tab",tab);}s.backup=`${key}:tab:${tab}`;
       const main=readForm<T>(localStorage,key), own=readForm<T>(localStorage,s.backup);const old=own ?? main;s.ready=true;s.revision=main?.revision??null;
       if(own && main && own.revision!==main.revision){s.stopped=true;setWarning("Outra aba alterou este preenchimento. Recuperada a cópia local desta aba; confira a base atual antes de salvar.");}
-      if(old){s.last=JSON.stringify(old.value);restore(old.value);setRecovered(true);return;}
+      if(old){
+        if(restore(old.value)===false){if((main?.revision??null)===s.revision)localStorage.removeItem(key);localStorage.removeItem(s.backup);s.revision=null;s.stopped=false;setWarning("");s.last=JSON.stringify(latest.current);return;}
+        s.last=JSON.stringify(old.value);setRecovered(true);return;}
       s.last=JSON.stringify(latest.current); // pristine form is not a draft
     } catch(e){s.ready=true;s.stopped=true;setWarning(`Proteção local indisponível: ${(e as Error).message} Não recarregue sem guardar o preenchimento.`);}
   },[key,scope.user,scope.org]);
