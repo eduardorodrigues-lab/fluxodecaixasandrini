@@ -7,6 +7,7 @@ import { Field, guardClose, SidePanel } from "./NotaPanel";
 import { DateInput } from "./kit";
 import { TermsEditor, termsLabel } from "./TermsEditor";
 import { useApp } from "@/lib/store";
+import { askCloseDraft } from "@/lib/decisions";
 import { useOperationSave } from './useOperationSave';
 import { useFormDraft } from './useFormDraft';
 import { addSupplierCondition, condPeriods, currentCondition, invalidSupplierName, reactivateCondition, supplierConditions } from "@/lib/notas";
@@ -68,7 +69,14 @@ export function FornecedorManager({ supplierId, onClose }: { supplierId: string;
   const title = !op ? "Dados do fornecedor" : ({ new: "Nova condição", edit: "Editar condição", activate: "Usar como vigente", cancel: "Cancelar condição", period: "Cancelar ativação de vigência", delete: "Excluir condição", inativar: "Inativar fornecedor", reativar: "Reativar fornecedor", excluir: "Excluir fornecedor" }[op.kind]);
   const editing = !!op || tab === "dados";
   const dirty = !!op || name !== s.name || aliases !== (s.aliases ?? []).join("\n") || note !== (s.note ?? "");
-  const close = guardClose(dirty, () => {if(!saving.protected && protection.clear())onClose();});
+  // Immediate when clean; keep/discard/continue when edited; closing during a save keeps it tracked (never cancels/resends).
+  const close = async () => {
+    if(saving.protected){protection.flush();onClose();return;}
+    if(!dirty){protection.clear();onClose();return;}
+    const choice=await askCloseDraft();
+    if(choice==="keep"){protection.flush();onClose();}
+    else if(choice==="discard" && protection.clear())onClose();
+  };
   const destructive = !!op && ["delete", "excluir", "cancel", "period", "inativar"].includes(op.kind);
   const action = !op ? "Salvar fornecedor" : draft ? "Salvar condição" : title;
   return <SidePanel centered={review} title={review ? `${action}?` : "Gerenciar fornecedor"} sub={s.name} onClose={()=>void close()} dirty={false} footer={<>

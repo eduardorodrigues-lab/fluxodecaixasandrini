@@ -6,7 +6,8 @@ import { uid, useApp } from "@/lib/store";
 import { addSupplier, currentCondition, invalidSupplierName, supplierConditions } from "@/lib/notas";
 import { termsLabel } from "@/components/TermsEditor";
 import { todaySP } from "@/lib/engine/actions";
-import { Field, guardClose, SidePanel } from "@/components/NotaPanel";
+import { Field, SidePanel } from "@/components/NotaPanel";
+import { askCloseDraft } from "@/lib/decisions";
 import { Button } from "@/components/ui/button";
 import { supplierActive } from "@/lib/fornecedores";
 import type { Supplier } from "@/lib/engine/types";
@@ -92,13 +93,20 @@ function FornecedorPanel({ initial, onCancel, onSave, saving=false, saveLabel, r
   const [review, setReview] = useState(false);
   const [err, setErr] = useState("");
   const protection=useFormDraft({user:app.user?.id??'',org:app.official.orgId,mode:app.active.id,form:'novo-fornecedor',record:recordId},{name,note,aliases},v=>{setName(v.name);setNote(v.note);setAliases(v.aliases);setReview(false);});
-  const discard=()=>{if(!saving && !app.pendingOperation && protection.clear())onCancel();};
   const bad = invalidSupplierName(name);
   const dirty = name !== (initial?.name ?? "") || note !== (initial?.note ?? "") || JSON.stringify(aliases) !== JSON.stringify(initial?.aliases ?? []);
+  // Same close rule as launch forms: immediate when clean; keep/discard/continue when edited; never cancels a submitted save.
+  const discard=async()=>{
+    if(saving || app.pendingOperation){protection.flush();onCancel();return;}
+    if(!dirty){protection.clear();onCancel();return;}
+    const choice=await askCloseDraft();
+    if(choice==="keep"){protection.flush();onCancel();}
+    else if(choice==="discard" && protection.clear())onCancel();
+  };
   return (
-    <SidePanel centered={review} title={review ? "Revisar fornecedor" : initial ? "Editar fornecedor" : "Novo fornecedor"} onClose={discard} dirty={dirty} footer={review
+    <SidePanel centered={review} title={review ? "Revisar fornecedor" : initial ? "Editar fornecedor" : "Novo fornecedor"} onClose={()=>void discard()} dirty={false} footer={review
       ? <><Button variant="outline" disabled={saving} onClick={() => {if(!app.pendingOperation)setReview(false);}}>Cancelar</Button><Button disabled={saving} onClick={async () => {const error=await onSave({name,aliases,note});setErr(error??'');if(!error)protection.clear();}}>{saveLabel ?? (saving ? "Salvando…" : "Confirmar fornecedor")}</Button></>
-      : <><button className="btn" onClick={guardClose(dirty, discard)}>Cancelar</button><button className="btn btn-primary" disabled={bad} onClick={() => setReview(true)}>Revisar e confirmar</button></>}>
+      : <><button className="btn" onClick={()=>void discard()}>Cancelar</button><button className="btn btn-primary" disabled={bad} onClick={() => setReview(true)}>Revisar e confirmar</button></>}>
       {protection.recovered && <p role="status">Preenchimento recuperado; revise antes de confirmar.</p>}{protection.warning && <p role="alert" className="text-destructive">{protection.warning}</p>}
       {review ? <div className="space-y-2"><div><span className="lbl">Nome do fornecedor</span><div className="font-medium">{name.trim()}</div></div><div><span className="lbl">Observação</span><div>{note.trim() || "—"}</div></div><div><span className="lbl">Apelidos</span><div>{aliases.join("; ") || "—"}</div></div>{initial && <div className="border-t border-border pt-2">Antes: {initial.name} · {initial.aliases?.join("; ") || "sem apelidos"} · {initial.note || "sem observação"}</div>}</div>
         : <div className="space-y-3">
