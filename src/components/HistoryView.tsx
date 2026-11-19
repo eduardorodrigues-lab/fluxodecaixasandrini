@@ -1,3 +1,4 @@
+import { neutralizeCsvCell } from "@/lib/reportTable";
 import { useState } from "react";
 import { DateInput } from "@/components/DateField";
 import { accountName } from "@/lib/engine/banco";
@@ -193,7 +194,7 @@ export function HistoryView({ entries, data, scope = "Fluxo real", onRestore }: 
   const iso = (at: string) => new Date(at).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
   const vis = lines.filter((l) => (!from || iso(l.at) >= from) && (!to || iso(l.at) <= to) && (!who || l.user === who));
   const exportCsv = () => {
-    const q = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    const q = (v: string) => `"${neutralizeCsvCell(v).replace(/"/g, '""')}"`;
     const rows = [["Data", "Horário", "Usuário", "Ambiente", "Aba", "Registro", "Ação", "Campo", "Antes", "Depois"], ...vis.map((l) => [dt(l.at), hr(l.at), l.user, scope, l.aba, l.reg, ACAO[l.c.kind] ?? "", l.campo, l.b, l.a])];
     const blob = new Blob(["\ufeff" + rows.map((r) => r.map(q).join(";")).join("\r\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `historico-${scope.replace(/\W+/g, "-").toLowerCase()}.csv`; document.body.appendChild(a); a.click(); a.remove();

@@ -50,3 +50,9 @@ describe("Busca e ordenação dos relatórios", () => {
     expect(dayReport(rows, "10,00", null)).toHaveLength(1); expect(dayReport(rows, "Duplicado", null)).toHaveLength(1);
   });
 });
+import { neutralizeCsvCell } from "./reportTable";
+import { it as it2, expect as expect2 } from "vitest";
+it2("CSV neutraliza fórmulas e preserva números", () => {
+  expect2(["=1+1", "+cmd", "@SUM(A1)", "-2+3", "\tx"].map(neutralizeCsvCell)).toEqual(["'=1+1", "'+cmd", "'@SUM(A1)", "'-2+3", "'\tx"]);
+  expect2(["-1.234,56", "NF-01", "abc"].map(neutralizeCsvCell)).toEqual(["-1.234,56", "NF-01", "abc"]);
+});

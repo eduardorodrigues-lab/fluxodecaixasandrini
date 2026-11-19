@@ -33,6 +33,10 @@ export function queryIndexedReport<T>(rows: IndexedReportRow<T>[], query: string
   return queryReport(rows, query, sort, r => r.values, r => r.values, r => r.searchText);
 }
 export function reportCSV(head: string[], rows: string[][]): string {
-  const escape = (s: string) => `"${s.replace(/"/g, '""')}"`;
+  const escape = (s: string) => `"${neutralizeCsvCell(s).replace(/"/g, '""')}"`;
   return "\uFEFF" + [head, ...rows].map((r) => r.map(escape).join(";")).join("\r\n");
+}
+/** Prevents spreadsheet formula execution: text starting with = + - @ tab/CR gets a leading apostrophe; plain numbers stay numeric. */
+export function neutralizeCsvCell(s: string): string {
+  return /^[=+\-@\t\r]/.test(s) && !/^-?[\d.,\s]+$/.test(s) ? `'${s}` : s;
 }
