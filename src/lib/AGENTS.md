@@ -11,3 +11,4 @@
 - A form's reviewed payload is frozen only after the store captured it (phase/submittedAt); pre-capture rejections drop it so the next confirmation re-prepares from current fields. Explicit resend reuses the same requestId/ops after a not-found consult — idempotent in `commit_official`.
 - Plan-wide loops call `distributePlanned` with `committedByCode(...).get(code)` instead of all titles, and hidden Lançamentos report tabs receive the base seen while visible — identical results without O(plans × titles) recalculation after every save.
 - An operation whose server ACK is verified counts as saved for its form even if the screen refresh fails; form drafts already contained in the current base are dropped on restore — prevents saved edits from resurfacing as unsaved.
+- A recovered unconfirmed packet gets one automatic read-only consultation per requestId and the strip shows that requestId — reconciles lost acknowledgements and enables audit correlation, never resends.

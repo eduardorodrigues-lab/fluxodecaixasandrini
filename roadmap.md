@@ -4,7 +4,8 @@
 - [x] Causa da lentidão pós-confirmação: aba Consultas escondida recalculava tudo (~4–6 s) e previsões varriam todos os títulos por pedido; corrigido sem mudar resultados (Consultas idêntica em base fictícia)
 - [x] Gravação confirmada com tela não atualizada: formulário trata como salvo e rascunho já contido na base não reaparece
 - [x] Aceite fictício ~10,7 MB editor 19/19, owner 19/19, leitor 6/6; SQL rollback de idempotência/papéis; 385 testes; logs em docs/evidencias
-- [ ] Tentativa falha da Letícia sem requestId/horário/erro preservado; só a gravação 184→185 existe na auditoria
+- [x] Faixa mostra identificação do envio; pacote recuperado sem confirmação recebe 1 consulta automática só de leitura (sem reenvio); aceite editor 21/21
+- [ ] Lançamento de hoje do editor não correlacionado: auditoria de hoje tem só uma gravação de editor (11:54 UTC, 184→185); falta a identificação do envio exibida na faixa
 - [ ] Duplicata simultânea no servidor só por raciocínio de código; banco hospedado e navegador de produção não medidos
 
 ## Conferência dos demais acessos de salvamento — 18/11/2026

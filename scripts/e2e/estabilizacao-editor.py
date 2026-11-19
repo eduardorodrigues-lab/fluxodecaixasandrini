@@ -56,6 +56,7 @@ async def handler(route):
   v={'orgId':ORG,'orgName':'Grupo Sandrini','role':S['role'],'version':S['version'],'updatedAt':'','normalization':1,'dataJson':json.dumps(d)}
  elif name=='listAudit':v=[]
  elif name=='checkCommitRequest':
+  if S.get('check_fail'):return await route.abort()
   req=unquote(route.request.url);v=next(({'version':x['version'],'opsJson':json.dumps(x['ops'])} for k,x in S['done'].items() if k in req),None)
  elif name=='commitOps':
   body=json.loads(route.request.post_data);rid=field(body,'requestId');ops=json.loads(field(body,'opsJson').replace('\\"','"').replace('\\\\','\\'))
@@ -205,6 +206,14 @@ async def main():
   await page.wait_for_timeout(3000);b=await bar(page)
   check('reenvio explícito: mesmo requestId, 1 gravação, sem pendência',S['commits']==c0+1 and S['sent'][-1]['rid']==rid and rec('planned',pid(5))['notes']=='perdido antes' and b['strip']==0,f'bar={b}')
   # 8) Conflito: nada gravado, pacote preservado para revisão
+  # 7b) Gravado no servidor, resposta E consultas perdidas → desconhecido; após recarregar, UMA consulta automática só de leitura reconcilia
+  c0=S['commits'];n0=len(S['sent']);S['mode']='lose';S['check_fail']=1
+  dl,_=await open_row(page,fx(9));await type_desc(page,dl,'ack perdido reload')
+  s=await confirm(page,dl);await page.get_by_text(re.compile('desconhecido')).first.wait_for(timeout=90000)
+  rid_txt=await page.locator('span.font-mono').first.inner_text()
+  check('ack perdido: faixa desconhecida mostra identificação do envio',rid_txt==S['sent'][-1]['rid'] and S['commits']==c0+1,rid_txt[:8])
+  S['check_fail']=0;await goto(page);await page.wait_for_timeout(6000);b=await bar(page)
+  check('após recarregar: consulta automática reconcilia pacote já gravado, sem reenvio',b['strip']==0 and len(S['sent'])==n0+1 and S['commits']==c0+1 and rec('planned',pid(9))['notes']=='ack perdido reload',f'bar={b} envios+{len(S["sent"])-n0}')
   c0=S['commits'];S['mode']='conflict'
   dl,_=await open_row(page,fx(6));await type_desc(page,dl,'conflito')
   s=await confirm(page,dl);await page.wait_for_timeout(2500);txt=await page.locator('body').inner_text()

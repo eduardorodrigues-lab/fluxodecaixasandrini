@@ -90,6 +90,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [protectErr, setProtectErr] = useState("");
   const inflight = useRef(false);
   const checkingRef = useRef(false);
+  const autoChecked = useRef(new Set<string>());
   const [confirmationChecking, setConfirmationChecking] = useState(false);
   const restored = useRef(new Set<string>());
   const ackChannel = useRef<BroadcastChannel | null>(null);
@@ -416,6 +417,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSaveMsg(op.confirmation ? 'Gravação confirmada; a atualização da tela falhou. Consulte novamente para atualizar sem reenviar.' : `Não foi possível consultar o resultado. Verifique a conexão ou entre novamente se o acesso expirou. ${(e as Error).message} Pacote e preenchimento preservados; nenhum novo envio.`);
     } finally { checkingRef.current = false; setConfirmationChecking(false); }
   };
+
+  // A recovered packet without confirmation gets ONE automatic read-only consultation per requestId (never a resend):
+  // a commit that succeeded while the response was lost is reconciled instead of leaving the unknown strip forever.
+  useEffect(() => {
+    const op = pendingOperation;
+    if (!op || op.confirmation || op.rejected || !op.submittedAt || op.legacyUncertain || official.status !== 'ready' || inflight.current || checkingRef.current) return;
+    if (autoChecked.current.has(op.requestId)) return;
+    autoChecked.current.add(op.requestId);
+    void checkPendingOperation();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingOperation, official.status]);
 
   // Explicit user action only: same requestId + same immutable ops. Idempotence is enforced by the server
   // pre-check and by commit_official (row lock, version check, unique request_id in audit).

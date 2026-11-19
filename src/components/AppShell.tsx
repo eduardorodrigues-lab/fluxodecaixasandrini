@@ -112,6 +112,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         )}
         {active.isBase && pendingOperation && <div role="status" className="flex flex-wrap items-center gap-2 border-b border-border bg-card px-4 py-2 text-sm">
           <span>{operationPhaseLabel[pendingOperation.phase ?? 'unknown']}: {pendingOperation.ops.length} registro(s). Outras pendências continuam separadas.</span>
+          <span className="text-xs text-muted-foreground">Identificação do envio: <span className="font-mono select-all">{pendingOperation.requestId}</span>{pendingOperation.submittedAt ? ` · enviado ${new Date(pendingOperation.submittedAt).toLocaleString('pt-BR')}` : ''}</span>
           <Button size="sm" variant="outline" onClick={()=>setViewPacket(true)}>Ver alterações</Button>
           <Button size="sm" variant="outline" disabled={!!checkReason} onClick={() => void checkPendingOperation()}>{confirmationChecking ? 'Consultando resultado…' : 'Consultar resultado'}</Button>
           {checkReason && <p className="basis-full text-xs">{checkReason}</p>}
