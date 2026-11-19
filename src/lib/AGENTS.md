@@ -13,3 +13,4 @@
 - An operation whose server ACK is verified counts as saved for its form even if the screen refresh fails; form drafts already contained in the current base are dropped on restore — prevents saved edits from resurfacing as unsaved.
 - A recovered unconfirmed packet gets one automatic read-only consultation per requestId and the strip shows that requestId — reconciles lost acknowledgements and enables audit correlation, never resends.
 - Drafts/pending packets/form drafts are keyed by `params.baseGeneration`; older generations stay stored, never rehydrated — prevents contaminating a replaced base.
+- Banks use `bankOperation` and the shared isolated confirmation; only explicitly reviewed account IDs recover legacy drafts, and transfers/initial-balance transitions capture bank dependencies — prevents global second saves and concurrent balance changes.

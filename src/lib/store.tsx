@@ -258,6 +258,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!operationRef.current) {
       // Isolation compares the reviewed delta only; no global draft commit.
       const pending = sessionRef.current?.scope === scope ? sessionRef.current.ops : [];
+      if (confirmedVersion === undefined && sessionRef.current?.legacyRequestIds?.length) throw new Error('Rascunho legado com envio não esclarecido. Consulte o resultado anterior antes de confirmar; nenhuma pendência foi descartada.');
       const independent=pending.filter(p=>!op.recoveredPending?.some(r=>opKey(r)===opKey(p)));
       if(confirmedVersion===undefined)isolateOperation(baseData, applyOps(baseData, op.ops, false).data, independent);
       op = structuredClone(op);
@@ -368,11 +369,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if(stored && !stored.phase && !stored.confirmation)captured.phase='unknown';
       try { await runSaveOperation(captured,confirmedVersion,resend); }
       finally { // Inform the originating form without modifying its immutable submitted payload.
-        op.rejected=captured.rejected ?? false;
-        if(captured.submittedAt)op.submittedAt=captured.submittedAt;
-        if(captured.confirmation)op.confirmation=captured.confirmation;
-        if(captured.conflicts)op.conflicts=captured.conflicts;
-        if(captured.phase)op.phase=captured.phase;
+        const outcome = operationRef.current?.requestId === op.requestId ? operationRef.current : captured;
+        op.rejected=outcome.rejected ?? false;
+        if(outcome.submittedAt)op.submittedAt=outcome.submittedAt;
+        if(outcome.confirmation)op.confirmation=outcome.confirmation;
+        if(outcome.conflicts)op.conflicts=outcome.conflicts;
+        if(outcome.phase)op.phase=outcome.phase;
       }
     };
     if(typeof navigator!=='undefined' && navigator.locks) {

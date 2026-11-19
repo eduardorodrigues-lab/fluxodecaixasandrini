@@ -17,7 +17,7 @@ export function useOperationSave() {
   const mutation = useRef<{before:ScenarioData; after:ScenarioData} | null>(null);
   const lock = useRef(false);
   const [saving, setSaving] = useState(false), [error, setError] = useState('');
-  const save = async (before: ScenarioData, after: ScenarioData, supplierIds: string[] = []): Promise<boolean> => {
+  const save = async (before: ScenarioData, after: ScenarioData, supplierIds: string[] = [], reviewed?: ReturnType<typeof supplierOperation>): Promise<boolean> => {
     if (lock.current) return false;
     if (context.current.org !== app.official.orgId || context.current.mode !== app.active.id || context.current.scope !== `${app.user?.id}:${app.official.orgId}`) { setError('Organização, conta ou modo mudou. Volte ao contexto original; preenchimento preservado.'); return false; }
     lock.current = true; setSaving(true); setError('');
@@ -30,9 +30,9 @@ export function useOperationSave() {
       } else {
         if (!request.current) {
           const started=performance.now();
-          const prepared=supplierOperation(before,after,app.changes,supplierIds);
+          const prepared=reviewed ?? supplierOperation(before,after,app.changes,supplierIds);
           measureSavePhase('prepare',started);
-          if(prepared.recovered.length && !await askConfirm(`Esta operação inclui somente o fornecedor e suas condições necessários: ${prepared.recovered.map(p=>{const s=after.suppliers.find(s=>s.id===p.id);return s?.name ?? "Fornecedor não identificado";}).join('; ')}. Outras pendências permanecem separadas. Valores e datas do lançamento não serão gerados novamente.`,{title:'Revisar cadastros necessários',action:'Confirmar cadastros e operação'})) return false;
+          if(!reviewed && prepared.recovered.length && !await askConfirm(`Esta operação inclui somente o fornecedor e suas condições necessários: ${prepared.recovered.map(p=>{const s=after.suppliers.find(s=>s.id===p.id);return s?.name ?? "Fornecedor não identificado";}).join('; ')}. Outras pendências permanecem separadas. Valores e datas do lançamento não serão gerados novamente.`,{title:'Revisar cadastros necessários',action:'Confirmar cadastros e operação'})) return false;
           request.current = { scope: context.current.scope, orgId: app.official.orgId, requestId: crypto.randomUUID(), ops:prepared.ops, recoveredPending:prepared.recovered, dependencies:prepared.dependencies };
         }
         await app.saveOperation(request.current);

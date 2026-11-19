@@ -16,6 +16,9 @@ export function operationDependencies(d: ScenarioData, ops: Change[]) {
   const suppliers = new Set(refs.map(r=>r['supplierId']).filter((id):id is string=>typeof id==='string' && !!id));
   const categories = new Set(refs.map(r=>r['categoryId']).filter((id):id is string=>typeof id==='string' && !!id));
   const accounts = new Set(refs.map(r=>r['accountId']).filter((id):id is string=>typeof id==='string' && !!id));
+  refs.forEach(r => { for (const key of ['fromAccountId', 'toAccountId']) { const id = r[key]; if (typeof id === 'string' && id) accounts.add(id); } });
+  // Opening-mode transition reads every account and realized movement, not daily projections.
+  const transition = ops.some(o => o.entity === 'Parâmetros' && o.fields.some(f => ['bankTransition', 'openingMode'].includes(f)));
   const receiptOps = ops.filter(o=>o.entity==='Recebimento');
   const platformIds = new Set<string>();
   receiptOps.forEach(o=>{for(const r of [o.before,o.after]) if(r && typeof r==='object') {
@@ -28,6 +31,7 @@ export function operationDependencies(d: ScenarioData, ops: Change[]) {
   const affected = new Set(ops.map(opKey));
   const records = [
     ...(platformIds.size ? [{entity:'Plataformas',id:'platforms',data:d.platforms}] : []),
+    ...(transition ? [{entity:'Saldos bancários',id:'opening',data:{accounts:d.bankAccounts,payments:d.payments,receipts:d.receipts,transfers:d.transfers}}] : []),
     ...d.committed.filter(c=>titleKeys.has(`committed:${c.id}`)||planned.has(c.plannedId ?? '')).map(c=>({entity:'Efetivado (compra/pedido)',id:c.id,data:c})),
     ...d.expenses.filter(c=>titleKeys.has(`expense:${c.id}`)).map(c=>({entity:'Despesa',id:c.id,data:c})),
     ...d.planned.filter(c=>planned.has(c.id)).map(c=>({entity:'Previsão (planejada)',id:c.id,data:c})),
@@ -51,7 +55,8 @@ export function isolateOperation(before: ScenarioData, after: ScenarioData, pend
   const ops = diffData(before, after);
   const dependencyKeys = new Set(operationDependencies(before,ops).map(r=>`${r.entity}|${r.id}`));
   const referenceIds = new Set(ops.flatMap(o=>[o.before,o.after]).flatMap(r=>r && typeof r==='object' ? Object.entries(r).filter(([key])=>['supplierId','categoryId','plannedId','effectivationId','titleId','noteId'].includes(key)).map(([,value])=>value) : []));
-  const overlaps = pending.filter(p => dependencyKeys.has(opKey(p)) || referenceIds.has(p.id) || ops.some(o => opKey(o) === opKey(p)));
+  const bankTransition = dependencyKeys.has('Saldos bancários|opening');
+  const overlaps = pending.filter(p => bankTransition && ['Conta bancária','Pagamento (baixa)','Recebimento','Transferência'].includes(p.entity) || dependencyKeys.has(opKey(p)) || referenceIds.has(p.id) || ops.some(o => opKey(o) === opKey(p)));
   if (overlaps.length) throw new Error(`Esta operação depende de alterações anteriores não salvas: ${overlaps.map(p => `${p.entity} ${p.id} (${p.fields.join(', ') || p.kind})`).join('; ')}. Nada foi gravado. Volte e revise/salve essas pendências ou descarte-as explicitamente antes de revisar novamente este formulário.`);
   return ops;
 }

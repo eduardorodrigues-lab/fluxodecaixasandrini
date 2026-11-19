@@ -1,5 +1,9 @@
 # Roadmap
 
+## Bancos — confirmação única autorizada 19/11/2026
+- [x] Migrar ações de Bancos do update global para revisão isolada; recuperação explícita de conta legada e proteção local
+- [x] Testes de operação/ACK/retry/contexto e navegador fictício (10 commits só em memória); sem escrita oficial/publicação; limites em docs/bancos-confirmacao-unica-2026-11-19.md
+
 ## Substituição financeira pela fonte única ea1c4241 — autorizada 19/11/2026
 - [x] Regras finais: zero informado sem estimativa, centavos inteiros com resíduo por nota, geração da base nos rascunhos
 - [x] Backup v188 verificado; gravação única 188→189 (d4a04a50-07b9-53ac-a80a-4039272cf398) relida e conferida
