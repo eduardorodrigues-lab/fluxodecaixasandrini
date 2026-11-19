@@ -60,6 +60,17 @@ describe("Conciliação — matriz CEO fiel", () => {
     expect(b.ok).toBe(false);
     expect(b.message).toMatch(/BLOQUEADA.*Saldo final/);
   });
+  it("reconhece saldo disponível projetado deslocado pelo rótulo, não pela linha 32", () => {
+    const rows = ceoFluxo();
+    const final = rows[31];
+    if (!final) throw new Error("Fixture incompleta");
+    final[1] = "Saldo disponível projetado";
+    rows[35] = final;
+    rows[31] = [];
+    const rc = reconcile(rows, days);
+    expect(rc.ok).toBe(true);
+    expect(rc.rows.find((r) => r.date === "2026-10-01" && r.metric === "Saldo final")?.excel).toBe(250203121);
+  });
   it("bloqueia se não há cabeçalho NATUREZA/GRUPO/DESCRIÇÃO (não adivinha linha de datas)", () => {
     const rows = ceoFluxo(); rows[2]![0] = null;
     rows[2]![1] = null; rows[2]![2] = null;

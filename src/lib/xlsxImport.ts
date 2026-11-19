@@ -162,7 +162,7 @@ export const METRICS: MetricDef[] = [
   { key: "planejadas", label: "Compras planejadas", row: 10, re: /PLANEJAD/, essential: false, get: (d) => d.planejada },
   { key: "comprometidas", label: "Compras comprometidas", row: 11, re: /COMPROMETID|EFETUAD|REALIZAD/, essential: false, get: (d) => d.comprometida },
   { key: "despesas", label: "Despesas total", row: 12, re: /DESPESA/, essential: false, get: (d) => d.despesa },
-  { key: "saldo_fim", label: "Saldo final", row: 32, re: /SALDO FINAL/, essential: true, get: (d) => d.saldoFinal },
+  { key: "saldo_fim", label: "Saldo final", row: 32, re: /SALDO FINAL|SALDO DISPONIVEL PROJETADO/, essential: true, get: (d) => d.saldoFinal },
 ];
 export const labelABC = (r: Cell[] | undefined) => [0, 1, 2].map((i) => txt(r?.[i] ?? null)).filter(Boolean).join(" ");
 export interface ReconRow { date: string; metric: string; excel: number | null; excelRaw: number | null; engine: number; diff: number | null }

@@ -215,3 +215,13 @@ Pendências externas: gravação oficial do XLSM (login de Eduardo + organizaç�
 - [x] Pacote congelado só após captura; reenvio explícito do mesmo pacote após consulta sem confirmação
 - [x] Fornecedor inline + lançamento gravados em uma confirmação (fixture)
 - [ ] Incidente real (resultado desconhecido) e tempos do banco hospedado: não verificados sem gravação real; identificador do pacote do navegador da usuária não disponível
+
+## Substituição — preparação da nova fonte única (19/11, sem corte)
+- [x] SHA atual conferido; candidato serializado sem fonte financeira anterior, IDs/referências testados
+- [x] Classificação por linha e valores/estados preservados; 46 testes (40 sintéticos + 6 candidato local)
+- [x] 2.191 dias comparados por componente/saldo, diferenças novas/herdadas e inconsistências fonte documentadas
+- [x] Pacote v2: candidato, manifesto, hashes, CSVs e tabela exaustiva; base ativa intacta
+- [ ] Paridade financeira final: 12 títulos novos fora da matriz fonte (R$37.641,48), fórmulas/saldo inconsistentes e -1 sem linha; requer fonte corrigida ou decisão explícita sobre essas inconsistências, nunca ajuste artificial
+- [ ] Classificação definitiva: 165 linhas/98 descrições sem finalidade comprovada; propostas específicas no CSV, não aprovadas silenciosamente
+- [ ] Quarentena: planejada166 sem valor e despesa3786 zero sem data; conservar no manifesto até evidência suficiente
+- [ ] Corte posterior: horário de pausa, backup da versão no corte e restauração isolada verificada; não autorizado nesta etapa

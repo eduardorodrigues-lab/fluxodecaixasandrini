@@ -333,3 +333,12 @@ Notas do rascunho aparecem em painéis laterais com rolagem horizontal; cada not
 - É possível salvar notas conhecidas sem efetivar nenhuma (sem evento de efetivação; histórico no editLog).
 - Erros de restante indicam a nota/parcela e o campo.
 - Outros caminhos (Gerenciar, Ajustar, nota avulsa ligada ao pedido, restante genérico): preservam ou bloqueiam sem apagar a identificação das notas planejadas.
+
+## Preparação de substituição autorizada — 19/11/2026 (sem corte)
+- Adaptador isolado `replacementImport` recebe somente as abas da fonte e seu SHA256, nunca a base anterior. IDs determinísticos por origem; grafias de fornecedores não são fundidas por semelhança.
+- Pedido/documento vazios são opcionais; data faturamento `-` é ausente quando vencimento G está comprovado. Valor ausente não vira zero. Quarentena é explícita no manifesto.
+- Despesas seguem o contrato existente: títulos importados em `expenses`, situação de pagamento a confirmar, sem cutoff e sem baixa. Classificação não prova etapa de despesa nem pagamento; essa limitação bloqueia eventual distinção planejada/efetivada sem evidência.
+- Fonte numérica preserva frações de centavos, recebimentos literais 1, zero e vazio. `REAL` não confirma crédito bancário (`realized=false`). Nenhum pagamento, conta, cartão, transferência ou efetivação anterior entra no candidato.
+- Substituições de saldo do FLUXO só podem vir de células literais ou fórmulas aritméticas explícitas da própria fonte, documentadas célula a célula; não são ajustes compensatórios nem saldos bancários. Divergências de fórmulas de resultado não são corrigidas por lançamento artificial.
+- Reconciliação reconhece “Saldo disponível projetado” pelo rótulo; relatório local compara todo calendário, componentes e saldo, separando diferença nova e herdada. Cache incoerente nunca constitui paridade validada.
+- Testes sintéticos do adaptador e leitura não constituem execução oficial nem prova de restauração hospedada. Corte exige pausa acordada, backup da versão mais recente, restauração isolada comprovada e troca atômica/versionada/idempotente pelo caminho oficial existente.

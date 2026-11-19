@@ -1,0 +1,1 @@
+- Replacement preparation scripts are local read-only tools with temporary financial output; they never call the official database or accept an old base as candidate input — prevents silent mixing or accidental execution.
