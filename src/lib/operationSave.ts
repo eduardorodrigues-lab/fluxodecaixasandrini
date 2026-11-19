@@ -2,7 +2,7 @@ import { diffData, opKey, type Change, type Conflict } from './diff';
 import type { ScenarioData } from './engine/types';
 import type { OperationPhase } from './saveRecovery';
 
-export interface ReviewedOperation { scope: string; orgId: string; requestId: string; ops: Change[]; recoveredPending?: Change[]; dependencies?: ReturnType<typeof operationDependencies>; rejected?: boolean; conflicts?: Conflict[]; phase?: OperationPhase; submittedAt?: string; legacyUncertain?: boolean; confirmation?: { status: string; version: number; receipt?: import('./commitReceipt').CommitReceipt | undefined }; reviewRows?: import('./operationReview').OperationReviewRow[] }
+export interface ReviewedOperation { scope: string; orgId: string; requestId: string; ops: Change[]; recoveredPending?: Change[]; dependencies?: ReturnType<typeof operationDependencies>; rejected?: boolean; conflicts?: Conflict[]; phase?: OperationPhase; submittedAt?: string; resentAt?: string; lastNotFoundAt?: string; legacyUncertain?: boolean; confirmation?: { status: string; version: number; receipt?: import('./commitReceipt').CommitReceipt | undefined }; reviewRows?: import('./operationReview').OperationReviewRow[] }
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /** Read dependencies, including newly added payments, must remain unchanged until commit. */

@@ -41,7 +41,7 @@ export function PvaDetail({ r }: { r: PvaRow }) {
 
 /** Acesso pelo detalhe do pedido (Gerenciar). */
 export function PlanVsActualDetail({ d, plannedId }: { d: ScenarioData; plannedId: string | null | undefined }) {
-  const r = useMemo(() => (plannedId ? planVsActual(d).find((x) => x.plannedId === plannedId) : undefined), [d, plannedId]);
+  const r = useMemo(() => (plannedId ? planVsActual(d, plannedId).find((x) => x.plannedId === plannedId) : undefined), [d, plannedId]);
   if (!r) return null;
   return <details className="rounded border border-border p-2 text-xs"><summary className="cursor-pointer font-semibold">Planejado × Efetivado do pedido {r.purchaseCode || "Não informado"}: {r.comparison} {signed(r.diff)}</summary>
     <p className="py-1">Referência {money(r.baseline)} · Efetivado {fmtBRL(r.effective)} · Restante {r.remaining === null ? "Não confirmado" : fmtBRL(r.remaining)} · Total atual {money(r.total)} · {r.situation}</p><PvaDetail r={r} /></details>;

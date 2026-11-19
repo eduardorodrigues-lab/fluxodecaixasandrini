@@ -2,6 +2,8 @@ export interface DecisionOptions {
   title: string; message: string; action: string; destructive?: boolean;
   input?: { label: string; initial?: string; type?: "text" | "date" };
   notice?: boolean;
+  /** Optional third choice; resolves "secondary". */
+  secondary?: string; cancelLabel?: string;
 }
 export interface DecisionRequest extends DecisionOptions { resolve: (value: string | null) => void }
 const queue: DecisionRequest[] = [];
@@ -35,6 +37,11 @@ export async function askConfirm(message: string, options?: Partial<DecisionOpti
 }
 export function askText(message: string, initial = "", options?: Partial<DecisionOptions>) {
   return requestDecision({ ...wording(message), message, input: { label: "Justificativa", initial }, ...options });
+}
+/** Closing a form with local edits: discard, keep local draft and close, or continue editing. */
+export async function askCloseDraft(): Promise<"discard" | "keep" | null> {
+  const r = await requestDecision({ title: "Fechar com alterações não salvas?", message: "Nada deste preenchimento foi gravado na base oficial. Você pode manter o rascunho neste navegador para continuar depois, descartá-lo ou continuar editando.", action: "Descartar", destructive: true, secondary: "Manter rascunho e fechar", cancelLabel: "Continuar editando" });
+  return r === "secondary" ? "keep" : r === null ? null : "discard";
 }
 export function showMessage(message: string) {
   return requestDecision({ title: "Resultado da operação", message, action: "Fechar", notice: true });

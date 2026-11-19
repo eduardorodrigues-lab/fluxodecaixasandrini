@@ -28,7 +28,7 @@ const NAV = [
 const NAV_KEY = "fluxo.nav.hidden";
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { orgs, user, authReady, signOut, official, base, active, sims, setActive, draft, saveState, saveMsg, canEdit, changes, commitDraft, discardDraft, conflicts, resolveConflict, protectErr, pendingOperation, saveOperation, abandonOperation, globalReview, closeGlobalReview, checkPendingOperation, confirmationChecking } = useApp();
+  const { orgs, user, authReady, signOut, official, base, active, sims, setActive, draft, saveState, saveMsg, canEdit, changes, commitDraft, discardDraft, conflicts, resolveConflict, protectErr, pendingOperation, saveOperation, abandonOperation, resendPendingOperation, globalReview, closeGlobalReview, checkPendingOperation, confirmationChecking } = useApp();
   const [viewPacket,setViewPacket] = useState(false);
   const [confirming,setConfirming] = useState(false);
   const [reviewError,setReviewError] = useState('');
@@ -57,7 +57,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const publicPage = path === "/auth" || path === "/convite";
   // Sem login: só a tela de entrada (ou aceite de convite). Nenhum dado financeiro é exibido.
   if (!user) return <Gate>{!authReady ? <p className="text-xs text-muted-foreground">Verificando acesso…</p> : publicPage ? children : <Entry />}</Gate>;
-  if (official.status !== "ready" && !publicPage) return <Gate><div className="card w-full max-w-md p-4 text-sm"><p className="mb-2">{official.status === "error" ? official.error : "Carregando dados do Grupo Sandrini…"}</p><p className="mb-3 text-xs text-muted-foreground">Conectado como {user.email}. Nenhum dado de outra organização será carregado.</p><button className="btn" onClick={() => signOut()}>Sair</button></div></Gate>;
+  if (official.status !== "ready" && !publicPage) return <Gate><div className="card w-full max-w-md p-4 text-sm"><p className="mb-2">{official.status === "error" ? `Não foi possível abrir os dados do Grupo Sandrini. ${official.error}` : "Carregando dados do Grupo Sandrini…"}</p><p className="mb-3 text-xs text-muted-foreground">Conectado como {user.email}. Nenhum dado de outra organização será carregado.</p><button className="btn" onClick={() => signOut()}>Sair</button></div></Gate>;
   return (
     <div className="app-workspace flex min-h-screen">
       {navHidden ? (
@@ -118,7 +118,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           {pendingOperation.legacyUncertain || !pendingOperation.ops.length ? <p className="basis-full text-xs">Pacote legado: faltam dados suficientes para comprovar o envio ou sua captura original. Exporte os dados preservados para recuperação; nenhuma nova gravação será autorizada por ausência de confirmação.</p> : null}
           <Button size="sm" variant="outline" onClick={exportPacket}>Exportar pacote preservado</Button>
           {definitiveRejection(pendingOperation) && <><Button size="sm" variant="outline" disabled={saveState === 'saving' || confirmationChecking} onClick={async () => { if(await askConfirm("O servidor recusou esta operação. As alterações serão mantidas no rascunho para comparar com o atual; a auditoria não será apagada. Nenhuma gravação ocorrerá agora.", {title:"Revisar operação recusada?",action:pendingOperation.phase==='conflict'?'Revisar conflito':'Voltar à edição da alteração recusada'})) await abandonOperation(); }}>{pendingOperation.phase==='conflict'?'Revisar conflito':'Voltar à edição da alteração recusada'}</Button><p className="basis-full text-xs">Somente a recusa comprovada permite nova revisão. O histórico permanece; rascunhos e outras pendências não são descartados.</p></>}
-          {!definitiveRejection(pendingOperation) && <p className="basis-full text-xs">Você pode continuar navegando. O pacote permanece protegido; nenhum descarte, nova revisão ou reenvio é permitido enquanto o resultado não for confirmado.</p>}
+          {!definitiveRejection(pendingOperation) && !pendingOperation.confirmation && !!pendingOperation.lastNotFoundAt && !pendingOperation.legacyUncertain && pendingOperation.ops.length > 0 && <Button size="sm" disabled={!!checkReason} onClick={async () => { if (await askConfirm("O mesmo pacote será reenviado com a MESMA identificação. Se ele já tiver sido gravado, o servidor apenas confirma a gravação existente — nada é duplicado. Se outra pessoa alterou os mesmos registros, nada é sobrescrito e o conflito aparece para revisão.", { title: "Reenviar o mesmo pacote?", action: "Reenviar o mesmo pacote" })) await resendPendingOperation(); }}>Reenviar o mesmo pacote</Button>}
+          {!definitiveRejection(pendingOperation) && <p className="basis-full text-xs">Você pode continuar navegando e fechar janelas. O pacote permanece protegido; descarte e nova revisão ficam bloqueados até o resultado ser confirmado. O reenvio usa somente o mesmo pacote e a mesma identificação.</p>}
         </div>}
         {globalReview && !pendingOperation && <DecisionWindow wide title="Revisar alterações não salvas" description="Somente as alterações abaixo serão enviadas. Recebimentos e edições posteriores permanecem separados." footer={<>
           <Button variant="outline" disabled={confirming} onClick={closeGlobalReview}>Voltar à edição</Button>

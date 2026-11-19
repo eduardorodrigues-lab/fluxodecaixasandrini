@@ -1,6 +1,6 @@
 import { splitOrigin } from "@/lib/originText";
 import { supplierIdentity, supplierIdentityOptions } from "@/lib/supplierIdentity";
-import { askConfirm } from "@/lib/decisions";
+import { askCloseDraft, askConfirm } from "@/lib/decisions";
 import { DecisionWindow } from "@/components/DecisionDialog";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -86,7 +86,7 @@ export function SupplierSearch({ d, value, onChange, onCreate, existing = false,
     const id = uid(), name = creating.name.trim();
     try {
       if(!onCreate) throw new Error("Cadastre o fornecedor em Cadastros e confirme antes de selecionar.");
-      const local=structuredClone(d); addSupplier(local,{id,name,note:creating.note.trim(),aliases:creating.aliases.split(",").map(a=>a.trim()).filter(Boolean)});
+      const local={...d,suppliers:[...d.suppliers]}; addSupplier(local,{id,name,note:creating.note.trim(),aliases:creating.aliases.split(",").map(a=>a.trim()).filter(Boolean)});
       const supplier=local.suppliers.find(s=>s.id===id); if(!supplier)throw new Error("Confira o nome do fornecedor."); onCreate(supplier);
     } catch(e) {setCreating({...creating,err:(e as Error).message});return;}
     setCreating(null); setT(name); onChange(id);
@@ -156,7 +156,15 @@ export function NovaNota({ d: source, isBase, onCancel, onConfirm, onManagePlann
   const up = (p: Partial<NoteDraft>) => { setN({ ...n, ...p }); setChecked(false); };
   const protection = useFormDraft({user:app.user?.id??"",org:app.official.orgId,mode:app.active.id,form:"novo-lancamento",record:draftId},{chosen,n,saveAs,how,qty},v=>{setChosen(v.chosen);setN(v.n);setSaveAs(v.saveAs);setHow(v.how);setQty(v.qty);setReview(false);setChecked(false);});
   const done = async (ok:boolean|Promise<boolean>) => { if(await ok){protection.clear();try{sessionStorage.removeItem(`fluxo:new-id:${app.user?.id}:${app.official.orgId}:${app.active.id}`);}catch{/* local apenas */}} return ok; };
-  const discard = async () => { if(saving || app.pendingOperation)return; if(!chosen || await askConfirm("Descartar este preenchimento? Nada será salvo.",{title:"Descartar rascunho?",action:"Descartar",destructive:true})){ if(protection.clear()){try{sessionStorage.removeItem(`fluxo:new-id:${app.user?.id}:${app.official.orgId}:${app.active.id}`);}catch{/* local apenas */} onCancel();} } };
+  const forget = () => { try{sessionStorage.removeItem(`fluxo:new-id:${app.user?.id}:${app.official.orgId}:${app.active.id}`);}catch{/* local apenas */} };
+  // Closing never cancels or resends a submitted operation; the local draft is kept until confirmed/discarded.
+  const discard = async () => {
+    if(saving || app.pendingOperation){protection.flush();onCancel();return;}
+    if(!chosen){if(protection.clear()){forget();onCancel();}return;}
+    const choice=await askCloseDraft();
+    if(choice==="keep"){protection.flush();onCancel();}
+    else if(choice==="discard" && protection.clear()){forget();onCancel();}
+  };
   const stage = n.stage;
   const sup = d.suppliers.find((s) => s.id === n.supplierId);
   const setP = (i: number, p: Partial<DraftParcel>) => up({ parcels: n.parcels.map((x, k) => (k === i ? { ...x, ...p } : x)) });

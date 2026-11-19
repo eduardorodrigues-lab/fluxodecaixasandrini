@@ -38,13 +38,18 @@ export function useOperationSave() {
         await app.saveOperation(request.current);
       }
       request.current = null; mutation.current = null; return true;
-    } catch(e) { setError((e as Error).message); return false; }
+    } catch(e) {
+      // Rejected BEFORE capture (validation, isolation, context, lock): nothing was protected or sent,
+      // so the next confirmation must re-prepare from the current form instead of a stale frozen payload.
+      if (request.current && !request.current.phase && !request.current.submittedAt && !request.current.confirmation) { request.current = null; mutation.current = null; }
+      setError((e as Error).message); return false;
+    }
     finally { lock.current = false; setSaving(false); }
   };
   return { save, saving, error, retrying: !!request.current, protected: saving || !!app.pendingOperation,
     saveLabel: confirmationAction(saving, app.pendingOperation?.phase, !!request.current?.submittedAt),
     saveMutation: async (before: ScenarioData, fn: (d:ScenarioData)=>void, supplierIds: string[] = []) => {
-      try { if(request.current?.rejected && !app.pendingOperation) mutation.current=null; if (!mutation.current) { const after=produce(before,fn); mutation.current={before,after}; } return await save(mutation.current.before,mutation.current.after,supplierIds); }
+      try { if(request.current?.rejected && !app.pendingOperation) mutation.current=null; if (!mutation.current || !request.current) { const after=produce(before,fn); mutation.current={before,after}; } /* frozen only once captured */ return await save(mutation.current.before,mutation.current.after,supplierIds); }
       catch(e) { setError((e as Error).message); return false; }
     },
     reset: () => { if (!saving && !app.pendingOperation) { request.current = null; mutation.current = null; setError(''); return true; } return false; } };

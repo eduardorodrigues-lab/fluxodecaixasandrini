@@ -14,7 +14,7 @@ import type { FinancialConfig } from "@/lib/engine/types";
 import { moneyTone, signedMoney } from "@/lib/dashboardReport";
 import { fmtNum, parseBRL } from "@/lib/money";
 import { askConfirm, askText } from "@/lib/decisions";
-import { useApp } from "@/lib/store";
+import { useApp, useAuditHistory } from "@/lib/store";
 import { pendingSearch } from "@/lib/pendencias";
 import { usePendingFocus } from "@/components/PendingFocus";
 export const Route = createFileRoute("/metas")({ validateSearch: pendingSearch, head: () => ({ meta: [
@@ -38,10 +38,11 @@ function Page() {
 }
 function MonthPage() {
   const { focus } = Route.useSearch(); usePendingFocus(focus);
-  const { active, ui, update, canEdit, audit, sims, user, official } = useApp(); const d = active.data;
+  const { active, ui, update, canEdit, sims, user, official } = useApp(); const d = active.data;
   const { ref, height } = useAvailableArea();
   const [edits, setEdits] = useState<Record<string, MonthEdit>>({}), [defaults, setDefaults] = useState<FinancialConfig | null>(null), [removed, setRemoved] = useState<string[]>([]);
   const [newMonth, setNewMonth] = useState(""), [error, setError] = useState(""), [review, setReview] = useState(false), [history, setHistory] = useState<string | null>(null), [dates, setDates] = useState<string | null>(null), [showDefaults, setShowDefaults] = useState(false);
+  const auditH = useAuditHistory(active.isBase && history !== null);
   const [origin, setOrigin] = useState(() => ({ id: active.id, org: official.orgId, data: structuredClone(d) }));
   const [page, setPage] = useState(0);
   const dirty = Object.keys(edits).length > 0 || removed.length > 0 || !!defaults;
@@ -90,7 +91,7 @@ function MonthPage() {
     });
     if (e) setError(e); else { setReview(false); setEdits({}); setDefaults(null); setRemoved([]); setError(""); setOrigin({ id: active.id, org: official.orgId, data: structuredClone(preview) }); }
   };
-  const historyEntries = active.isBase ? audit.map((entry) => ({ at: entry.at, user: entry.user_email ?? "", changes: entry.changes })) : sims.find((s) => s.id === active.id)?.history ?? [];
+  const historyEntries = active.isBase ? auditH.entries.map((entry) => ({ at: entry.at, user: entry.user_email ?? "", changes: entry.changes })) : sims.find((s) => s.id === active.id)?.history ?? [];
   const names = [1, 2].map((n) => { const key = n === 1 ? "deflator1Name" : "deflator2Name"; const all = new Set(months.map((m) => monthEdit(preview, m).financial[key] ?? `Deflator ${n}`)); return all.size === 1 ? [...all][0] : `Deflator ${n}`; });
   return <div ref={ref} className="metas-page" style={{ "--available-height": `${height}px` } as React.CSSProperties}>
     <header className="flex flex-wrap items-center justify-between gap-2"><div><h1 className="text-lg font-semibold">Meta de Faturamento</h1><p className="text-xs text-muted-foreground">{active.isBase ? "Fluxo real" : `Simulação ${active.name}`}{dirty ? ` · ${changed.length} meses em rascunho` : ""}</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => setShowDefaults(!showDefaults)}>Padrões para novos meses</Button><Button disabled={!dirty} variant="outline" onClick={discard}>Descartar</Button><Button disabled={!dirty || !canEdit} onClick={prepareReview}>Revisar e confirmar</Button></div></header>
@@ -110,7 +111,7 @@ function MonthPage() {
       <p>Saldo final de {fmtDate(ui.start)} a {fmtDate(ui.end)}: {signedMoney(flowBefore?.kpis.saldoFinal ?? 0)} → {signedMoney(flowAfter?.kpis.saldoFinal ?? 0)}. Diferença: {signedMoney((flowAfter?.kpis.saldoFinal ?? 0) - (flowBefore?.kpis.saldoFinal ?? 0))}.</p>
       {error && <p role="alert" className="text-destructive">{error}</p>}
     </DecisionWindow>}
-    {history && <DecisionWindow wide title={`Histórico da meta · ${fmtMonth(history)}`} description={active.isBase ? "Fluxo real · data e usuário da auditoria" : `Simulação ${active.name}`} footer={<Button variant="outline" onClick={() => setHistory(null)}>Fechar</Button>}><HistoryView data={d} scope={active.isBase ? "Fluxo real" : `Simulação ${active.name}`} entries={historyEntries.map((e) => ({ ...e, changes: e.changes.filter((c) => c.id === history && ["Meta de faturamento", "Configuração financeira mensal"].includes(c.entity)) })).filter((e) => e.changes.length > 0)} />{d.targetConfigs[history]?.history.length ? <details><summary>Memória de origem e versões</summary>{d.targetConfigs[history]?.history.map((h, i) => <p key={i}>{h.at ? new Date(h.at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "Data não registrada na origem"} · Versão {h.version} · {h.note}</p>)}</details> : null}</DecisionWindow>}
+    {history && <DecisionWindow wide title={`Histórico da meta · ${fmtMonth(history)}`} description={active.isBase ? "Fluxo real · data e usuário da auditoria" : `Simulação ${active.name}`} footer={<Button variant="outline" onClick={() => setHistory(null)}>Fechar</Button>}>{active.isBase && auditH.status === "loading" && <p role="status">Carregando histórico…</p>}{auditH.status === "error" && <p className="text-destructive">{auditH.error}</p>}<HistoryView data={d} scope={active.isBase ? "Fluxo real" : `Simulação ${active.name}`} entries={historyEntries.map((e) => ({ ...e, changes: e.changes.filter((c) => c.id === history && ["Meta de faturamento", "Configuração financeira mensal"].includes(c.entity)) })).filter((e) => e.changes.length > 0)} />{d.targetConfigs[history]?.history.length ? <details><summary>Memória de origem e versões</summary>{d.targetConfigs[history]?.history.map((h, i) => <p key={i}>{h.at ? new Date(h.at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "Data não registrada na origem"} · Versão {h.version} · {h.note}</p>)}</details> : null}</DecisionWindow>}
     {dates && <DecisionWindow title={`Datas impactadas · ${fmtMonth(dates)}`} wide description="Meta resolvida diariamente pelo motor; recebimento informado, inclusive zero, substitui estimativa." footer={<Button variant="outline" onClick={() => setDates(null)}>Fechar</Button>}><h3>Estimativa utilizada</h3><p>{intervalLabel(monthImpactDates(preview, dates).estimated)}</p><h3>Suprimidas por recebimento informado</h3><p>{intervalLabel(monthImpactDates(preview, dates).suppressed)}</p><h3>Datas que consultam esta meta</h3><p>{intervalLabel(monthImpactDates(preview, dates).dates)}</p></DecisionWindow>}
   </div>;
 }

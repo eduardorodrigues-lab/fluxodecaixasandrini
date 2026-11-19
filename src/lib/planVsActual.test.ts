@@ -106,3 +106,12 @@ describe("Planejado × Efetivado", () => {
     expect(summarizePva(planVsActual(fixture()))).toEqual(old);
   });
 });
+
+describe("comparativo de um único pedido", () => {
+  it("planVsActual(d, id) devolve a mesma linha do relatório completo, inclusive vínculo ambíguo", () => {
+    const d = fixture();
+    d.effectivations.push(E("e4", "p2", "2026-04-06T10:00:00Z", ["c1"])); // c1 reivindicado por p1 e p2
+    for (const id of ["p1", "p2", "p3"]) expect(planVsActual(d, id)).toEqual(planVsActual(d).filter((r) => r.plannedId === id));
+    expect(planVsActual(d, "inexistente")).toEqual([]);
+  });
+});

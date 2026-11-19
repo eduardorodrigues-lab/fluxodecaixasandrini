@@ -24,7 +24,8 @@ export interface PvaRow {
 
 const eq = (a: number, b: number) => Math.abs(a - b) < 0.5; // tolerância < meio centavo (valores importados podem ter fração)
 
-export function planVsActual(d: ScenarioData): PvaRow[] {
+/** `onlyPlannedId` computes the same row for one order (ownership/ambiguity still read every link). */
+export function planVsActual(d: ScenarioData, onlyPlannedId?: string): PvaRow[] {
   const categories = new Map(d.categories.map((c) => [c.id, c]));
   const effsByPlan = new Map<string, ScenarioData["effectivations"]>();
   for (const e of d.effectivations) if (!e.reversedAt) effsByPlan.set(e.plannedId, [...(effsByPlan.get(e.plannedId) ?? []), e]);
@@ -36,6 +37,7 @@ export function planVsActual(d: ScenarioData): PvaRow[] {
   const effOf = new Map<string, string>(); for (const es of effsByPlan.values()) for (const e of es) for (const id of e.committedIds) effOf.set(id, byId.get(id)?.effectiveDate ?? e.at);
   const rows: PvaRow[] = [];
   for (const p of d.planned) {
+    if (onlyPlannedId !== undefined && p.id !== onlyPlannedId) continue;
     const effs = [...(effsByPlan.get(p.id) ?? [])].sort((a, b) => a.at.localeCompare(b.at));
     const ids = new Set<string>(); for (const [cid, ps] of owners) if (ps.has(p.id)) ids.add(cid);
     if (!effs.length && !ids.size) continue; // sem efetivação nem vínculo: fora do comparativo

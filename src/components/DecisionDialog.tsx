@@ -23,7 +23,8 @@ export function DecisionDialog() {
   const finish = (answer: string | null) => { setRequest(null); finishDecision(answer); };
   if (!request) return null;
   return <DecisionWindow title={request.title} description={request.message} footer={<>
-    {!request.notice && <Button variant="outline" onClick={() => finish(null)}>Cancelar</Button>}
+    {!request.notice && <Button variant="outline" onClick={() => finish(null)}>{request.cancelLabel ?? "Cancelar"}</Button>}
+    {request.secondary && <Button variant="outline" onClick={() => finish("secondary")}>{request.secondary}</Button>}
     <Button variant={request.destructive ? "destructive" : "default"} disabled={!!request.input && (!value.trim() || request.input.type === "date" && !dateValid)} onClick={() => finish(request.input ? value.trim() : "confirmed")}>{request.action}</Button>
   </>}>
     {request.input && <label className="mt-2 flex flex-col gap-2 text-xs font-medium">{request.input.label}{request.input.type === "date" ? <DateInput value={value || null} onChange={(next) => setValue(next ?? "")} onValidityChange={setDateValid} /> : <textarea className="inp min-h-24 w-full" value={value} onChange={(e) => setValue(e.target.value)} />}</label>}

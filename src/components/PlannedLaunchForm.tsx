@@ -1,5 +1,5 @@
 import { useFormDraft } from "./useFormDraft";
-import { askConfirm } from "@/lib/decisions";
+import { askCloseDraft, askConfirm } from "@/lib/decisions";
 import { EffectivationNotes } from "./EffectivationNotes";
 import { PlanVsActualDetail } from "@/components/PlanVsActual";
 import { useOperationSave } from "./useOperationSave";
@@ -7,11 +7,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CatSubFields, ConditionPicker, Field, Section, SidePanel, SupplierSearch, guardClose, type SaveAs } from "./NotaPanel";
 import { DateInput, MoneyInput } from "./kit";
-import { useApp, uid } from "@/lib/store";
+import { useApp, uid, useAuditHistory } from "@/lib/store";
 import { applyManaged, managedDocument, validateManualRemaining, type LaunchRef, type ManagedParcel } from "@/lib/manageLaunch";
 import { eligiblePlanned } from "@/lib/manageLaunchPresentation";
 import { applySuggestion, batchPreview, effectivateBatch, duplicateBatchDocuments, heldNotes, type BatchNote, type RestLine, type Suggestion } from "@/lib/efetivacao";
-import { planVsActual } from "@/lib/planVsActual";
 import { generateParcels, saveSupplierCondition } from "@/lib/notas";
 import { supplierIdentity } from "@/lib/supplierIdentity";
 import { paymentsFor, splitCents, titleStatus } from "@/lib/engine/engine";
@@ -24,7 +23,10 @@ import { produce } from 'immer';
 import { measureSavePhase } from '@/lib/saveTiming';
 
 export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onClose: () => void }) {
-  const { active, official, canEdit, user, audit, allSims } = useApp();
+  const { active, official, canEdit, user, allSims } = useApp();
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const auditH = useAuditHistory(active.isBase && historyOpen);
+  const audit = auditH.entries;
   const saving = useOperationSave();
   const [localSuppliers,setLocalSuppliers]=useState<Supplier[]>([]);
   const [saveCondition,setSaveCondition]=useState<SaveAs|null>(null);
@@ -68,7 +70,14 @@ export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onCl
       setRows(v.rows);setFields(v.fields);setTotal(v.total);setBaseDate(v.baseDate);setKind(v.kind);setSelected(v.selected);setNotes(v.allNotes);setShowNotes(v.showNotes);setRemaining(v.remaining);setReason(v.reason);setMode(v.mode);setEffId(v.effId);
       setChecked(false);setReview(null);setScopeConfirmed(false);setDuplicateConfirmed(false);
     });
-  const discard = async()=>{if(saving.protected)return;if(await askConfirm("Descartar este preenchimento? O planejamento salvo não muda.",{title:"Descartar rascunho?",action:"Descartar",destructive:true})){if(protection.clear())onClose();}};
+  // Closing never cancels or resends a submitted operation: it stays tracked in the recovery strip.
+  const discard = async()=>{
+    if(saving.protected){protection.flush();onClose();return;}
+    if(!dirty){protection.clear();onClose();return;}
+    const choice=await askCloseDraft();
+    if(choice==="keep"){protection.flush();onClose();}
+    else if(choice==="discard"){if(protection.clear())onClose();}
+  };
   const original = initial.parcels.reduce((s,p) => s + (p.amount ?? 0),0);
   const dirty = JSON.stringify(allNotes ?? []) !== JSON.stringify(savedNotes) || JSON.stringify(rows) !== JSON.stringify(initialRows) || JSON.stringify(fields) !== JSON.stringify(initial.fields) || total !== initial.record.value || ("baseDate" in initial.record && baseDate !== initial.record.baseDate);
   const eligible = eligiblePlanned(launch, rows).filter(p => initialRows.some(b => b.key === p.key));
@@ -109,7 +118,6 @@ export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onCl
     } catch (e) { return { result: [], total: 0, error: heldTotal>0 && !restGeneric.length ? `As ${heldParcels.length} parcela(s) de notas não selecionadas já explicam o restante (${fmtBRL(heldTotal)}); linhas genéricas de R$ 0,00 são substituídas pelo detalhamento e não precisam de valor.` : (e as Error).message === "origem_insuficiente" ? "Informe os valores reais e mantenha apenas restantes com valor de origem conhecido para usar esta sugestão." : (e as Error).message }; }
   }, [mode, rows, real, selected]);
   const linked = useMemo(() => d.committed.filter(c => c.plannedId === launch.id || d.effectivations.some(e => e.plannedId === launch.id && e.committedIds.includes(c.id))), [d, launch.id]);
-  const comparison = useMemo(()=>planVsActual(d).find(p=>p.plannedId===launch.id),[d,launch.id]);
   const priorTotal = linked.filter(c=>c.status!=="cancelado").reduce((s,c)=>s+c.value,0);
   const priorUnpaid = linked.filter(c=>c.status!=="cancelado").reduce((s,c)=>s+titleStatus(c.value,c.status,paymentsFor(d,"committed",c.id)).open,0);
   // Current budget is editable; historical comparison uses evidence from the first confirmed effectivation.
@@ -160,7 +168,7 @@ export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onCl
     <td>{p.status==="cancelado" ? `Cancelada · original ${fmtBRL(p.original)}` : <Button variant="outline" disabled={!canEdit || p.paid>0} onClick={()=>remove(p,effective)}>{effective || !initial.parcels.some(b=>b.key===p.key) ? "Remover linha" : "Cancelar parcela"}</Button>}</td>
   </tr>)}</tbody></table>;
   const history = active.isBase ? audit.map(a => ({ at: a.at, user: a.user_email ?? "", changes: a.changes })) : allSims.find(s=>s.id===active.id)?.history ?? [];
-  return <SidePanel expanded title={review ? "Revisar lançamento" : real ? "Adicionar notas fiscais a este pedido" : "Editar planejamento"} sub={`${supplierIdentity(d, initial.record).name} · Pedido ${fields.purchaseCode || "Não informado"}`} dirty={false} onClose={()=>void discard()} footer={<>{review && <Button variant="outline" disabled={saving.saving} onClick={()=>{if(saving.reset())setReview(null);}}>Voltar</Button>}<Button variant="outline" disabled={saving.saving} onClick={()=>void discard()}>Cancelar</Button><Button disabled={!canEdit || !dirty || saving.saving} onClick={review ? async ()=>{ if(await saving.save(review.before,review.data)) {protection.clear();onClose();} } : prepare}>{review && active.isBase ? saving.saveLabel : saving.saving ? "Salvando…" : review ? "Confirmar na simulação" : real ? "Revisar alterações" : "Revisar e salvar"}</Button></>}>
+  return <SidePanel expanded title={review ? "Revisar lançamento" : real ? "Adicionar notas fiscais a este pedido" : "Editar planejamento"} sub={`${supplierIdentity(d, initial.record).name} · Pedido ${fields.purchaseCode || "Não informado"}`} dirty={false} onClose={()=>void discard()} footer={<>{review && <Button variant="outline" disabled={saving.saving} onClick={()=>{if(saving.reset())setReview(null);}}>Voltar</Button>}<Button variant="outline" onClick={()=>void discard()}>{saving.protected ? "Fechar (acompanhamento continua)" : "Cancelar"}</Button><Button disabled={!canEdit || !dirty || saving.saving} onClick={review ? async ()=>{ if(await saving.save(review.before,review.data)) {protection.clear();onClose();} } : prepare}>{review && active.isBase ? saving.saveLabel : saving.saving ? "Salvando…" : review ? "Confirmar na simulação" : real ? "Revisar alterações" : "Revisar e salvar"}</Button></>}>
       {protection.recovered && <p role="status">Preenchimento local recuperado · revise e confirme novamente antes de salvar.</p>}
       {protection.warning && <p role="alert" className="text-destructive">{protection.warning}</p>}
     {saving.error && <p role="alert" className="text-destructive">{saving.error}</p>}
@@ -212,7 +220,7 @@ export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onCl
       </>}
       <Field l="Justificativa"><textarea className="inp" value={reason} onChange={e=>setReason(e.target.value)}/></Field>
       <details><summary>Notas já efetivadas vinculadas ({linked.length} parcelas)</summary><table className="tbl"><thead><tr><th>Documento / nota</th><th>Pedido</th><th>Parcela</th><th>Número do boleto</th><th>Valor</th><th>Vencimento</th><th>Situação</th></tr></thead><tbody>{linked.map(c=><tr key={c.id}><td>{c.document}</td><td>{c.purchaseCode || "Não informado"}</td><td>{c.parcelNo ? `${c.parcelNo}/${c.parcelCount}` : c.id}</td><td>{c.boletoNumber || "Não informado"}</td><td>{fmtBRL(c.value)}</td><td>{fmtDate(c.extensionDate??c.dueDate)}</td><td>{titleStatus(c.value,c.status,paymentsFor(d,"committed",c.id)).state}</td></tr>)}</tbody></table>{!linked.length && <p>Nenhuma nota com vínculo comprovado.</p>}</details>
-      <details><summary>Comparativo e histórico do planejamento</summary><PlanVsActualDetail d={d} plannedId={launch.id} /><HistoryView data={d} entries={history.map(a=>({...a,changes:a.changes.filter(c=>c.id===launch.id)}))}/></details>
+      <details onToggle={e=>setHistoryOpen((e.currentTarget as HTMLDetailsElement).open)}><summary>Comparativo e histórico do planejamento</summary>{historyOpen && <><PlanVsActualDetail d={d} plannedId={launch.id} />{active.isBase && auditH.status === "loading" && <p role="status">Carregando histórico…</p>}{auditH.status === "error" && <p className="text-destructive">{auditH.error}</p>}<HistoryView data={d} entries={history.map(a=>({...a,changes:a.changes.filter(c=>c.id===launch.id)}))}/></>}</details>
     </>}
   </SidePanel>;
 }

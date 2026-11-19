@@ -64,8 +64,11 @@ interface Ctx {
   saveState: SaveState; saveMsg: string; reloadOfficial: () => void;
   conflicts: Conflict[]; resolveConflict: (c: Conflict, keep: "mine" | "server") => void; protectErr: string;
   createSim: (name: string) => void; discardSim: (id: string) => void; deleteSim: (id: string) => void;
-  audit: AuditEntry[];
+  /** Audit is heavy (~18 MB with changes): loaded only while a history screen/panel requests it. */
+  auditHistory: AuditHistory; requestAudit: () => () => void;
+  resendPendingOperation: () => Promise<void>;
 }
+export interface AuditHistory { entries: AuditEntry[]; status: "idle" | "loading" | "ready" | "error"; error: string; refresh: () => void }
 const AppCtx = createContext<Ctx | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -132,7 +135,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const resolvedOrg = pickOrg(orgs.map((o) => ({ org_id: o.orgId, created_by: o.own ? user?.id ?? null : null })), user?.id ?? "", orgId);
   const selOrg = resolvedOrg && resolvedOrg !== "choose" ? resolvedOrg.org_id : null;
   const offQ = useQuery({ queryKey: ["official", user?.id, selOrg], queryFn: () => fetchOfficial({ data: { orgId: selOrg } }), enabled: hydrated && !!user && !!selOrg, staleTime: 30_000, refetchOnWindowFocus: false, structuralSharing: false });
-  const auditQ = useQuery({ queryKey: ["official", "audit", user?.id, selOrg], queryFn: () => fetchAudit({ data: { orgId: selOrg } }), enabled: hydrated && !!user && !!selOrg });
+  const [auditDemand, setAuditDemand] = useState(0);
+  const requestAudit = useCallback(() => { setAuditDemand(n => n + 1); return () => setAuditDemand(n => Math.max(0, n - 1)); }, []);
+  const auditQ = useQuery({ queryKey: ["official", "audit", user?.id, selOrg], queryFn: () => fetchAudit({ data: { orgId: selOrg } }), enabled: hydrated && !!user && !!selOrg && auditDemand > 0, staleTime: 5 * 60_000, refetchOnWindowFocus: false });
+  // Parse once per response — never on every provider render.
+  const auditEntries = useMemo(() => (auditQ.data ?? []).map((r) => ({ ...r, changes: JSON.parse(r.changesJson) as Change[] })), [auditQ.data]);
   type OfficialCache = Awaited<ReturnType<typeof fetchOfficial>> & { normalizedData?: ScenarioData };
   const offData = useMemo(() => (offQ.data ? (offQ.data as OfficialCache).normalizedData ?? (offQ.data.normalization === NORMALIZATION_REVISION ? JSON.parse(offQ.data.dataJson) as ScenarioData : normalizeData(JSON.parse(offQ.data.dataJson))) : null), [offQ.data]);
 
@@ -216,7 +223,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (result.conflicts.length) return "A simulação mudou nos mesmos registros. Preenchimento preservado; revise novamente.";
     return update(x => Object.assign(x, result.data));
   };
-  const runSaveOperation = async (op: ReviewedOperation, confirmedVersion?: number): Promise<void> => {
+  const runSaveOperation = async (op: ReviewedOperation, confirmedVersion?: number, resend = false): Promise<void> => {
     if (!canEdit || !active.isBase || official.role === "viewer" || !baseData || !scope || op.scope !== `${user?.id}:${official.orgId}` || op.orgId !== official.orgId) throw new Error("Sem acesso ao contexto real desta operação.");
     if (inflight.current) throw new Error("Há uma confirmação em andamento. Aguarde a resposta.");
     if (operationRef.current && operationRef.current.requestId !== op.requestId) throw new Error("Há uma operação com resultado pendente. Resolva-a na faixa de recuperação antes de confirmar outra.");
@@ -250,9 +257,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       let r: {status:string;version:number;conflictsJson?:string;receipt?:import('./commitReceipt').CommitReceipt | undefined};
       if(op.confirmation)r=op.confirmation;
       else if(confirmedVersion!==undefined)r={status:'duplicate',version:confirmedVersion};
-      else if(op.submittedAt || operationRef.current?.requestId===op.requestId && op.phase && op.phase!=='reviewing')r=await readConfirmation();
+      else if(!resend && (op.submittedAt || operationRef.current?.requestId===op.requestId && op.phase && op.phase!=='reviewing'))r=await readConfirmation();
       else {
-        op.submittedAt=new Date().toISOString(); await phase('sending');
+        // Explicit resend keeps the SAME requestId and immutable payload; the server/DB return "duplicate" if it already committed.
+        if(resend)op.resentAt=new Date().toISOString(); else op.submittedAt=new Date().toISOString();
+        await phase('sending');
         const result=await confirmSubmission(sendOperation(op, o => commitFn({ data: { orgId: o.orgId, requestId: o.requestId, opsJson: JSON.stringify(o.ops), ...(o.dependencies ? {dependenciesJson:JSON.stringify(o.dependencies)} : {}) } })),async()=>{
           const checked=await checkRequest({data:{orgId:op.orgId,requestId:op.requestId}});
           return checked ? {status:'duplicate',version:checked.version,conflictsJson:'[]'} : null;
@@ -296,7 +305,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setSession(rest.length ? { ...current, ops: rest, baseVersion: fresh.version, requestId: uuid() } : null);
         }
         qc.setQueryData(key, fresh);
-        void qc.invalidateQueries({ queryKey: ["official", "audit", user?.id, op.orgId] });
+        // Mark history stale without downloading it now; history screens re-read when opened or refreshed.
+        void qc.invalidateQueries({ queryKey: ["official", "audit", user?.id, op.orgId], refetchType: "none" });
       }
       const preserved = sessionRef.current;
       if (latestContext.current.scope === scope) {
@@ -311,14 +321,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch(e) { setSaveState("error"); setSaveMsg(op.confirmation ? "Gravação confirmada; atualização da tela pendente. Confira sem reenviar." : op.rejected ? "Envio recusado; pacote preservado para revisão." : "Resultado desconhecido; confira sem reenviar. Pacote e rascunho preservados."); throw e; }
     finally { inflight.current = false; }
   };
-  const saveOperation = async (op:ReviewedOperation, confirmedVersion?:number) => {
+  const saveOperation = async (op:ReviewedOperation, confirmedVersion?:number, resend=false) => {
     const run=async()=>{
       const stored=await loadDraft<ReviewedOperation>('operation:'+scope);
       if(stored && stored.requestId!==op.requestId)throw new Error('Outra aba tem uma operação em confirmação. Preenchimento preservado; confira essa operação antes de enviar.');
       const captured=stored ?? operationRef.current ?? op;
       if(definitiveRejection(captured) && confirmedVersion === undefined)throw new Error('Envio recusado. Consulte o resultado ou revise o conflito comprovado; nenhum reenvio.');
       if(stored && !stored.phase && !stored.confirmation)captured.phase='unknown';
-      try { await runSaveOperation(captured,confirmedVersion); }
+      try { await runSaveOperation(captured,confirmedVersion,resend); }
       finally { // Inform the originating form without modifying its immutable submitted payload.
         op.rejected=captured.rejected ?? false;
         if(captured.submittedAt)op.submittedAt=captured.submittedAt;
@@ -360,7 +370,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const result = op.confirmation ?? await bounded(checkRequest({ data: { orgId: op.orgId, requestId: op.requestId } }), 5000);
       if (!result) {
-        setSaveState('error'); setSaveMsg('A consulta não encontrou confirmação. Isso não comprova que o envio terminou ou não ocorreu. Consulte novamente mais tarde; pacote e rascunho mantidos, sem novo envio.'); return;
+        op.lastNotFoundAt = new Date().toISOString(); operationRef.current = op; setPendingOperation({ ...op }); await saveDraftLocal("operation:" + scope, op);
+        setSaveState('error'); setSaveMsg('A consulta não encontrou confirmação. Isso não comprova que o envio terminou ou não ocorreu. Você pode consultar de novo ou reenviar o MESMO pacote (mesma identificação): se ele já tiver sido gravado, o servidor apenas confirma, sem duplicar.'); return;
       }
       // The same original request is reconciled, never a new ID or an old snapshot.
       await saveOperation(op, result.version);
@@ -368,6 +379,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSaveState('error');
       setSaveMsg(op.confirmation ? 'Gravação confirmada; a atualização da tela falhou. Consulte novamente para atualizar sem reenviar.' : `Não foi possível consultar o resultado. Verifique a conexão ou entre novamente se o acesso expirou. ${(e as Error).message} Pacote e preenchimento preservados; nenhum novo envio.`);
     } finally { checkingRef.current = false; setConfirmationChecking(false); }
+  };
+
+  // Explicit user action only: same requestId + same immutable ops. Idempotence is enforced by the server
+  // pre-check and by commit_official (row lock, version check, unique request_id in audit).
+  const resendPendingOperation = async () => {
+    const op = operationRef.current;
+    if (!op) return;
+    const reason = confirmationBlockReason(op, { authenticated: !!user, authorized: official.status === 'ready' && op.orgId === official.orgId && op.scope === `${user?.id}:${official.orgId}` && active.isBase && canEdit, busy: inflight.current || checkingRef.current, online: typeof navigator === 'undefined' || navigator.onLine });
+    if (reason) { setSaveMsg(reason); return; }
+    if (op.confirmation || definitiveRejection(op) || !op.lastNotFoundAt || !op.ops.length || op.legacyUncertain) { setSaveMsg('Reenvio disponível somente após uma consulta sem confirmação de um pacote completo.'); return; }
+    try { await saveOperation(op, undefined, true); }
+    catch (e) { setSaveState('error'); setSaveMsg(`${(e as Error).message} Pacote e preenchimento preservados.`); }
   };
 
   // Global Save only captures a review. Submission shares the isolated authoritative path.
@@ -433,9 +456,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     createSim: (name) => { if (!baseData) return; const id = uid(); if (!scope) return; mutLocal((s) => { (s.sims[scope] ??= []).push({ id, name, createdAt: new Date().toISOString(), createdBy: user?.email ?? "", data: clone(baseData), baseVersion }); s.activeId = id; }); },
     discardSim: (id) => { if (!baseData) return; mutLocal((s) => { const x = scope ? s.sims[scope]?.find((i) => i.id === id) : null; if (x) { x.data = clone(baseData); x.baseVersion = baseVersion; } }); },
     deleteSim: (id) => mutLocal((s) => { const x = scope ? s.sims[scope]?.find((i) => i.id === id) : null; if (x) { x.deletedAt = new Date().toISOString(); x.deletedBy = user?.email ?? ""; } if (s.activeId === id) s.activeId = "base"; }),
-    audit: (auditQ.data ?? []).map((r) => ({ ...r, changes: JSON.parse(r.changesJson) as Change[] })),
+    requestAudit, resendPendingOperation,
+    auditHistory: { entries: auditEntries, status: auditQ.isError ? "error" : auditQ.data ? "ready" : auditDemand > 0 ? "loading" : "idle", error: auditQ.isError ? "Não foi possível carregar o histórico. Tente novamente." : "", refresh: () => { void auditQ.refetch(); } },
   };
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;
+}
+/** Requests audit history while `enabled`; nothing is downloaded when no screen needs it. */
+export function useAuditHistory(enabled = true): AuditHistory {
+  const c = useApp();
+  const { requestAudit } = c;
+  useEffect(() => (enabled ? requestAudit() : undefined), [enabled, requestAudit]);
+  return enabled ? c.auditHistory : { ...c.auditHistory, entries: [] };
 }
 export function useApp() {
   const c = useContext(AppCtx);

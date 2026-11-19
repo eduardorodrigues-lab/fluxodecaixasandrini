@@ -1,0 +1,25 @@
+import { it, expect } from 'vitest';
+import { demoData } from '../test/demoFixture';
+import { addSupplier, applyNote, generateParcels, saveSupplierCondition, type NoteDraft } from './notas';
+import { applyOps, diffData } from './diff';
+import { supplierOperation } from './supplierOperation';
+import { dependenciesMatch, isolateOperation } from './operationSave';
+import { normalizeTransition, normalizeData } from './engine/actions';
+import { produce } from 'immer';
+for (const stage of ['planned','committed'] as const) it('inline '+stage, () => {
+  const base = normalizeData(demoData());
+  const local = structuredClone(base); addSupplier(local,{id:'newsup',name:'NOVO FORNECEDOR XYZ',note:'',aliases:[]});
+  const sup = local.suppliers.find(s=>s.id==='newsup')!;
+  const cat = base.categories.find(c=>c.kind==='despesa')!;
+  const n: NoteDraft = { stage, kind:'despesa', categoryId:cat.id, supplierId:'newsup', purchaseCode:'P1', document:'NF 1', description:'x', total:100000, baseDate:'2026-11-19', parcels: generateParcels(100000,'2026-11-19',[30,60]).map((p,i)=>({...p,date:i?'2027-01-20':'2026-12-21'})), plannedNotes:[], plannedId:null, closeRest:false, localSuppliers:[sup], condition:{name:'Esp',terms:[30,60]} };
+  const at = new Date().toISOString();
+  const after = produce(base, x => { applyNote(x, n, { id: (()=>{let i=0;return ()=>'id'+(++i);})(), at }); saveSupplierCondition(x,'newsup',[30,60],at,'Esp','u'); });
+  const prepared = supplierOperation(base, after, [], []);
+  const op = { scope:'s', orgId:'o', requestId:'r', ops: prepared.ops, dependencies: prepared.dependencies };
+  isolateOperation(base, applyOps(base, op.ops, false).data, []);
+  expect(dependenciesMatch(base, op)).toBe(true);
+  const r = applyOps(base, op.ops, true); expect(r.conflicts).toEqual([]);
+  const next = normalizeTransition(r.data);
+  expect(next.suppliers.some(s=>s.id==='newsup')).toBe(true);
+  console.log(stage, op.ops.map(o=>o.entity+':'+o.kind), diffData(base,next).length);
+});

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { HistoryView } from "@/components/HistoryView";
 import { PageHeader } from "@/components/kit";
 import type { ScenarioData } from "@/lib/engine/types";
-import { useApp } from "@/lib/store";
+import { useApp, useAuditHistory } from "@/lib/store";
 
 export const Route = createFileRoute("/historico")({
   head: () => ({ meta: [
@@ -22,8 +22,10 @@ const ENTITY_KEY: Record<string, keyof ScenarioData> = {
 };
 
 function Page() {
-  const { audit, update, active, allSims: sims, base } = useApp();
+  const { update, active, allSims: sims, base } = useApp();
   const [tab, setTab] = useState("real");
+  const auditH = useAuditHistory(tab === "real");
+  const audit = auditH.entries;
   const restore = async (entity: string, before: unknown) => {
     const k = ENTITY_KEY[entity];
     if (!k) return;
@@ -52,6 +54,7 @@ function Page() {
           <tbody>{sims.map((s) => <tr key={s.id} className="cursor-pointer hover:bg-secondary" onClick={() => setSimId(s.id)}><td className="font-semibold">{s.name}</td><td>{s.createdBy || "—"}</td><td>{when(s.createdAt)}</td><td>{s.deletedAt ? <span className="tag tag-warn">Apagada em {when(s.deletedAt)}{s.deletedBy ? ` por ${s.deletedBy}` : ""}</span> : "Ativa"}</td><td className="num">{s.history?.length ?? 0}</td></tr>)}</tbody></table>
           : <p className="text-xs text-muted-foreground">Nenhuma simulação criada.</p>
       ) : <>
+      {tab === "real" && <div className="flex items-center gap-2 text-xs" role="status">{auditH.status === "loading" ? "Carregando histórico do fluxo real…" : auditH.status === "error" ? <span className="text-destructive">{auditH.error}</span> : "Últimas 200 confirmações."}<button className="btn" disabled={auditH.status === "loading"} onClick={auditH.refresh}>Atualizar histórico</button></div>}
       {sim && <div className="flex items-center gap-2 text-sm"><button className="btn" onClick={() => setSimId(null)}>← Voltar às simulações</button><b>Simulação: {sim.name}</b>{sim.deletedAt && <span className="tag tag-warn">Apagada</span>}</div>}
       <HistoryView entries={entries} data={tab === "real" ? base.data : sim?.data ?? base.data} scope={sim ? `Simulação: ${sim.name}` : "Fluxo real"}
         onRestore={tab === "real" && active.isBase ? (c) => ENTITY_KEY[c.entity] && restore(c.entity, c.before) : undefined} />

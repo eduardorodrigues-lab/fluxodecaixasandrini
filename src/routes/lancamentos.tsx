@@ -9,7 +9,7 @@ import { supplierIdentity } from "@/lib/supplierIdentity";
 import { ColumnFilter, columnTest, DetailReport, Pager, ReportSearch, SortHead, suggestFrom, useColumnFilter, usePager, useReportState, type FilterCol } from "@/components/ReportControls";
 import { dateValue, queryIndexedReport } from "@/lib/reportTable";
 import { Button } from "@/components/ui/button";
-import { askConfirm, askText, showMessage } from "@/lib/decisions";
+import { askConfirm, askText } from "@/lib/decisions";
 import { BaixasList, PagamentoPanel } from "@/components/BancoPanels";
 import { accountName, NO_ACCOUNT, registerPaymentBatch, coverTitleWithCard } from "@/lib/engine/banco";
 import { createFileRoute, Link } from "@tanstack/react-router";
@@ -23,7 +23,7 @@ import { closePlanned, confirmExtension, linkLegacyTitle, plannedSummary, reopen
 import type { CategoryKind, EditLog, ExtensionEvent, Planned, ScenarioData } from "@/lib/engine/types";
 import { addDays, fmtDate } from "@/lib/dates";
 import { fmtBRL } from "@/lib/money";
-import { uid, useApp } from "@/lib/store";
+import { uid, useApp, useAuditHistory } from "@/lib/store";
 import { adjustPlanned, applySuggestion, currentParcels, diffParcels, draftTotals, effectivateManual, initDraft, validateDraft, type EffLine, type RestLine, type Suggestion } from "@/lib/efetivacao";
 import { Consultas } from "@/components/Consultas";
 import { PlanVsActual } from "@/components/PlanVsActual";
@@ -63,10 +63,11 @@ type Panel =
   | { t: "prorrogar"; label: string; current: string | null; original: string | null; history: ExtensionEvent[]; save: (x: ScenarioData, to: string | null, note: string) => void }
   | { t: "eff"; id: string; mode: "parcela" | "documento" | "ajustar"; sel: string[] };
 
-/** Texto longo: largura limitada com reticências; clique mostra o conteúdo completo. */
+/** Texto longo: largura limitada com reticências; o conteúdo completo fica na dica (title).
+ *  Sem janela ao clicar: o clique na linha abre somente o lançamento (evita duas janelas sobrepostas). */
 function Txt({ v }: { v: string | null | undefined }) {
   if (!v) return <td>—</td>;
-  return <td className="txt" title={v} onClick={() => { if (v.length > 24) void showMessage(v); }}>{v}</td>;
+  return <td className="txt" title={v}>{v}</td>;
 }
 // Menu em portal (Radix): fora do overflow da tabela, ancorado ao botão, com colisão e rolagem só se necessário.
 function Acoes({ children }: { children: ReactNode }) {
@@ -93,7 +94,10 @@ const AmbiguousDocuments = memo(function AmbiguousDocuments({ d, groups, onManag
 
 function Page() {
   const target = Route.useSearch();
-  const { active, update, changes, user, audit, allSims, official } = useApp();
+  const { active, update, changes, user, allSims, official } = useApp();
+  const [auditDates, setAuditDates] = useState(false);
+  const auditH = useAuditHistory(active.isBase && auditDates);
+  const audit = auditH.entries;
   const operation = useOperationSave();
   const d = active.data;
   const tab = TABS.find((t) => t.k === target.tab)?.k ?? "planned";
@@ -174,6 +178,7 @@ function Page() {
       {tab === "payments" && <div className="filter-bar"><ReportSearch value={report.query} onChange={report.setQuery} count={paymentRows.length} /><ColumnFilter cols={PAYMENT_COLS} filter={cf} suggest={suggestions} /><Button variant="outline" size="sm" onClick={() => { report.setQuery(""); cf.clear(); }}>Limpar filtros</Button></div>}
       <div hidden={tab !== "consultas"}><CachedConsultas d={d} onManage={setManaged} /></div>
       {(pvaVisited || tab === "pva") && <div hidden={tab !== "pva"}><CachedPva key={`${official.orgId}:${active.id}`} d={d} /></div>}
+      {(tab === "planned" || tab === "committed") && active.isBase && auditH.status !== "ready" && <p className="mb-1 text-xs text-muted-foreground" role="status">Colunas de cadastro/alteração: {auditH.status === "loading" ? "carregando auditoria…" : auditH.status === "error" ? auditH.error : "datas do próprio registro (auditoria carregada sob demanda)."} {auditH.status === "idle" && <button className="underline" onClick={() => setAuditDates(true)}>Incluir datas da auditoria</button>}</p>}
       {tab === "committed" && <AmbiguousDocuments d={d} groups={model.groups} onManage={setManaged} />}
       {tab === "consultas" || tab === "pva" ? null : <div className="card overflow-auto launch-table">
         {tab === "planned" && (
@@ -265,12 +270,12 @@ function Page() {
       {tab !== "pva" && <p className="mt-2 text-[11px] text-muted-foreground">Registrar pagamento é o registro de uma baixa já realizada (Pix, TED, DOC ou Boleto) — não executa transferência bancária. Boleto pago com cartão não debita conta: passa para a fatura.</p>}
 
       {managed && <ManageLaunchPanel key={`${managed.kind}:${managed.id}`} launch={managed} onClose={() => setManaged(null)} />}
-      {panel?.t === "pay" && <PagamentoPanel d={d} kind={panel.kind} titleId={panel.id} label={panel.label} saving={operation.saving} saveError={operation.error} saveLabel={operation.saveLabel} onCancel={() => {if(!operation.saving){operation.reset();setPanel(null);}}} onConfirm={async (r) => { const ok = await operation.saveMutation(d,(x) => r.origin === "conta" ? registerPaymentBatch(x, { batchId: uid(), titleKind: panel.kind, titleId: panel.id, lines: r.lines, note: r.note, form: r.form }) : coverTitleWithCard(x, { id: uid(), at: now(), by: user?.email ?? "", titleKind: panel.kind, titleId: panel.id, cardId: r.cardId, date: r.date, amount: r.amount, fee: r.fee, installments: r.installments, form: "boleto" })); if (ok) setPanel(null); return ok; }} />}
-      {panel?.t === "new" && <NovaNota d={d} isBase={active.isBase} onManagePlanned={(id) => { setPanel(null); setManaged({ kind: "planned", id }); }} onCancel={() => {if(!operation.saving){operation.reset();setPanel(null);}}} saving={operation.saving} saveError={operation.error} saveLabel={active.isBase ? operation.saveLabel : undefined} onConfirm={(n, sv) => savePanel((x) => { applyNote(x, n, { id: uid, at: now() }); if (sv) saveSupplierCondition(x, n.supplierId, sv.terms, now(), sv.name, user?.email ?? ""); })} />}
-      {panel?.t === "parcela" && <ParcelaPanel saving={operation.saving} saveError={operation.error} saveLabel={active.isBase ? operation.saveLabel : undefined} label={panel.label} amount={panel.amount} date={panel.date} onCancel={() => {if(!operation.saving){operation.reset();setPanel(null);}}} onSave={(a, dt, note) => doPanel((x) => { panel.save(x, a, dt); const r = panel.log(x); if (r) (r.editLog ??= []).push({ at: now(), by: user?.email ?? "", note, parcel: panel.label, before: { amount: panel.amount, date: panel.date }, after: { amount: a, date: dt } }); })} />}
-      {panel?.t === "nota" && <DadosNotaPanel saving={operation.saving} saveError={operation.error} saveLabel={active.isBase ? operation.saveLabel : undefined} d={d} init={panel.init} siblings={panel.siblings} onCancel={() => {if(!operation.saving){operation.reset();setPanel(null);}}} onSave={(f) => doPanel((x) => panel.save(x, f))} />}
-      {panel?.t === "prorrogar" && <ProrrogarPanel saving={operation.saving} saveError={operation.error} saveLabel={active.isBase ? operation.saveLabel : undefined} label={panel.label} current={panel.current} original={panel.original} history={panel.history} isBase={active.isBase} onCancel={() => {if(!operation.saving){operation.reset();setPanel(null);}}} onSave={(to, note) => doPanel((x) => panel.save(x, to, note))} />}
-      {panel?.t === "eff" && (() => { const p = d.planned.find((x) => x.id === panel.id); return p ? <EfetivarPanel key={panel.mode + panel.sel.join()} data={d} planned={p} mode={panel.mode} preselect={panel.sel} saving={operation.saving} saveError={operation.error} saveLabel={active.isBase ? operation.saveLabel : undefined} onCancel={() => {if(!operation.saving){operation.reset();setPanel(null);}}} onDone={savePanel} /> : null; })()}
+      {panel?.t === "pay" && <PagamentoPanel d={d} kind={panel.kind} titleId={panel.id} label={panel.label} saving={operation.saving} saveError={operation.error} saveLabel={operation.saveLabel} onCancel={() => {operation.reset();setPanel(null);}} onConfirm={async (r) => { const ok = await operation.saveMutation(d,(x) => r.origin === "conta" ? registerPaymentBatch(x, { batchId: uid(), titleKind: panel.kind, titleId: panel.id, lines: r.lines, note: r.note, form: r.form }) : coverTitleWithCard(x, { id: uid(), at: now(), by: user?.email ?? "", titleKind: panel.kind, titleId: panel.id, cardId: r.cardId, date: r.date, amount: r.amount, fee: r.fee, installments: r.installments, form: "boleto" })); if (ok) setPanel(null); return ok; }} />}
+      {panel?.t === "new" && <NovaNota d={d} isBase={active.isBase} onManagePlanned={(id) => { setPanel(null); setManaged({ kind: "planned", id }); }} onCancel={() => {operation.reset();setPanel(null);}} saving={operation.saving} saveError={operation.error} saveLabel={active.isBase ? operation.saveLabel : undefined} onConfirm={(n, sv) => savePanel((x) => { applyNote(x, n, { id: uid, at: now() }); if (sv) saveSupplierCondition(x, n.supplierId, sv.terms, now(), sv.name, user?.email ?? ""); })} />}
+      {panel?.t === "parcela" && <ParcelaPanel saving={operation.saving} saveError={operation.error} saveLabel={active.isBase ? operation.saveLabel : undefined} label={panel.label} amount={panel.amount} date={panel.date} onCancel={() => {operation.reset();setPanel(null);}} onSave={(a, dt, note) => doPanel((x) => { panel.save(x, a, dt); const r = panel.log(x); if (r) (r.editLog ??= []).push({ at: now(), by: user?.email ?? "", note, parcel: panel.label, before: { amount: panel.amount, date: panel.date }, after: { amount: a, date: dt } }); })} />}
+      {panel?.t === "nota" && <DadosNotaPanel saving={operation.saving} saveError={operation.error} saveLabel={active.isBase ? operation.saveLabel : undefined} d={d} init={panel.init} siblings={panel.siblings} onCancel={() => {operation.reset();setPanel(null);}} onSave={(f) => doPanel((x) => panel.save(x, f))} />}
+      {panel?.t === "prorrogar" && <ProrrogarPanel saving={operation.saving} saveError={operation.error} saveLabel={active.isBase ? operation.saveLabel : undefined} label={panel.label} current={panel.current} original={panel.original} history={panel.history} isBase={active.isBase} onCancel={() => {operation.reset();setPanel(null);}} onSave={(to, note) => doPanel((x) => panel.save(x, to, note))} />}
+      {panel?.t === "eff" && (() => { const p = d.planned.find((x) => x.id === panel.id); return p ? <EfetivarPanel key={panel.mode + panel.sel.join()} data={d} planned={p} mode={panel.mode} preselect={panel.sel} saving={operation.saving} saveError={operation.error} saveLabel={active.isBase ? operation.saveLabel : undefined} onCancel={() => {operation.reset();setPanel(null);}} onDone={savePanel} /> : null; })()}
     </div>
   );
 }
