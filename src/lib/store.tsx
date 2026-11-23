@@ -18,6 +18,8 @@ import { bounded, pollConfirmation, confirmSubmission, type OperationPhase } fro
 import { operationReview } from './operationReview';
 import { confirmationBlockReason, definitiveRejection } from './recoveryActions';
 import { measureSavePhase } from './saveTiming';
+import { prepareRejectedRetry } from './rejectedRetry';
+import { askConfirm } from './decisions';
 setAutoFreeze(false);
 // Rascunho do fluxo real = lista de alterações (antes/depois por registro); a tela aplica sobre a base atual.
 interface OpsSession { scope: string; baseVersion: number; requestId: string; ops: Change[]; legacyRequestIds?: string[] | undefined; submissionModel?: 'reviewed' }
@@ -305,7 +307,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           op.rejected=true;
           op.conflicts=conflicts; op.phase='conflict';
           operationRef.current=op; setPendingOperation({...op}); await saveDraftLocal("operation:"+scope,op);
-          throw new Error('Outra pessoa alterou informações deste pacote. Nada foi sobrescrito. Preenchimento preservado; confira o pacote e libere para comparar antes de nova revisão.');
+          void qc.invalidateQueries({ queryKey: ["official", user?.id] });
+          throw new Error('Outra pessoa salvou ao mesmo tempo. Nada foi gravado nem sobrescrito. Clique em Confirmar e salvar novamente para enviar sobre a versão atual.');
         }
         op.rejected=true; await phase('failed');
         throw new Error(r.status === "forbidden" ? "Sem permissão para salvar. Nenhuma gravação." : "Envio recusado por concorrência. Nada foi gravado; libere o pacote para nova revisão.");
@@ -362,8 +365,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
   const saveOperation = async (op:ReviewedOperation, confirmedVersion?:number, resend=false) => {
     const run=async()=>{
-      const stored=await loadDraft<ReviewedOperation>('operation:'+scope);
-      if(stored && stored.requestId!==op.requestId)throw new Error('Outra aba tem uma operação em confirmação. Preenchimento preservado; confira essa operação antes de enviar.');
+      let stored=await loadDraft<ReviewedOperation>('operation:'+scope);
+      const rejected=stored && definitiveRejection(stored) ? stored : definitiveRejection(op) ? op : null;
+      if(rejected && confirmedVersion===undefined && !resend && !inflight.current) {
+        // Certain non-write (conflict/failed): rebase the same changes on the CURRENT official version with a new requestId.
+        // A fresh form capture (different requestId, not rejected) is the user's latest intent and wins over the old packet.
+        const source=!definitiveRejection(op) && op.requestId!==rejected.requestId ? op : rejected;
+        const fresh=await bounded(fetchOfficial({data:{orgId:op.orgId}}));
+        const key=["official",user?.id,op.orgId]; const cached=qc.getQueryData<OfficialCache>(key);
+        if(!cached || cached.version<fresh.version) qc.setQueryData(key,fresh);
+        const current=normalizeData(JSON.parse(fresh.dataJson));
+        const retry=prepareRejectedRetry(current,source,uuid());
+        if(retry.conflicts.length) throw new Error(`Outra pessoa alterou o mesmo registro (${retry.conflicts.map(c=>c.change.entity).join(', ')}). Nada foi sobrescrito; use Revisar conflito na barra superior para escolher qual versão manter.`);
+        if(retry.changedDependencies.length && !await askConfirm(`Enquanto você editava, outra pessoa alterou dados relacionados: ${retry.changedDependencies.join('; ')}. Suas alterações serão enviadas sobre a versão atual, sem desfazer o que foi salvo pela outra pessoa.`,{title:'Salvar sobre a versão atual?',action:'Salvar sobre a versão atual'})) throw new Error('Envio não confirmado. Preenchimento preservado.');
+        await saveDraftLocal('operation-archive:'+scope+':'+rejected.requestId,rejected);
+        await clearDraftLocal('operation:'+scope);
+        operationRef.current=null; setPendingOperation(null);
+        for(const k of ['rejected','conflicts','phase','submittedAt','resentAt','lastNotFoundAt','legacyUncertain','rebased','confirmation','reviewRows'] as const) delete op[k];
+        Object.assign(op,retry.op);
+        stored=undefined;
+      }
+      if(stored && stored.requestId!==op.requestId){
+        throw new Error(`Um envio anterior deste navegador (código ${stored.requestId.slice(0,8)}) ainda aguarda conferência. Use Consultar resultado na barra superior; nada foi perdido.`);
+      }
       const captured=stored ?? operationRef.current ?? op;
       if(definitiveRejection(captured) && confirmedVersion === undefined)throw new Error('Envio recusado. Consulte o resultado ou revise o conflito comprovado; nenhum reenvio.');
       if(stored && !stored.phase && !stored.confirmation)captured.phase='unknown';
