@@ -3,7 +3,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { normalizeData } from "./engine/actions";
 import { diffData, summarize, type Change } from "./diff";
 import type { ScenarioData } from "./engine/types";
-import { pickOrg, SHARED_ORG_ID } from "./team";
+import { canCommitRole, pickOrg, SHARED_ORG_ID } from "./team";
 import { type ReviewedOperation } from './operationSave';
 import { NORMALIZATION_REVISION } from './commitReceipt';
 import { prepareCommit, settleAfterRecheck } from './commitCore';
@@ -118,7 +118,7 @@ export const commitOps = createServerFn({ method: "POST" })
   })
   .handler(async ({ data: input, context }) => {
     const m = await myOrg(context.supabase, context.userId, input.orgId);
-    if (m.role !== "owner" && m.role !== "editor") return { status: "forbidden" as const, version: -1, conflictsJson: "[]" };
+    if (!canCommitRole(m.role)) return { status: "forbidden" as const, version: -1, conflictsJson: "[]" };
     const done = await auditedRequest(context.supabase, m.org_id, input.requestId);
     if (done) return { status: "duplicate" as const, version: done.version_to, conflictsJson: "[]" };
     let ops: Change[];
@@ -130,7 +130,7 @@ export const commitOps = createServerFn({ method: "POST" })
     // re-reads and re-validates the same request a bounded number of times. Uncertain outcomes are never retried here.
     for (let attempt = 0; ; attempt++) {
       const cur = await readOfficialDoc(m.org_id);
-      const prepared = await prepareCommit(cur.data, m.org_id, input.requestId, ops, dependencies);
+      const prepared = await prepareCommit(cur.data, m.org_id, input.requestId, ops, dependencies, email ?? '');
       // A concurrent copy of this same request may have committed meanwhile: re-check before reporting conflict/noop.
       if (prepared.status === "conflict") return settleAfterRecheck({ status: "conflict" as const, version: cur.version, conflictsJson: encodeLargeJson(prepared.conflictsJson), receipt: undefined }, await auditedRequest(context.supabase, m.org_id, input.requestId));
       if (prepared.status === "noop") return settleAfterRecheck({ status: "noop" as const, version: cur.version, conflictsJson: "[]", receipt: undefined }, await auditedRequest(context.supabase, m.org_id, input.requestId));

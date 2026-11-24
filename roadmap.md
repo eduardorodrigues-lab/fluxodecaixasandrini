@@ -258,3 +258,5 @@ Pendências externas: gravação oficial do XLSM (login de Eduardo + organizaç�
 - [x] Fornecedores: editar/cadastrar no mesmo card; cadastro completo dentro do lançamento; mapeamento v229 rev2 com backup verificado
 - [ ] Unificação real de fornecedores — aguarda aprovação do mapeamento rev2 por Eduardo
 - [ ] Itens 2 e 3 (salvamento/desempenho no banco) — aguardam aprovação da proposta de banco
+
+- [x] Unificação manual de fornecedores pelo sistema (seleção por ID, revisão, validação no servidor) — sem união real executada

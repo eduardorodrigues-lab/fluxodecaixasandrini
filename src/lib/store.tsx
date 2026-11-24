@@ -1,3 +1,4 @@
+import { resolveSimulationRedirects } from "./manualMerge";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { defaultFlowPeriod } from "./dates";
 import { produce, setAutoFreeze } from "immer";
@@ -173,7 +174,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const sim = sims.find((s) => s.id === local.activeId) ?? null;
   const emptyBase = useMemo(() => normalizeData({}), []);
   const base: Scenario = { id: "base", name: official.orgName || "Real", isBase: true, data: baseData ?? emptyBase };
-  const active: Scenario = sim ? { id: sim.id, name: sim.name, isBase: false, data: sim.data ?? base.data } : { ...base, data: draft ?? base.data };
+  // Simulações antigas: vínculos de fornecedores incorporados na base oficial desta organização resolvem para o principal (só leitura em memória).
+  const simData = useMemo(() => { const x = sim?.data; if (!x || !baseData || !baseData.suppliers.some((s) => s.mergedInto)) return x; return produce(x, (dr) => { resolveSimulationRedirects(dr, baseData); }); }, [sim?.data, baseData]);
+  const active: Scenario = sim ? { id: sim.id, name: sim.name, isBase: false, data: simData ?? base.data } : { ...base, data: draft ?? base.data };
   const canEdit = official.status === "ready" && (!!sim || canWrite(official.role));
   const changes = cur?.ops ?? [];
 

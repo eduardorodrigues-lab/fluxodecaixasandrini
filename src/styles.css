@@ -389,3 +389,9 @@
 .sup-cond-on { background: color-mix(in oklab, var(--primary) 6%, var(--card)); border-color: color-mix(in oklab, var(--primary) 30%, var(--border)); }
 .sup-cond-icon { display: grid; place-items: center; width: 2.75rem; height: 2.75rem; border-radius: .7rem; background: color-mix(in oklab, var(--primary) 10%, var(--card)); color: var(--primary); }
 .sup-cond-icon-sim { background: color-mix(in oklab, var(--accent-foreground) 10%, var(--card)); color: var(--accent-foreground); }
+.sup-pickbar{padding:.75rem 1rem}
+.sup-chip{display:inline-flex;align-items:center;gap:.35rem;border:1px solid var(--border);border-radius:999px;padding:.15rem .5rem;font-size:.8rem;background:var(--card)}
+.merge-panel section{border-top:1px solid var(--border);padding-top:.75rem;margin-top:.75rem}
+.merge-panel h3{font-weight:600;margin-bottom:.4rem;display:flex;align-items:center;gap:.4rem}
+.merge-panel table{width:100%;font-size:.85rem}
+.merge-panel th,.merge-panel td{padding:.3rem .4rem;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}

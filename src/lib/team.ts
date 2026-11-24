@@ -31,3 +31,6 @@ export const ACCEPT_MSG: Record<string, string> = {
   ok: "Convite aceito.", revoked: "Convite revogado.", used: "Convite já utilizado.", expired: "Convite expirado.",
   email_mismatch: "Este convite é para outro e-mail. Entre com a conta do e-mail convidado.", not_found: "Convite inexistente.", already_member: "Você já é membro desta organização.",
 };
+
+/** Gravação oficial (inclui unificação de fornecedores): somente proprietário/editor; leitor nunca. */
+export const canCommitRole = (role: string | null | undefined) => role === 'owner' || role === 'editor';

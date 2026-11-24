@@ -369,3 +369,10 @@ Notas do rascunho aparecem em painéis laterais com rolagem horizontal; cada not
 - Visualizar, editar e cadastrar acontecem no mesmo card do diretório; dentro do lançamento o cadastro completo abre logo abaixo do campo Fornecedor e só grava junto com o lançamento.
 - CNPJ, razão social e código de origem (sempre com a fonte) são opcionais; nada é inventado. Cada condição tem nome e prazos; sem data de início fica "sem vigência" e não vira padrão.
 - Unificação (ainda não executada): troca só o fornecedor dos registros; condições incorporadas entram sem vigência; razão social e instruções de pagamento (FIDC, PIX, TED) nunca viram condição; conflitos de prazos são expostos sem escolher ganhador; reversão desfaz só o que a unificação fez.
+
+## Unificação manual de fornecedores (2026-11-24)
+- Seleção por checkbox de IDs exatos na lista de Cadastros; "selecionar página" marca só as linhas visíveis; seleção fora do filtro é avisada. Nunca há inclusão por nome/apelido nem transitiva.
+- Revisão no próprio card: principal (mantém ID), nome comercial final, incorporados→principal, antes/depois, conflitos (CNPJ diferente exige escolha; razão social/código da mesma origem divergentes exigem confirmação), todas as condições (copiadas sem vigência; padrão anterior decidido explicitamente), vínculos por entidade, resumo financeiro antes=depois, despesas sem vínculo como pendência, justificativa.
+- Gravação: confirmação única via commitOps; o servidor recalcula a unificação sobre a base atual (`validateMergeOps`) e recusa payload manipulado, usuário divergente ou vínculos/fornecedores alterados desde a revisão, sem gravação parcial. Trilha em `mergedFrom[].manual`; reversão (`revertManualMerge`) desfaz só a trilha.
+- Simulações antigas resolvem vínculos de incorporados para o principal apenas em memória.
+- Pendente: nenhuma unificação real executada; os 47 grupos do mapeamento seguem sem aprovação.

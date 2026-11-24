@@ -3,6 +3,7 @@ import { normalizeData, normalizeTransition } from './engine/actions';
 import type { ScenarioData } from './engine/types';
 import { dependenciesMatch, type ReviewedOperation } from './operationSave';
 import { patchDigest } from './commitReceipt';
+import { validateMergeOps } from './manualMerge';
 
 export type PreparedCommit =
   | { status: 'conflict'; conflictsJson: string }
@@ -10,8 +11,10 @@ export type PreparedCommit =
   | { status: 'ready'; next: ScenarioData; applied: Change[]; summary: string; changesJson: string; digest: string };
 
 /** Pure server step of commitOps: same validation for production and fixtures; never touches the database. */
-export async function prepareCommit(current: unknown, orgId: string, requestId: string, ops: Change[], dependencies?: ReviewedOperation['dependencies']): Promise<PreparedCommit> {
+export async function prepareCommit(current: unknown, orgId: string, requestId: string, ops: Change[], dependencies?: ReviewedOperation['dependencies'], actor: string | null = null): Promise<PreparedCommit> {
   const base = normalizeData(current);
+  const mergeError = validateMergeOps(base, ops, actor);
+  if (mergeError) return { status: 'conflict', conflictsJson: JSON.stringify(ops.slice(0, 1).map(change => ({ change, server: mergeError }))) };
   if (dependencies) {
     if (!Array.isArray(dependencies)) throw new Error('Dependências inválidas.');
     if (!dependenciesMatch(base, { scope: '', orgId, requestId, ops, dependencies })) {

@@ -15,6 +15,7 @@ import { FornecedorManager, type Operation } from "@/components/FornecedorManage
 import { SupplierCreateCard } from "@/components/SupplierForm";
 import { createSupplierFull, emptySupplierInput, type SupplierInput } from "@/lib/fornecedores";
 import { SupplierDirectory } from "@/components/SupplierDirectory";
+import { SupplierMergePanel } from "@/components/SupplierMergePanel";
 import { useOperationSave } from '@/components/useOperationSave';
 import { useFormDraft } from '@/components/useFormDraft';
 
@@ -40,6 +41,8 @@ function Page() {
   const [condOf, setCondOf] = useState<string | null>(null);
   const [condOp, setCondOp] = useState<Operation | undefined>(undefined);
   const [newSup, setNewSup] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]); const [merging, setMerging] = useState(false);
+  const canMerge = canEdit && active.isBase;
   const today = todaySP();
   const [tab, setTab] = useState("fornecedores");
   return (
@@ -50,8 +53,9 @@ function Page() {
         <Button variant={tab === "fornecedores" ? "default" : "outline"} onClick={() => setTab("fornecedores")}>Fornecedores</Button>
         <Button variant={tab === "categorias" ? "default" : "outline"} onClick={() => setTab("categorias")}>Categorias e subgrupos</Button>
       </div>
-      {tab === "fornecedores" && <SupplierDirectory d={d} today={today} canEdit={canEdit} onNew={() => { setCondOf(null); setNewSup(true); }} onOpen={(id, op) => { setNewSup(false); setCondOp(op); setCondOf(id); }}
-        editor={newSup ? <NewSupplier recordId={supplierId} onDone={(id) => { setNewSup(false); if (id) { setCondOf(null); const next = uid(); setSupplierId(next); try { sessionStorage.setItem('fluxo:new-supplier-id', next); } catch { /* sem armazenamento */ } } }} />
+      {tab === "fornecedores" && <SupplierDirectory d={d} today={today} canEdit={canEdit} onNew={() => { setMerging(false); setCondOf(null); setNewSup(true); }} onOpen={(id, op) => { setMerging(false); setNewSup(false); setCondOp(op); setCondOf(id); }}
+        picked={canMerge ? picked : []} {...(canMerge ? { onPick: setPicked, onMerge: () => { setNewSup(false); setCondOf(null); setMerging(true); } } : {})}
+        editor={merging ? <SupplierMergePanel key={picked.join(",")} ids={picked} onClose={() => setMerging(false)} onDone={(id) => { setMerging(false); setPicked([]); setCondOf(id); setCondOp(undefined); }} /> : newSup ? <NewSupplier recordId={supplierId} onDone={(id) => { setNewSup(false); if (id) { setCondOf(null); const next = uid(); setSupplierId(next); try { sessionStorage.setItem('fluxo:new-supplier-id', next); } catch { /* sem armazenamento */ } } }} />
           : condOf ? <FornecedorManager inline key={`${condOf}-${condOp?.kind ?? ""}-${condOp?.id ?? ""}`} supplierId={condOf} initialOp={condOp} onClose={() => { setCondOf(null); setCondOp(undefined); }} /> : undefined} />}
       {tab === "categorias" && <div>
         <section className="min-w-0 overflow-auto p-3">
