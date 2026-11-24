@@ -21,22 +21,24 @@ function Actions({ label = "Ações", children }: { label?: string; children: Re
   return <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm"><MoreHorizontal className="size-4" />{label}</Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="z-[60]">{children}</DropdownMenuContent></DropdownMenu>;
 }
 const dt = (at: string) => at ? new Date(at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "—";
-type Operation = { kind: "new" | "edit" | "activate" | "cancel" | "period" | "delete" | "inativar" | "reativar" | "excluir"; id?: string; index?: number };
+export type Operation = { kind: "new" | "edit" | "activate" | "cancel" | "period" | "delete" | "inativar" | "reativar" | "excluir"; id?: string; index?: number };
 
-export function FornecedorManager({ supplierId, onClose }: { supplierId: string; onClose: () => void }) {
+export function FornecedorManager({ supplierId, onClose, initialOp }: { supplierId: string; onClose: () => void; initialOp?: Operation | undefined }) {
   const { active, official, user, canEdit } = useApp();
   const saving = useOperationSave();
   const d = active.data;
   const s = d.suppliers.find((x) => x.id === supplierId);
-  const [tab, setTab] = useState("dados");
+  const tab: string = "dados";
   const [expanded, setExpanded] = useState<string | null>(null);
   const [name, setName] = useState(s?.name ?? "");
   const [aliases, setAliases] = useState(s?.aliases?.join("\n") ?? "");
   const [note, setNote] = useState(s?.note ?? "");
+  const [legalName, setLegalName] = useState(s?.legalName ?? ""); const [cnpj, setCnpj] = useState(s?.cnpj ?? "");
   const [review, setReview] = useState(false);
-  const [op, setOp] = useState<Operation | null>(null);
-  const [cn, setCn] = useState(""); const [cnote, setCnote] = useState("");
-  const [terms, setTerms] = useState<(number | null)[]>([null]);
+  const [op, setOp] = useState<Operation | null>(initialOp ?? null);
+  const initCond = initialOp?.id ? s?.conditions?.find((c) => c.id === initialOp.id) ?? (s ? (s.conditions ?? []).length ? undefined : { name: "Condição original", terms: [...s.terms], note: "" } : undefined) : undefined;
+  const [cn, setCn] = useState(initCond?.name ?? ""); const [cnote, setCnote] = useState(initCond?.note ?? "");
+  const [terms, setTerms] = useState<(number | null)[]>(initCond ? [...initCond.terms] : [null]);
   const [from, setFrom] = useState<string | null>(todaySP());
   const [reason, setReason] = useState(""); const [replacement, setReplacement] = useState(""); const [ack, setAck] = useState(false);
   const [error, setError] = useState("");
@@ -53,7 +55,7 @@ export function FornecedorManager({ supplierId, onClose }: { supplierId: string;
     const at = new Date().toISOString(); const by = user?.email ?? "";
     const before=originalSupplier ? {...d,suppliers:d.suppliers.map(s=>s.id===supplierId?originalSupplier:s)} : d;
     const ok = await saving.saveMutation(before, (x) => {
-      if (!op) { editSupplier(x, supplierId, { name, aliases: aliases.split("\n").map((v) => v.trim()).filter(Boolean), note }); return; }
+      if (!op) { editSupplier(x, supplierId, { name, aliases: aliases.split("\n").map((v) => v.trim()).filter(Boolean), note, legalName, cnpj }); return; }
       if (op.kind === "new") addSupplierCondition(x, supplierId, { name: cn, terms, note: cnote, from }, at, by, today);
       else if (op.kind === "activate" && op.id && from) reactivateCondition(x, supplierId, op.id, from, at, by, today);
       else if (op.kind === "inativar" || op.kind === "reativar") setSupplierActivity(x, supplierId, op.kind === "reativar", from ?? "", at, by);
@@ -68,7 +70,7 @@ export function FornecedorManager({ supplierId, onClose }: { supplierId: string;
   const valid = op ? draft ? !!cn.trim() && terms.some((v) => v !== null) && terms.every((v) => v === null || Number.isInteger(v) && v >= 0) && (op.kind !== "new" || !!from) : cancelling ? !!reason.trim() && (!impact.length || ack) : ["activate", "inativar", "reativar"].includes(op.kind) ? !!from : true : !invalidSupplierName(name);
   const title = !op ? "Dados do fornecedor" : ({ new: "Nova condição", edit: "Editar condição", activate: "Usar como vigente", cancel: "Cancelar condição", period: "Cancelar ativação de vigência", delete: "Excluir condição", inativar: "Inativar fornecedor", reativar: "Reativar fornecedor", excluir: "Excluir fornecedor" }[op.kind]);
   const editing = !!op || tab === "dados";
-  const dirty = !!op || name !== s.name || aliases !== (s.aliases ?? []).join("\n") || note !== (s.note ?? "");
+  const dirty = !!op || name !== s.name || aliases !== (s.aliases ?? []).join("\n") || note !== (s.note ?? "") || legalName !== (s.legalName ?? "") || cnpj !== (s.cnpj ?? "");
   // Immediate when clean; keep/discard/continue when edited; closing during a save keeps it tracked (never cancels/resends).
   const close = async () => {
     if(saving.protected){protection.flush();onClose();return;}
@@ -85,11 +87,11 @@ export function FornecedorManager({ supplierId, onClose }: { supplierId: string;
   </>}>
     <div className="min-w-0 space-y-4 break-words [overflow-wrap:anywhere]">
       {protection.recovered && <p role="status">Preenchimento recuperado; revise novamente antes de salvar.</p>}{protection.warning && <p role="alert" className="text-destructive">{protection.warning}</p>}
-      {!op && <div role="tablist" className="grid grid-cols-2 gap-1 border-b border-border pb-2">{[["dados", "Dados do fornecedor"], ["condicoes", "Condições de pagamento"]].map(([id, label]) => <Button key={id} role="tab" aria-selected={tab === id} variant={tab === id ? "default" : "outline"} className="h-auto min-h-9 whitespace-normal" onClick={() => { setTab(id ?? "dados"); setReview(false); setError(""); }}>{label}</Button>)}</div>}
-      {(op || tab === "dados") && <>
+            {(op || tab === "dados") && <>
         <h3 className="text-sm font-semibold">{review ? `Revisar: ${title}` : title}</h3>
-        {!op ? review ? <div className="space-y-2">{name!==originalSupplier?.name && <p>Nome: {originalSupplier?.name || "Não informado"} → {name}</p>}{aliases!==(originalSupplier?.aliases??[]).join("\n") && <p>Apelidos: {originalSupplier?.aliases?.join("; ") || "Não informado"} → {aliases || "Não informado"}</p>}{note!==(originalSupplier?.note??"") && <p>Observação: {originalSupplier?.note || "Não informado"} → {note || "Não informado"}</p>}</div> : <>
+        {!op ? review ? <div className="space-y-2">{name!==originalSupplier?.name && <p>Nome: {originalSupplier?.name || "Não informado"} → {name}</p>}{aliases!==(originalSupplier?.aliases??[]).join("\n") && <p>Apelidos: {originalSupplier?.aliases?.join("; ") || "Não informado"} → {aliases || "Não informado"}</p>}{legalName!==(originalSupplier?.legalName??"") && <p>Razão social: {originalSupplier?.legalName || "Não informado"} → {legalName || "Não informado"}</p>}{cnpj!==(originalSupplier?.cnpj??"") && <p>CNPJ: {originalSupplier?.cnpj || "Não informado"} → {cnpj || "Não informado"}</p>}{note!==(originalSupplier?.note??"") && <p>Observação: {originalSupplier?.note || "Não informado"} → {note || "Não informado"}</p>}</div> : <>
           <Field l="Nome *"><input className="inp w-full" value={name} onChange={(e) => setName(e.target.value)} /></Field>
+          <div className="grid gap-3 sm:grid-cols-2"><Field l="Razão social"><input className="inp w-full" value={legalName} placeholder="Não informada" onChange={(e) => setLegalName(e.target.value)} /></Field><Field l="CNPJ"><input className="inp w-full" value={cnpj} placeholder="Não informado" inputMode="numeric" onChange={(e) => setCnpj(e.target.value)} /></Field></div>
           <Field l="Apelidos (um por linha)"><textarea className="inp min-h-20 w-full" value={aliases} onChange={(e) => setAliases(e.target.value)} /></Field>
           <Field l="Observação"><textarea className="inp min-h-20 w-full" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
           <Actions label="Outras ações"><DropdownMenuItem onSelect={() => start({ kind: supplierActive(s, today) ? "inativar" : "reativar" })}>{supplierActive(s, today) ? "Inativar" : "Reativar"}</DropdownMenuItem><DropdownMenuItem onSelect={() => start({ kind: "excluir" })}>Excluir fornecedor</DropdownMenuItem></Actions>
@@ -106,7 +108,7 @@ export function FornecedorManager({ supplierId, onClose }: { supplierId: string;
           {op.kind === "excluir" && <p>{supplierLinks(d, supplierId).length ? `Exclusão bloqueada: possui ${supplierLinks(d, supplierId).join(", ")}.` : "Confirmar exclusão deste fornecedor sem vínculos?"}</p>}
         </>}
       </>}
-      {!op && tab === "condicoes" && <>
+      {!op && !review && <>
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2"><h3 className="min-w-0 font-semibold">Condições ({list.length})</h3><Button size="sm" onClick={() => start({ kind: "new" })}>Nova condição</Button></div>
         {list.map((c) => <section key={c.id} className="space-y-2 border-b border-border py-3">
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2"><div className="min-w-0"><Button variant="ghost" size="sm" className="h-auto max-w-full justify-start whitespace-normal px-0 text-left" onClick={() => setExpanded(expanded === c.id ? null : c.id)}>{expanded === c.id ? <ChevronDown className="size-4 shrink-0" /> : <ChevronRight className="size-4 shrink-0" />}{c.name}</Button><p>{termsLabel(c.terms).replaceAll("/", " / ")} dias</p>{splitOrigin(c.note).text && <p className="text-muted-foreground">{splitOrigin(c.note).text}</p>}{c.cancelled ? <span className="text-destructive">Cancelada</span> : cur?.id === c.id && <span className="tag tag-ok">Vigente</span>}</div>

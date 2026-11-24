@@ -359,3 +359,8 @@ Notas do rascunho aparecem em painéis laterais com rolagem horizontal; cada not
 - Título cancelado: obrigação vigente e saldo em aberto = 0; valor original permanece no registro/histórico (`titleStatus.original`/`cancelledValue`). Pagamentos ativos não são apagados; o alerta PAG_CANCELADO pede estorno/crédito explícito.
 - Consultas mostram "Obrigação vigente" e, separadamente, "Cancelado (valor original)".
 - Fluxo abre na segunda-feira da semana vigente em America/Sao_Paulo até o fim do mês seguinte; período escolhido pelo usuário não é sobrescrito durante o uso.
+
+## Unificação de fornecedores (preparada, NÃO aplicada — aguarda aprovação do mapeamento)
+- `src/lib/supplierUnification.ts`: `proposeUnification` (somente leitura) agrupa por nome comercial exato, razão social do mapeamento informado por Eduardo (com/sem código, maiúsc./acentos ignorados) e variantes de condição com o prefixo do nome. Semelhança por prefixo, colisão (UZ3), CNPJ divergente e vigência sem ano ⇒ pendente de revisão.
+- `applyMerge` (pura, idempotente por requestId) só troca `supplierId` dos lançamentos, incorpora condições com tipo (padrão/vigência/especial/simulação; especial e simulação nunca padrão) e marca incorporados com `mergedInto` + apelido; `revertMerge` restaura pela trilha. `resolveSupplier` segue o redirecionamento.
+- Cadastro: lista à esquerda + card único (dados e condições juntos). Estado da condição vem da vigência real, não do nome.

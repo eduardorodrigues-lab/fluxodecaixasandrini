@@ -11,7 +11,8 @@ import { askCloseDraft } from "@/lib/decisions";
 import { Button } from "@/components/ui/button";
 import { supplierActive } from "@/lib/fornecedores";
 import type { Supplier } from "@/lib/engine/types";
-import { FornecedorManager } from "@/components/FornecedorManager";
+import { FornecedorManager, type Operation } from "@/components/FornecedorManager";
+import { SupplierDirectory } from "@/components/SupplierDirectory";
 import { useOperationSave } from '@/components/useOperationSave';
 import { useFormDraft } from '@/components/useFormDraft';
 
@@ -30,45 +31,26 @@ export const Route = createFileRoute("/referencias")({
 });
 
 function Page() {
-  const { active, update } = useApp();
+  const { active, update, canEdit } = useApp();
   const saving = useOperationSave();
   const [supplierId, setSupplierId] = useState(()=>{try {const key='fluxo:new-supplier-id';const id=sessionStorage.getItem(key)??uid();sessionStorage.setItem(key,id);return id;}catch{return uid();}});
   const d = active.data;
   const [condOf, setCondOf] = useState<string | null>(null);
+  const [condOp, setCondOp] = useState<Operation | undefined>(undefined);
   const [newSup, setNewSup] = useState(false);
-  const [statusFilter, setStatusFilter] = useState("ativos");
-  const [search, setSearch] = useState("");
   const today = todaySP();
   const [tab, setTab] = useState("fornecedores");
-  const visibleSuppliers = d.suppliers.filter((s) => (statusFilter === "todos" || supplierActive(s, today) === (statusFilter === "ativos")) && [s.name, ...(s.aliases ?? [])].some((name) => normalizeSupplierName(name).includes(normalizeSupplierName(search))));
   return (
     <div className="space-y-3">
       {newSup && <FornecedorPanel recordId={supplierId} saving={saving.saving} saveLabel={saving.saving || saving.retrying ? saving.saveLabel : undefined} onCancel={() => {if(saving.reset())setNewSup(false);}} onSave={async (f) => { const ok=await saving.saveMutation(d,x=>addSupplier(x,{id:supplierId,...f})); if(ok){setNewSup(false);setCondOf(supplierId);const id=uid();setSupplierId(id);try{sessionStorage.setItem('fluxo:new-supplier-id',id);}catch{/* local apenas */}} return ok ? null : "Confirmação não concluída. Preenchimento preservado; tente novamente."; }} />}
       {saving.error && <p role="alert" className="text-destructive">{saving.error}</p>}
-      {condOf && <FornecedorManager key={condOf} supplierId={condOf} onClose={() => setCondOf(null)} />}
+      {condOf && <FornecedorManager key={`${condOf}-${condOp?.kind ?? ""}-${condOp?.id ?? ""}`} supplierId={condOf} initialOp={condOp} onClose={() => { setCondOf(null); setCondOp(undefined); }} />}
       <PageHeader title="Cadastros" />
       <div className="flex flex-wrap gap-2 border-b border-border pb-2">
         <Button variant={tab === "fornecedores" ? "default" : "outline"} onClick={() => setTab("fornecedores")}>Fornecedores</Button>
         <Button variant={tab === "categorias" ? "default" : "outline"} onClick={() => setTab("categorias")}>Categorias e subgrupos</Button>
       </div>
-      {tab === "fornecedores" && (
-      <section className="min-w-0 p-3">
-        <div className="mb-2 flex justify-between"><span className="lbl">Fornecedores</span><Button variant="outline" size="sm" onClick={() => setNewSup(true)}>+ Fornecedor</Button></div>
-        {d.suppliers.some((s) => invalidSupplierName(s.name)) && <p className="mb-2 text-destructive">{d.suppliers.filter((s) => invalidSupplierName(s.name)).length} fornecedor(es) sem nome válido ("Novo fornecedor" ou vazio) — abra para corrigir. Nada é excluído automaticamente.</p>}
-        <label className="mb-2 flex items-center gap-2 text-xs">Buscar fornecedor<input aria-label="Buscar fornecedor" className="inp" value={search} onChange={(e) => setSearch(e.target.value)} /></label>
-        <label className="mb-2 flex items-center gap-2 text-xs">Situação<select className="inp" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option value="ativos">Ativos</option><option value="inativos">Inativos</option><option value="todos">Todos</option></select></label>
-        <table className="tbl table-fixed [&_td]:whitespace-normal [&_td]:break-words [&_th]:whitespace-normal"><thead><tr><th className="w-[30%]">Fornecedor</th><th className="w-[16%]">Situação</th><th>Condição vigente</th><th className="w-24">Ações</th></tr></thead>
-          <tbody>{visibleSuppliers.map((s) => { const c = currentCondition(s, today); const active = supplierActive(s, today); return (
-            <tr key={s.id}>
-              <td>{invalidSupplierName(s.name) ? "Corrigir nome" : s.name}{!!s.aliases?.length && <div className="text-muted-foreground">{s.aliases.join("; ")}</div>}</td>
-              <td>{active ? "Ativo" : "Inativo"}</td>
-              <td>{c ? `${c.name} · ${termsLabel(c.terms).replaceAll("/", " / ")} dias` : "Sem condição padrão"}<div className="text-muted-foreground">{supplierConditions(s).length} condição(ões)</div></td>
-              <td><Button variant="outline" size="sm" onClick={() => setCondOf(s.id)}>Gerenciar</Button></td>
-            </tr>); })}
-            {!visibleSuppliers.length && <tr><td colSpan={4} className="text-center text-muted-foreground">Nenhum fornecedor nesta situação.</td></tr>}</tbody></table>
-      </section>
-
-      )}
+      {tab === "fornecedores" && <SupplierDirectory d={d} today={today} canEdit={canEdit} onNew={() => setNewSup(true)} onOpen={(id, op) => { setCondOp(op); setCondOf(id); }} />}
       {tab === "categorias" && <div>
         <section className="min-w-0 overflow-auto p-3">
           <div className="mb-2 flex justify-between"><span className="lbl">Categorias e subgrupos</span><Button variant="outline" size="sm" onClick={() => update((x) => { x.categories.push({ id: uid(), name: "Novo subgrupo", kind: "despesa", group: "" }); })}>+ Subgrupo</Button></div>

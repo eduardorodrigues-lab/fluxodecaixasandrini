@@ -13,11 +13,18 @@ export function validateSupplierNames(d: ScenarioData, id: string, name: string,
   const other = d.suppliers.find((s) => s.id !== id && supplierNames(s).some((n) => names.includes(normalizeSupplierName(n))));
   if (other) throw new Error(`Nome ou apelido já associado ao fornecedor "${other.name}". Os cadastros não serão unidos.`);
 }
-export function editSupplier(d: ScenarioData, id: string, f: { name: string; aliases: string[]; note: string }) {
+export function editSupplier(d: ScenarioData, id: string, f: { name: string; aliases: string[]; note: string; legalName?: string; cnpj?: string }) {
   const s = d.suppliers.find((x) => x.id === id);
   if (!s) throw new Error("Fornecedor não encontrado.");
   validateSupplierNames(d, id, f.name, f.aliases);
   Object.assign(s, { name: f.name.trim(), aliases: f.aliases.map((n) => n.trim()), note: f.note.trim() });
+  if (f.legalName !== undefined) { if (f.legalName.trim()) s.legalName = f.legalName.trim(); else delete s.legalName; }
+  if (f.cnpj !== undefined) {
+    const digits = f.cnpj.replace(/\D/g, "");
+    if (digits && digits.length !== 14) throw new Error("CNPJ deve ter 14 dígitos.");
+    if (digits && d.suppliers.some((o) => o.id !== id && !o.mergedInto && o.cnpj?.replace(/\D/g, "") === digits)) throw new Error("CNPJ já cadastrado em outro fornecedor. Os cadastros não serão unidos.");
+    if (digits) s.cnpj = digits; else delete s.cnpj;
+  }
 }
 export function setSupplierActivity(d: ScenarioData, id: string, active: boolean, from: string, at: string, by: string) {
   const s = d.suppliers.find((x) => x.id === id);
@@ -39,7 +46,10 @@ export function deleteSupplier(d: ScenarioData, id: string) {
   d.suppliers = d.suppliers.filter((s) => s.id !== id);
 }
 export function resolveSupplier(d: ScenarioData, name: string, date?: string) {
-  return d.suppliers.find((s) => (!date || supplierActive(s, date)) && supplierNames(s).some((n) => normalizeSupplierName(n) === normalizeSupplierName(name)));
+  // Incorporados (mergedInto) reconhecem o nome antigo e redirecionam ao principal.
+  const hit = d.suppliers.find((s) => s.mergedInto && supplierNames(s).some((n) => normalizeSupplierName(n) === normalizeSupplierName(name)));
+  if (hit) { let cur = hit; for (let i = 0; i < 10 && cur.mergedInto; i++) { const nx = d.suppliers.find((x) => x.id === cur.mergedInto); if (!nx) break; cur = nx; } return cur; }
+  return d.suppliers.find((s) => !s.mergedInto && (!date || supplierActive(s, date)) && supplierNames(s).some((n) => normalizeSupplierName(n) === normalizeSupplierName(name)));
 }
 
 /** Busca de fornecedores por nome principal e apelidos, ignorando maiúsculas e acentos.
@@ -47,6 +57,7 @@ export function resolveSupplier(d: ScenarioData, name: string, date?: string) {
 export function filterSuppliers(d: ScenarioData, query: string, opts: { includeInactive?: boolean; date?: string | undefined } = {}): Supplier[] {
   const q = normalizeSupplierName(query);
   return d.suppliers
+    .filter((s) => !s.mergedInto)
     .filter((s) => opts.includeInactive || !opts.date || supplierActive(s, opts.date))
     .filter((s) => !q || supplierNames(s).some((n) => normalizeSupplierName(n).includes(q)))
     .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
