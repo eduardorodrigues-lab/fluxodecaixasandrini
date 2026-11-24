@@ -1,5 +1,13 @@
 # Fluxo de Caixa Sandrini — Regras, schema e critérios de aceite (NÃO homologado)
 
+## Lançamentos: listagem única — 24/11/2026 (substitui somente as duas abas de etapas)
+- Planejada e Efetivado tornam-se uma listagem de parcelas com primeira coluna de dados **Etapa**: Planejamento/Efetivação. Checkbox pode preceder; Categoria continua Compra/Despesa, situação e pagamento continuam dimensões distintas.
+- Etapa: Todos por padrão, Planejamento ou Efetivação. Busca, fornecedor, categoria/subgrupo, datas, colunas, ordenação, paginação e CSV usam o mesmo conjunto completo filtrado; Etapa abre o CSV. Caminhos antigos `tab=planned/committed` mantêm o filtro equivalente; Pagamentos (baixas), Consultas e Planejado × Efetivado continuam próprios.
+- Consulta derivada do mesmo `createLaunchPresentation`: remanescente de parcelas já abatidas pelo motor, fontes e centavos/zero intactos. Sem mesclar fontes, converter etapas, mudar IDs/parcelas/vencimentos/prorrogações/baixas, ou alterar o Fluxo.
+- Totais separados: remanescente planejado; obrigação vigente, pago e aberto de efetivação; valores registrados de efetivação incluem originais cancelados, explicitamente históricos. Nunca chamar soma de previsões originais + efetivações vinculadas de obrigação líquida. Planejamento sem distribuição informa valor indisponível, não zero confirmado.
+- Gerenciar encaminha pelo tipo real da fonte e pela chave da parcela. Seleção por página inclui somente Efetivação; planejadas ficam inelegíveis e o escopo é explicado. Seleção fora do filtro permanece identificada; validação da seleção recusa fontes erradas/inexistentes antes de abrir o lote. As regras de lote, pagamentos e revisão de registros existentes permanecem.
+- Novo lançamento mantém tipo no formulário e Salvar direto para inclusões independentes; sem nova confirmação. Nenhuma escrita oficial, migração ou publicação nesta alteração.
+
 ## Inclusão direta autorizada — 24/11/2026 (prevalece sobre os fluxos históricos abaixo)
 - Novos lançamentos independentes, Planejada/Efetivado e Compra/Despesa: preencher → **Salvar** → confirmação real do servidor. Sem tela de revisão da inclusão, checkbox de conferência ou segunda confirmação; sem autosave.
 - Fornecedor/condições criados dentro da inclusão ficam locais e são dependências do mesmo pacote atômico. Cadastros fora da inclusão e alterações em registros existentes mantêm revisão. Efetivação vinculada, cancelamento, lote, unificação, pagamentos/estornos e adição de parcelas a documento salvo não são inclusões independentes.

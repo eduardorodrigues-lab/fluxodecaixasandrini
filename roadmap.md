@@ -1,5 +1,10 @@
 # Roadmap
 
+## Listagem única de Lançamentos — autorizado 24/11/2026
+- [x] Consulta única das parcelas, Etapa/filtros/CSV/ordenação/paginação comuns e caminhos antigos equivalentes
+- [x] Remanescente, origem das ações, revisão/salvamento e seleção em massa só de efetivação preservados
+- [x] 515 testes aprovados (6 opcionais ignorados); 8 grupos navegador desktop/celular e 17 verificações de inclusão direta sintética. Sem escrita oficial; permissões hospedadas/escrita real não ensaiadas.
+
 ## Novas inclusões — Salvar direto autorizado 24/11/2026
 - [x] Inclusão independente direta com validação, identidade estável e pacote atômico; revisões existentes preservadas
 - [x] 506 testes aprovados (6 opcionais ignorados); 18 fluxos de navegador sintético, incluindo celular e recuperação. Sem gravações oficiais ou publicação; confirmação hospedada real não testada.
