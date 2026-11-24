@@ -7,6 +7,7 @@ import { pickOrg, SHARED_ORG_ID } from "./team";
 import { type ReviewedOperation } from './operationSave';
 import { NORMALIZATION_REVISION } from './commitReceipt';
 import { prepareCommit, settleAfterRecheck } from './commitCore';
+import { encodeAudit } from './auditTransport';
 
 // Base OFICIAL compartilhada: leitura sob RLS do próprio usuário; gravação apenas via servidor
 // (verifica papel, versão esperada, idempotência e grava auditoria antes/depois).
@@ -56,7 +57,7 @@ export const listAudit = createServerFn({ method: "GET" })
     const admin = await adminRead();
     const { data, error } = await admin.from("audit_log").select("id, at, user_email, version_from, version_to, summary, changes").eq("org_id", m.org_id).order("at", { ascending: false }).limit(200);
     if (error) { console.error("sandrini.audit.read", { code: error.code }); throw new Error("Falha ao ler auditoria."); }
-    return (data ?? []).map((r) => ({ id: r.id, at: r.at, user_email: r.user_email, version_from: r.version_from, version_to: r.version_to, summary: r.summary, changesJson: JSON.stringify(r.changes) }));
+    return encodeAudit(data ?? []);
   });
 
 // Read-only reconciliation for legacy global drafts; absence never authorizes a write itself.

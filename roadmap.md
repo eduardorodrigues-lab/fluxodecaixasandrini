@@ -1,5 +1,9 @@
 # Roadmap
 
+## History response 500 — authorized 24/11/2026
+- [x] Diagnose serialization-size limit and compress the complete read-only audit projection without changing financial data/access
+- [x] 440 tests passed (6 optional candidate tests skipped), compilation OK; real signed-in history loaded/refreshed/reloaded with three HTTP 200 responses (~2.16 MB), 24,889 rows and no runtime errors; no writes/publishing
+
 ## Notas parceladas importadas — autorizado 24/11/2026
 - [x] Normalização derivada por origem/fornecedor/documento; reconhecer 2409A1/A2/A3 sem mutação financeira
 - [x] 59 testes focados/436 regressões aprovados; candidato local intacto em 2.191 dias; compilação OK; navegador fictício lista/Gerenciar

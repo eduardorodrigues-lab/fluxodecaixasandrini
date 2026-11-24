@@ -20,6 +20,7 @@ import { confirmationBlockReason, definitiveRejection } from './recoveryActions'
 import { measureSavePhase } from './saveTiming';
 import { prepareRejectedRetry } from './rejectedRetry';
 import { askConfirm } from './decisions';
+import { decodeAudit } from './auditTransport';
 setAutoFreeze(false);
 // Rascunho do fluxo real = lista de alterações (antes/depois por registro); a tela aplica sobre a base atual.
 interface OpsSession { scope: string; baseVersion: number; requestId: string; ops: Change[]; legacyRequestIds?: string[] | undefined; submissionModel?: 'reviewed' }
@@ -143,9 +144,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const offQ = useQuery({ queryKey: ["official", user?.id, selOrg], queryFn: () => fetchOfficial({ data: { orgId: selOrg } }), enabled: hydrated && !!user && !!selOrg, staleTime: 30_000, refetchOnWindowFocus: false, structuralSharing: false });
   const [auditDemand, setAuditDemand] = useState(0);
   const requestAudit = useCallback(() => { setAuditDemand(n => n + 1); return () => setAuditDemand(n => Math.max(0, n - 1)); }, []);
-  const auditQ = useQuery({ queryKey: ["official", "audit", user?.id, selOrg], queryFn: () => fetchAudit({ data: { orgId: selOrg } }), enabled: hydrated && !!user && !!selOrg && auditDemand > 0, staleTime: 5 * 60_000, refetchOnWindowFocus: false });
-  // Parse once per response — never on every provider render.
-  const auditEntries = useMemo(() => (auditQ.data ?? []).map((r) => ({ ...r, changes: JSON.parse(r.changesJson) as Change[] })), [auditQ.data]);
+  const auditQ = useQuery({ queryKey: ["official", "audit", user?.id, selOrg], queryFn: async () => decodeAudit(await fetchAudit({ data: { orgId: selOrg } })), enabled: hydrated && !!user && !!selOrg && auditDemand > 0, staleTime: 5 * 60_000, refetchOnWindowFocus: false });
+  // Decode once in the query: transport errors stay in its retry/error state.
+  const auditEntries = auditQ.data ?? [];
   type OfficialCache = Awaited<ReturnType<typeof fetchOfficial>> & { normalizedData?: ScenarioData };
   const offData = useMemo(() => (offQ.data ? (offQ.data as OfficialCache).normalizedData ?? (offQ.data.normalization === NORMALIZATION_REVISION ? JSON.parse(offQ.data.dataJson) as ScenarioData : normalizeData(JSON.parse(offQ.data.dataJson))) : null), [offQ.data]);
 
