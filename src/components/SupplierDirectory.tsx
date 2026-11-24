@@ -32,7 +32,7 @@ function CondIcon({ s, c, today }: { s: Supplier; c: SupplierCondition; today: s
 }
 const codeOf = (s: Supplier) => s.sourceCodes?.map((c) => c.code).join(", ") || [s.name, s.legalName ?? "", ...(s.aliases ?? [])].map((n) => splitCode(n).code).find(Boolean) || null;
 
-export function SupplierDirectory({ d, today, canEdit, onOpen, onNew }: { d: ScenarioData; today: string; canEdit: boolean; onOpen: (id: string, op?: Operation) => void; onNew: () => void }) {
+export function SupplierDirectory({ d, today, canEdit, onOpen, onNew, editor }: { d: ScenarioData; today: string; canEdit: boolean; onOpen: (id: string, op?: Operation) => void; onNew: () => void; editor?: React.ReactNode }) {
   const [search, setSearch] = useState(""); const [status, setStatus] = useState("ativos");
   const [page, setPage] = useState(0); const [size, setSize] = useState(10); const [sel, setSel] = useState<string | null>(null);
   const list = useMemo(() => d.suppliers.filter((s) => !s.mergedInto)
@@ -60,7 +60,7 @@ export function SupplierDirectory({ d, today, canEdit, onOpen, onNew }: { d: Sce
               <td><Pill tone={act ? "ok" : "muted"}>{act ? "Ativo" : "Inativo"}</Pill></td>
               <td>{c ? days(c.terms) : <span className="text-muted-foreground">Sem condição padrão</span>}</td>
               <td className="text-center"><span className="sup-count">{supplierConditions(x).length}</span></td>
-              <td className="text-center"><Button variant="outline" size="icon" aria-label={`Editar ${x.name}`} onClick={(e) => { e.stopPropagation(); setSel(x.id); onOpen(x.id); }}><Pencil className="size-4" /></Button></td>
+              <td className="text-center">{canEdit && <Button variant="outline" size="icon" aria-label={`Editar ${x.name}`} onClick={(e) => { e.stopPropagation(); setSel(x.id); onOpen(x.id); }}><Pencil className="size-4" /></Button>}</td>
             </tr>); })}
             {!rows.length && <tr><td colSpan={5} className="text-center text-muted-foreground">Nenhum fornecedor encontrado.</td></tr>}</tbody></table>
       </div>
@@ -69,7 +69,7 @@ export function SupplierDirectory({ d, today, canEdit, onOpen, onNew }: { d: Sce
         <div className="flex gap-1"><Button variant="outline" size="icon" aria-label="Primeira" disabled={pg === 0} onClick={() => setPage(0)}><ChevronsLeft className="size-4" /></Button><Button variant="outline" size="icon" aria-label="Anterior" disabled={pg === 0} onClick={() => setPage(pg - 1)}><ChevronLeft className="size-4" /></Button><span className="sup-count self-center">{pg + 1}/{pages}</span><Button variant="outline" size="icon" aria-label="Próxima" disabled={pg >= pages - 1} onClick={() => setPage(pg + 1)}><ChevronRight className="size-4" /></Button><Button variant="outline" size="icon" aria-label="Última" disabled={pg >= pages - 1} onClick={() => setPage(pages - 1)}><ChevronsRight className="size-4" /></Button></div>
       </div>
     </section>
-    {s && <SupplierCard s={s} today={today} canEdit={canEdit} onOpen={onOpen} />}
+    {editor ?? (s && <SupplierCard s={s} today={today} canEdit={canEdit} onOpen={onOpen} />)}
   </div>;
 }
 

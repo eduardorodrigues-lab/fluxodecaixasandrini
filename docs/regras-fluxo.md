@@ -364,3 +364,8 @@ Notas do rascunho aparecem em painéis laterais com rolagem horizontal; cada not
 - `src/lib/supplierUnification.ts`: `proposeUnification` (somente leitura) agrupa por nome comercial exato, razão social do mapeamento informado por Eduardo (com/sem código, maiúsc./acentos ignorados) e variantes de condição com o prefixo do nome. Semelhança por prefixo, colisão (UZ3), CNPJ divergente e vigência sem ano ⇒ pendente de revisão.
 - `applyMerge` (pura, idempotente por requestId) só troca `supplierId` dos lançamentos, incorpora condições com tipo (padrão/vigência/especial/simulação; especial e simulação nunca padrão) e marca incorporados com `mergedInto` + apelido; `revertMerge` restaura pela trilha. `resolveSupplier` segue o redirecionamento.
 - Cadastro: lista à esquerda + card único (dados e condições juntos). Estado da condição vem da vigência real, não do nome.
+
+## Fornecedores — cadastro único e unificação (24/11/2026)
+- Visualizar, editar e cadastrar acontecem no mesmo card do diretório; dentro do lançamento o cadastro completo abre logo abaixo do campo Fornecedor e só grava junto com o lançamento.
+- CNPJ, razão social e código de origem (sempre com a fonte) são opcionais; nada é inventado. Cada condição tem nome e prazos; sem data de início fica "sem vigência" e não vira padrão.
+- Unificação (ainda não executada): troca só o fornecedor dos registros; condições incorporadas entram sem vigência; razão social e instruções de pagamento (FIDC, PIX, TED) nunca viram condição; conflitos de prazos são expostos sem escolher ganhador; reversão desfaz só o que a unificação fez.

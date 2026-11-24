@@ -12,7 +12,7 @@ import { useOperationSave } from './useOperationSave';
 import { useFormDraft } from './useFormDraft';
 import { addSupplierCondition, condPeriods, currentCondition, invalidSupplierName, reactivateCondition, supplierConditions } from "@/lib/notas";
 import { changeCondition, conditionImpact } from "@/lib/condicoes";
-import { deleteSupplier, editSupplier, setSupplierActivity, supplierActive, supplierLinks } from "@/lib/fornecedores";
+import { deleteSupplier, editSupplier, setSupplierSourceCode, setSupplierActivity, supplierActive, supplierLinks } from "@/lib/fornecedores";
 import { todaySP } from "@/lib/engine/actions";
 import { fmtDate } from "@/lib/dates";
 import type { SupplierCondition } from "@/lib/engine/types";
@@ -23,7 +23,15 @@ function Actions({ label = "Ações", children }: { label?: string; children: Re
 const dt = (at: string) => at ? new Date(at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "—";
 export type Operation = { kind: "new" | "edit" | "activate" | "cancel" | "period" | "delete" | "inativar" | "reativar" | "excluir"; id?: string; index?: number };
 
-export function FornecedorManager({ supplierId, onClose, initialOp }: { supplierId: string; onClose: () => void; initialOp?: Operation | undefined }) {
+/** Recipiente no próprio card do diretório (sem painel lateral nem fundo escurecido). */
+function InlineCard({ title, sub, onClose, footer, children }: { title: string; sub?: string; onClose: () => void; footer?: React.ReactNode; children: React.ReactNode; centered?: boolean; dirty?: boolean }) {
+  return <section className="sup-card sup-detail min-w-0" aria-label={title}>
+    <header className="sup-head"><div className="min-w-0 flex-1"><h2 className="sup-title">{title}</h2>{sub && <p className="text-sm text-muted-foreground">{sub}</p>}</div><Button variant="ghost" size="icon" aria-label="Fechar" onClick={onClose}>×</Button></header>
+    <div className="text-sm">{children}</div>
+    {footer && <footer className="flex flex-wrap justify-end gap-2 border-t border-border pt-3">{footer}</footer>}
+  </section>;
+}
+export function FornecedorManager({ supplierId, onClose, initialOp, inline = false }: { supplierId: string; onClose: () => void; initialOp?: Operation | undefined; inline?: boolean }) {
   const { active, official, user, canEdit } = useApp();
   const saving = useOperationSave();
   const d = active.data;
@@ -34,6 +42,7 @@ export function FornecedorManager({ supplierId, onClose, initialOp }: { supplier
   const [aliases, setAliases] = useState(s?.aliases?.join("\n") ?? "");
   const [note, setNote] = useState(s?.note ?? "");
   const [legalName, setLegalName] = useState(s?.legalName ?? ""); const [cnpj, setCnpj] = useState(s?.cnpj ?? "");
+  const src0 = s?.sourceCodes?.[0]; const [codeSource, setCodeSource] = useState(src0?.source ?? ""); const [code, setCode] = useState(src0?.code ?? "");
   const [review, setReview] = useState(false);
   const [op, setOp] = useState<Operation | null>(initialOp ?? null);
   const initCond = initialOp?.id ? s?.conditions?.find((c) => c.id === initialOp.id) ?? (s ? (s.conditions ?? []).length ? undefined : { name: "Condição original", terms: [...s.terms], note: "" } : undefined) : undefined;
@@ -55,7 +64,7 @@ export function FornecedorManager({ supplierId, onClose, initialOp }: { supplier
     const at = new Date().toISOString(); const by = user?.email ?? "";
     const before=originalSupplier ? {...d,suppliers:d.suppliers.map(s=>s.id===supplierId?originalSupplier:s)} : d;
     const ok = await saving.saveMutation(before, (x) => {
-      if (!op) { editSupplier(x, supplierId, { name, aliases: aliases.split("\n").map((v) => v.trim()).filter(Boolean), note, legalName, cnpj }); return; }
+      if (!op) { editSupplier(x, supplierId, { name, aliases: aliases.split("\n").map((v) => v.trim()).filter(Boolean), note, legalName, cnpj }); if (codeSource !== (src0?.source ?? "") || code !== (src0?.code ?? "")) { if (src0 && codeSource !== src0.source) setSupplierSourceCode(x, supplierId, src0.source, ""); setSupplierSourceCode(x, supplierId, codeSource, code); } return; }
       if (op.kind === "new") addSupplierCondition(x, supplierId, { name: cn, terms, note: cnote, from }, at, by, today);
       else if (op.kind === "activate" && op.id && from) reactivateCondition(x, supplierId, op.id, from, at, by, today);
       else if (op.kind === "inativar" || op.kind === "reativar") setSupplierActivity(x, supplierId, op.kind === "reativar", from ?? "", at, by);
@@ -70,7 +79,7 @@ export function FornecedorManager({ supplierId, onClose, initialOp }: { supplier
   const valid = op ? draft ? !!cn.trim() && terms.some((v) => v !== null) && terms.every((v) => v === null || Number.isInteger(v) && v >= 0) && (op.kind !== "new" || !!from) : cancelling ? !!reason.trim() && (!impact.length || ack) : ["activate", "inativar", "reativar"].includes(op.kind) ? !!from : true : !invalidSupplierName(name);
   const title = !op ? "Dados do fornecedor" : ({ new: "Nova condição", edit: "Editar condição", activate: "Usar como vigente", cancel: "Cancelar condição", period: "Cancelar ativação de vigência", delete: "Excluir condição", inativar: "Inativar fornecedor", reativar: "Reativar fornecedor", excluir: "Excluir fornecedor" }[op.kind]);
   const editing = !!op || tab === "dados";
-  const dirty = !!op || name !== s.name || aliases !== (s.aliases ?? []).join("\n") || note !== (s.note ?? "") || legalName !== (s.legalName ?? "") || cnpj !== (s.cnpj ?? "");
+  const dirty = !!op || name !== s.name || aliases !== (s.aliases ?? []).join("\n") || note !== (s.note ?? "") || legalName !== (s.legalName ?? "") || cnpj !== (s.cnpj ?? "") || codeSource !== (src0?.source ?? "") || code !== (src0?.code ?? "");
   // Immediate when clean; keep/discard/continue when edited; closing during a save keeps it tracked (never cancels/resends).
   const close = async () => {
     if(saving.protected){protection.flush();onClose();return;}
@@ -81,7 +90,8 @@ export function FornecedorManager({ supplierId, onClose, initialOp }: { supplier
   };
   const destructive = !!op && ["delete", "excluir", "cancel", "period", "inativar"].includes(op.kind);
   const action = !op ? "Salvar fornecedor" : draft ? "Salvar condição" : title;
-  return <SidePanel centered={review} title={review ? `${action}?` : "Gerenciar fornecedor"} sub={s.name} onClose={()=>void close()} dirty={false} footer={<>
+  const Wrap = inline ? InlineCard : SidePanel;
+  return <Wrap centered={review} title={review ? `${action}?` : "Gerenciar fornecedor"} sub={s.name} onClose={()=>void close()} dirty={false} footer={<>
     {review ? <Button variant="outline" disabled={saving.saving} onClick={() => {if(saving.reset())setReview(false);}}>Cancelar</Button> : editing && op ? <Button variant="outline" onClick={guardClose(dirty, () => { setOp(null); setError(""); })}>Cancelar edição</Button> : <Button variant="outline" onClick={close}>Fechar</Button>}
     {editing && <Button variant={review && destructive ? "destructive" : "default"} disabled={!valid || !canEdit || saving.saving} onClick={() => review ? void saveChanges() : setReview(true)}>{saving.saving || review && saving.retrying ? saving.saveLabel : review ? action : "Revisar e confirmar"}</Button>}
   </>}>
@@ -89,9 +99,10 @@ export function FornecedorManager({ supplierId, onClose, initialOp }: { supplier
       {protection.recovered && <p role="status">Preenchimento recuperado; revise novamente antes de salvar.</p>}{protection.warning && <p role="alert" className="text-destructive">{protection.warning}</p>}
             {(op || tab === "dados") && <>
         <h3 className="text-sm font-semibold">{review ? `Revisar: ${title}` : title}</h3>
-        {!op ? review ? <div className="space-y-2">{name!==originalSupplier?.name && <p>Nome: {originalSupplier?.name || "Não informado"} → {name}</p>}{aliases!==(originalSupplier?.aliases??[]).join("\n") && <p>Apelidos: {originalSupplier?.aliases?.join("; ") || "Não informado"} → {aliases || "Não informado"}</p>}{legalName!==(originalSupplier?.legalName??"") && <p>Razão social: {originalSupplier?.legalName || "Não informado"} → {legalName || "Não informado"}</p>}{cnpj!==(originalSupplier?.cnpj??"") && <p>CNPJ: {originalSupplier?.cnpj || "Não informado"} → {cnpj || "Não informado"}</p>}{note!==(originalSupplier?.note??"") && <p>Observação: {originalSupplier?.note || "Não informado"} → {note || "Não informado"}</p>}</div> : <>
+        {!op ? review ? <div className="space-y-2">{name!==originalSupplier?.name && <p>Nome: {originalSupplier?.name || "Não informado"} → {name}</p>}{aliases!==(originalSupplier?.aliases??[]).join("\n") && <p>Apelidos: {originalSupplier?.aliases?.join("; ") || "Não informado"} → {aliases || "Não informado"}</p>}{legalName!==(originalSupplier?.legalName??"") && <p>Razão social: {originalSupplier?.legalName || "Não informado"} → {legalName || "Não informado"}</p>}{cnpj!==(originalSupplier?.cnpj??"") && <p>CNPJ: {originalSupplier?.cnpj || "Não informado"} → {cnpj || "Não informado"}</p>}{(code!==(src0?.code??"")||codeSource!==(src0?.source??"")) && <p>Código de origem: {src0 ? `${src0.source}: ${src0.code}` : "Não informado"} → {code ? `${codeSource}: ${code}` : "Não informado"}</p>}{note!==(originalSupplier?.note??"") && <p>Observação: {originalSupplier?.note || "Não informado"} → {note || "Não informado"}</p>}</div> : <>
           <Field l="Nome *"><input className="inp w-full" value={name} onChange={(e) => setName(e.target.value)} /></Field>
           <div className="grid gap-3 sm:grid-cols-2"><Field l="Razão social"><input className="inp w-full" value={legalName} placeholder="Não informada" onChange={(e) => setLegalName(e.target.value)} /></Field><Field l="CNPJ"><input className="inp w-full" value={cnpj} placeholder="Não informado" inputMode="numeric" onChange={(e) => setCnpj(e.target.value)} /></Field></div>
+          <div className="grid gap-3 sm:grid-cols-2"><Field l="Origem do código"><input className="inp w-full" aria-label="Origem do código" value={codeSource} placeholder="Ex.: FLUXO xlsm" onChange={(e) => setCodeSource(e.target.value)} /></Field><Field l="Código de origem"><input className="inp w-full" aria-label="Código de origem" value={code} placeholder="Não informado" onChange={(e) => setCode(e.target.value)} /></Field></div>
           <Field l="Apelidos (um por linha)"><textarea className="inp min-h-20 w-full" value={aliases} onChange={(e) => setAliases(e.target.value)} /></Field>
           <Field l="Observação"><textarea className="inp min-h-20 w-full" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
           <Actions label="Outras ações"><DropdownMenuItem onSelect={() => start({ kind: supplierActive(s, today) ? "inativar" : "reativar" })}>{supplierActive(s, today) ? "Inativar" : "Reativar"}</DropdownMenuItem><DropdownMenuItem onSelect={() => start({ kind: "excluir" })}>Excluir fornecedor</DropdownMenuItem></Actions>
@@ -125,5 +136,5 @@ export function FornecedorManager({ supplierId, onClose, initialOp }: { supplier
       </>}
       {saving.error && <p role="alert" className="text-destructive">{saving.error}</p>}{error && <p role="status">{error}</p>}
     </div>
-  </SidePanel>;
+  </Wrap>;
 }

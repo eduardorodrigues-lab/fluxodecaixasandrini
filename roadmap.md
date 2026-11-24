@@ -255,3 +255,6 @@ Pendências externas: gravação oficial do XLSM (login de Eduardo + organizaç�
 - [ ] Classificação definitiva: 165 linhas/98 descrições sem finalidade comprovada; propostas específicas no CSV, não aprovadas silenciosamente
 - [ ] Quarentena: planejada166 sem valor e despesa3786 zero sem data; conservar no manifesto até evidência suficiente
 - [ ] Corte posterior: horário de pausa, backup da versão no corte e restauração isolada verificada; não autorizado nesta etapa
+- [x] Fornecedores: editar/cadastrar no mesmo card; cadastro completo dentro do lançamento; mapeamento v229 rev2 com backup verificado
+- [ ] Unificação real de fornecedores — aguarda aprovação do mapeamento rev2 por Eduardo
+- [ ] Itens 2 e 3 (salvamento/desempenho no banco) — aguardam aprovação da proposta de banco

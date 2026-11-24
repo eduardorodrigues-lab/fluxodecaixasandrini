@@ -1,3 +1,7 @@
+import { SupplierCreateCard } from "./SupplierForm";
+import { buildSupplier, emptySupplierInput, type SupplierInput } from "@/lib/fornecedores";
+import { requestDecision } from "@/lib/decisions";
+const askDiscardSupplier = async () => (await requestDecision({ title: "Descartar cadastro do fornecedor?", message: "O lançamento continua preenchido; apenas este cadastro em preenchimento será descartado.", action: "Descartar cadastro", destructive: true, cancelLabel: "Continuar editando" })) !== null;
 import { ArrowLeftRight, Calculator, Check, Coins, CreditCard, FileText, Info, Link2, ListChecks, Plus, SlidersHorizontal, Tags, Trash2 } from "lucide-react";
 import { SupplierSummary } from "./SupplierSummary";
 import { splitOrigin } from "@/lib/originText";
@@ -13,7 +17,7 @@ import type { CategoryKind, ScenarioData, Supplier } from "@/lib/engine/types";
 import { fmtDate } from "@/lib/dates";
 import { fmtBRL } from "@/lib/money";
 import { useApp, uid } from "@/lib/store";
-import { addSupplier, adjustLast, currentCondition, generateParcels, manualParcels, supplierConditions, parcelsTotal, validateNote, type DraftParcel, type NoteDraft } from "@/lib/notas";
+import { adjustLast, currentCondition, generateParcels, manualParcels, supplierConditions, parcelsTotal, validateNote, type DraftParcel, type NoteDraft } from "@/lib/notas";
 import { filterSuppliers, supplierActive } from "@/lib/fornecedores";
 import { todaySP } from "@/lib/engine/actions";
 import { plannedRemaining } from "@/lib/engine/actions";
@@ -54,7 +58,7 @@ export const Field = ({ l, full, children }: { l: string; full?: boolean; childr
  *  maiúsculas/acentos). Só a seleção (clique ou Enter) vincula o cadastro — texto digitado não vale.
  *  A lista abre em portal acima do painel, sem cortá-lo nem fechá-lo. */
 export function SupplierSearch({ d, value, onChange, onCreate, existing = false, allowAll = false, placeholder, allowCreate = false, historical = false }: { onCreate?:(s:Supplier)=>void; historical?: boolean; d: ScenarioData; value: string; onChange: (id: string) => void; existing?: boolean; allowAll?: boolean; placeholder?: string; allowCreate?: boolean }) {
-  const [creating, setCreating] = useState<{ name: string; aliases: string; note: string; err: string } | null>(null);
+  const [creating, setCreating] = useState<{ id: string; v: SupplierInput; err: string } | null>(null);
   // Historical identities scan every record: computed only when this filter variant needs them, never per keystroke elsewhere.
   const identities = useMemo(() => historical ? supplierIdentityOptions(d) : [], [historical, historical ? d : null]); // eslint-disable-line react-hooks/exhaustive-deps
   const cur = (historical ? identities.find((s) => s.key === value)?.name : d.suppliers.find((s) => s.id === value)?.name) ?? "";
@@ -75,7 +79,7 @@ export function SupplierSearch({ d, value, onChange, onCreate, existing = false,
     document.addEventListener("mousedown", down);
     return () => document.removeEventListener("mousedown", down);
   }, [show]);
-  const pick = (id: string) => { if (id === "__new") { setCreating({ name: t.trim(), aliases: "", note: "", err: "" }); setOpen(false); return; } onChange(id); setT(id ? (historical ? identities.find((s) => s.key === id)?.name : d.suppliers.find((s) => s.id === id)?.name) ?? "" : ""); setOpen(false); };
+  const pick = (id: string) => { if (id === "__new") { setCreating({ id: uid(), v: emptySupplierInput(t.trim()), err: "" }); setOpen(false); return; } onChange(id); setT(id ? (historical ? identities.find((s) => s.key === id)?.name : d.suppliers.find((s) => s.id === id)?.name) ?? "" : ""); setOpen(false); };
   const items: { id: string; label: ReactNode }[] = !open ? [] : [
     ...(allowAll ? [{ id: "", label: <span className="font-medium">Todos</span> }] : []),
     ...opts.map((s) => ({
@@ -88,13 +92,15 @@ export function SupplierSearch({ d, value, onChange, onCreate, existing = false,
   const total = items.length;
   const create = () => {
     if (!creating) return;
-    const id = uid(), name = creating.name.trim();
     try {
       if(!onCreate) throw new Error("Cadastre o fornecedor em Cadastros e confirme antes de selecionar.");
-      const local={...d,suppliers:[...d.suppliers]}; addSupplier(local,{id,name,note:creating.note.trim(),aliases:creating.aliases.split(",").map(a=>a.trim()).filter(Boolean)});
-      const supplier=local.suppliers.find(s=>s.id===id); if(!supplier)throw new Error("Confira o nome do fornecedor."); onCreate(supplier);
-    } catch(e) {setCreating({...creating,err:(e as Error).message});return;}
-    setCreating(null); setT(name); onChange(id);
+      const supplier = buildSupplier(d, creating.id, creating.v, new Date().toISOString(), ""); onCreate(supplier);
+      setCreating(null); setT(supplier.name); onChange(supplier.id);
+    } catch(e) {setCreating({...creating,err:(e as Error).message});}
+  };
+  const cancelCreate = async () => {
+    if (!creating) return;
+    if (JSON.stringify(creating.v) === JSON.stringify(emptySupplierInput(creating.v.name)) || await askDiscardSupplier()) setCreating(null);
   };
   return (
     <div data-supplier-combobox className="relative">
@@ -127,12 +133,7 @@ export function SupplierSearch({ d, value, onChange, onCreate, existing = false,
         document.body,
       )}
       {value && <span className="text-muted-foreground">{value.startsWith("pending:") ? "Vínculo pendente" : "Cadastro"}: {cur}</span>}
-      {creating && <DecisionWindow title="Cadastrar fornecedor" description="O lançamento em preenchimento é preservado; o fornecedor fica selecionado após confirmar." footer={<><button className="btn" onClick={() => setCreating(null)}>Cancelar</button><button className="btn btn-primary" disabled={!creating.name.trim()} onClick={create}>Cadastrar e selecionar</button></>}>
-        <Field l="Nome"><input className="inp h-8" autoFocus value={creating.name} onChange={(e) => setCreating({ ...creating, name: e.target.value, err: "" })} /></Field>
-        <Field l="Apelidos (separados por vírgula, opcional)"><input className="inp h-8" value={creating.aliases} onChange={(e) => setCreating({ ...creating, aliases: e.target.value, err: "" })} /></Field>
-        <Field l="Observação (opcional)"><input className="inp h-8" value={creating.note} onChange={(e) => setCreating({ ...creating, note: e.target.value })} /></Field>
-        {creating.err && <p className="text-destructive">{creating.err}</p>}
-      </DecisionWindow>}
+      {creating && <div className="mt-2"><SupplierCreateCard title="Cadastrar fornecedor neste lançamento" confirmLabel="Cadastrar e selecionar" d={d} id={creating.id} value={creating.v} onChange={(v) => setCreating({ ...creating, v, err: "" })} dirty onCancel={() => void cancelCreate()} onConfirm={create} error={creating.err} /><p className="mt-1 text-xs text-muted-foreground">O lançamento em preenchimento é preservado. O fornecedor só é gravado junto com a confirmação do lançamento; cancelar não cria cadastro.</p></div>}
     </div>
   );
 }
@@ -406,6 +407,7 @@ export function ConditionPicker({ d, supplierId, hint, disabled, disabledHint, o
   return (
     <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-4">
       {hint && <p className="font-medium">{hint}</p>}
+      {!cur && <p role="status" className="text-warning-foreground">Fornecedor sem condição vigente definida na data base. Escolha uma condição cadastrada ou informe a específica — nenhuma é presumida.</p>}
       <div className="flex flex-wrap items-end gap-3">
         <Field l="Condição"><select aria-label="Condição" className="inp h-8 min-w-56" value={sel} onChange={(e) => { setSel(e.target.value); setTouched(true); setSave(false); }}>
           {list.map((c) => <option key={c.id} value={c.id}>{c.name}{splitOrigin(c.note).text ? ` · ${splitOrigin(c.note).text}` : ""} · {termsTxt(c.terms)} dias{c.id === cur?.id ? " (vigente na data base)" : ""}</option>)}

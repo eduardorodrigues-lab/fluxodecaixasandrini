@@ -39,11 +39,27 @@ export function classifyConditionName(qualifier: string): { kind: ConditionKind;
   return { kind, from: kind === "vigencia" || kind === "especial" ? from : null, missingYear: dated && !from };
 }
 
-export interface Member { id: string; name: string; role: "principal" | "razao_social" | "variante_nome" | "condicao"; evidence: string; confidence: "alta" | "revisao"; condition?: { name: string; terms: (number | null)[]; kind: ConditionKind; from: string | null; missingYear: boolean } }
-export interface Relations { planned: number; committed: number; expenses: number; parcels: number; payments: number; importLog: number; plannedCents: number; committedCents: number; expensesCents: number; paidCents: number }
-export interface Group { principalId: string; principalName: string; legalName: string | null; sourceCode: string | null; members: Member[]; status: "aprovavel" | "pendente"; pending: string[]; relations: Relations }
+export interface Member { id: string; name: string; role: "principal" | "razao_social" | "variante_nome" | "condicao"; evidence: string; confidence: "alta" | "revisao"; paymentInstruction?: string; ownTerms?: (number | null)[]; condition?: { name: string; terms: (number | null)[]; kind: ConditionKind; from: string | null; missingYear: boolean } }
+export interface Relations { documents: number; purchaseCodes: number; effectivations: number; planned: number; committed: number; expenses: number; parcels: number; payments: number; importLog: number; plannedCents: number; committedCents: number; expensesCents: number; paidCents: number }
+export interface Group { principalId: string; principalName: string; legalName: string | null; sourceCode: string | null; members: Member[]; status: "aprovavel" | "pendente"; pending: string[]; conditionNotes: string[]; conditionConflicts: string[]; cnpjCandidates: { id: string; cnpj: string; valid: boolean }[]; relations: Relations }
 
-const emptyRel = (): Relations => ({ planned: 0, committed: 0, expenses: 0, parcels: 0, payments: 0, importLog: 0, plannedCents: 0, committedCents: 0, expensesCents: 0, paidCents: 0 });
+/** Texto de razão social/estrutura jurídica — identifica a empresa, nunca é condição de pagamento. */
+export const LEGAL_TEXT = /\b(LTDA|EIRELI|S\/?A|ME|EPP|IND|INDUSTRIA|INDUSTRIAL|COM|COMERCIO|COMER|CONFEC|CONFECCOES|CALCADOS|ARTIGOS|ESPORTIVOS|TEXTIL|MALHAS|IMPORTACAO|PRODUTOS|DO BRASIL|BRASIL)\b/;
+/** Instrução de pagamento (destino/banco/FIDC/PIX) — observação, não prazo comercial. */
+export const PAYMENT_TEXT = /\b(FIDC|PAGO PARA|PIX|TED|BANCO|AG|CC|CHAVE)\b/;
+/** CNPJ embutido em texto: candidato com validação de dígitos; nunca aplicado sem aprovação. */
+export function cnpjCandidates(text: string): { cnpj: string; valid: boolean }[] {
+  const out: { cnpj: string; valid: boolean }[] = [];
+  for (const m of text.matchAll(/\d{2}\.?\d{3}\.?\d{3}\s*\/?\s*\d{4}\s*-?\s*\d{2}/g)) { const c = m[0].replace(/\D/g, ""); if (c.length === 14 && !out.some((x) => x.cnpj === c)) out.push({ cnpj: c, valid: validCnpj(c) }); }
+  return out;
+}
+export function validCnpj(c: string) {
+  if (!/^\d{14}$/.test(c) || /^(\d)\1+$/.test(c)) return false;
+  const dv = (n: number) => { const w = n === 12 ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2] : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]; const r = w.reduce((a, x, i) => a + x * Number(c[i]), 0) % 11; return r < 2 ? 0 : 11 - r; };
+  return dv(12) === Number(c[12]) && dv(13) === Number(c[13]);
+}
+
+const emptyRel = (): Relations => ({ documents: 0, purchaseCodes: 0, effectivations: 0, planned: 0, committed: 0, expenses: 0, parcels: 0, payments: 0, importLog: 0, plannedCents: 0, committedCents: 0, expensesCents: 0, paidCents: 0 });
 type Rec = { supplierId: string; value: number; installments?: unknown[]; payments?: { amount?: number }[] };
 export function relationsOf(d: ScenarioData, ids: Set<string>): Relations {
   const r = emptyRel();
@@ -53,7 +69,13 @@ export function relationsOf(d: ScenarioData, ids: Set<string>): Relations {
     for (const p of x.payments ?? []) { r.payments++; r.paidCents += Math.round(p.amount ?? 0); }
   };
   (d.planned as unknown as Rec[]).forEach((x) => add("planned", x)); (d.committed as unknown as Rec[]).forEach((x) => add("committed", x)); (d.expenses as unknown as Rec[]).forEach((x) => add("expenses", x));
-  r.importLog = d.importLog.filter((x) => ids.has(x.refId ?? "")).length;
+  const recs = [...d.planned, ...d.committed, ...d.expenses] as unknown as { id: string; supplierId: string; document?: string; code?: string; purchaseCode?: string }[];
+  const mine = recs.filter((x) => ids.has(x.supplierId)); const refIds = new Set(mine.map((x) => x.id));
+  r.documents = new Set(mine.map((x) => x.document).filter(Boolean)).size;
+  r.purchaseCodes = new Set(mine.map((x) => x.purchaseCode ?? x.code).filter(Boolean)).size;
+  r.effectivations = ((d.effectivations ?? []) as unknown as { supplierId?: string }[]).filter((x) => x.supplierId && ids.has(x.supplierId)).length;
+  r.payments += ((d.payments ?? []) as unknown as { refId?: string; titleId?: string; amount?: number }[]).filter((p) => refIds.has(p.refId ?? p.titleId ?? "")).length;
+  r.importLog = d.importLog.filter((x) => refIds.has(x.refId ?? "")).length;
   return r;
 }
 
@@ -100,23 +122,28 @@ export function proposeUnification(d: ScenarioData): { groups: Group[]; unmatche
       if (!n.startsWith(root + " ")) continue;
       if (sortedRoots.some((r) => r.length > root.length && (n === r || n.startsWith(r + " ")))) continue;
       const qualifier = s.name.slice(s.name.toUpperCase().indexOf(p.name.toUpperCase()) + p.name.length).replace(/^[\s\-–]+/, "") || s.name;
+      const qn = norm(qualifier);
+      if (PAYMENT_TEXT.test(qn)) { members.push({ id: s.id, name: s.name, role: "variante_nome", evidence: `instrução de pagamento no nome ("${qualifier.split("\n")[0]}"): observação, não prazo comercial`, confidence: "revisao", paymentInstruction: qualifier.trim(), ...(hasTerms(s) ? { ownTerms: [...s.terms] } : {}) }); continue; }
+      if (!hasTerms(s) || (LEGAL_TEXT.test(qn) && !/A PARTIR|ESPECIAL|SIMULA|CONDI|PRAZO|PEDIDO/.test(qn))) { members.push({ id: s.id, name: s.name, role: "variante_nome", evidence: `nome jurídico/variante com prefixo "${p.name}" sem prazos próprios: identifica a empresa, não é condição`, confidence: "revisao", ...(hasTerms(s) ? { ownTerms: [...s.terms] } : {}) }); continue; }
       const c = classifyConditionName(qualifier);
-      const review = collision || c.missingYear || !hasTerms(s);
-      members.push({ id: s.id, name: s.name, role: "condicao", evidence: `variante de condição com prefixo "${p.name}"${collision ? "; raiz em colisão" : ""}`, confidence: review ? "revisao" : "alta", condition: { name: qualifier, terms: [...s.terms], kind: c.kind, from: c.from, missingYear: c.missingYear } });
+      members.push({ id: s.id, name: s.name, role: "condicao", evidence: `condição nomeada com prefixo "${p.name}"${collision ? "; raiz em colisão" : ""}`, confidence: collision ? "revisao" : "alta", condition: { name: qualifier, terms: [...s.terms], kind: c.kind, from: c.from, missingYear: c.missingYear } });
     }
     const cnpjOf = (id: string) => live.find((x) => x.id === id)?.cnpj?.replace(/\D/g, "") || "";
     const anchor = cnpjOf(p.id) || members.map((m) => cnpjOf(m.id)).find(Boolean) || "";
     const divergent = members.filter((m) => m.id !== p.id && cnpjOf(m.id) && cnpjOf(m.id) !== anchor);
     if (divergent.length) { pending.push(`CNPJ divergente em ${divergent.map((m) => `"${m.name}"`).join(", ")}: excluído(s) do grupo; matriz/filial exige revisão.`); for (const m of divergent) members.splice(members.indexOf(m), 1); }
     if (collision) pending.push("Raiz em colisão: confirmar individualmente se cada cadastro pertence à mesma empresa.");
-    if (members.some((m) => m.condition?.missingYear)) pending.push("Vigência sem ano na fonte: informar ano antes de agendar (fica sem início).");
+    const conditionNotes = members.filter((m) => m.condition?.missingYear).map((m) => `Condição "${m.condition!.name}": data de vigência sem ano na fonte — preservada sem início, não vira padrão (não bloqueia a identidade).`);
+    const ownTerms = members.filter((m) => m.id !== p.id && m.role !== "condicao" && m.ownTerms && m.ownTerms.join() !== p.terms.join());
+    const conditionConflicts = ownTerms.map((m) => `"${m.name}" tem prazos próprios (${m.ownTerms!.filter((t) => t !== null).join("/")}) diferentes do principal (${p.terms.filter((t) => t !== null).join("/") || "sem prazos"}): preservar como condição sem vigência; Eduardo decide o padrão.`);
+    const cnpjs = members.flatMap((m) => { const s0 = live.find((x) => x.id === m.id); return cnpjCandidates([s0?.name ?? "", s0?.note ?? "", ...(s0?.aliases ?? [])].join(" ")).map((c) => ({ id: m.id, ...c })); });
     if (members.some((m) => m.confidence === "revisao" && m.role !== "condicao")) pending.push("Há nomes apenas semelhantes; confirmar ou excluir do grupo.");
     if (legal && !members.some((m) => m.role === "razao_social")) pending.push(`Razão social "${legal}" não encontrada exatamente na base.`);
     if (members.length < 2) continue;
     members.forEach((m) => used.add(m.id));
     const ids = new Set(members.map((m) => m.id));
     const sc = legal ? splitCode(legal).code : null;
-    groups.push({ principalId: p.id, principalName: p.name, legalName: legal, sourceCode: sc, members, status: pending.length || members.some((m) => m.confidence === "revisao") ? "pendente" : "aprovavel", pending, relations: relationsOf(d, ids) });
+    groups.push({ principalId: p.id, principalName: p.name, legalName: legal, sourceCode: sc, members, conditionNotes, conditionConflicts, cnpjCandidates: cnpjs, status: pending.length || members.some((m) => m.confidence === "revisao") ? "pendente" : "aprovavel", pending, relations: relationsOf(d, ids) });
   }
   // exact duplicates (case/accent/space) without commercial root: review only
   const unmatched: { id: string; name: string; reason: string }[] = [];
@@ -125,43 +152,75 @@ export function proposeUnification(d: ScenarioData): { groups: Group[]; unmatche
   return { groups, unmatched };
 }
 
-export interface MergeTrail { requestId: string; at: string; by: string; principalId: string; incorporated: { id: string; name: string; role: Member["role"] }[]; repointed: { entity: "planned" | "committed" | "expenses"; id: string; from: string }[]; conditionsAdded: string[] }
+export interface MergeTrail { requestId: string; at: string; by: string; principalId: string; incorporated: { id: string; name: string; role: Member["role"] }[]; repointed: { entity: "planned" | "committed" | "expenses"; id: string; from: string }[]; conditionsAdded: string[]; aliasesAdded: string[]; conditionsMaterialized: boolean; hadAliases: boolean; legalNameSet: string | null; sourceCodeAdded: { source: string; code: string } | null; noteAdded: string | null }
 
-/** Aplica UM grupo aprovado (pura, sobre rascunho). Idempotente por requestId; preserva IDs, valores, datas e parcelas.
+/** Aplica UM grupo aprovado (pura, sobre rascunho). Idempotente por requestId; preserva IDs, valores, datas, prazos, parcelas e pagamentos.
+ *  Nunca define condição vigente/padrão: condições incorporadas entram SEM período de vigência (início da fonte só como metadado).
  *  Incorporados ficam como redirecionamentos (`mergedInto`) com nome como alias; nada é apagado. */
 export function applyMerge(d: ScenarioData, g: Pick<Group, "principalId" | "legalName" | "sourceCode" | "members">, meta: { requestId: string; at: string; by: string }): MergeTrail | null {
   const p = d.suppliers.find((s) => s.id === g.principalId);
   if (!p) throw new Error("Principal não encontrado.");
   if (p.mergedFrom?.some((m) => m.requestId === meta.requestId)) return null;
   if (p.mergedInto) throw new Error("Principal já incorporado a outro cadastro.");
-  const trail: MergeTrail = { ...meta, principalId: p.id, incorporated: [], repointed: [], conditionsAdded: [] };
-  const base: SupplierCondition[] = (p.conditions ?? (p.terms.some((t) => t !== null) ? [{ id: `${p.id}-orig`, name: "Condição original", terms: [...p.terms], from: null, at: meta.at, by: meta.by, kind: "padrao" }] : [])).map((c) => ({ ...c }));
+  const trail: MergeTrail = { ...meta, principalId: p.id, incorporated: [], repointed: [], conditionsAdded: [], aliasesAdded: [], conditionsMaterialized: !p.conditions, hadAliases: p.aliases !== undefined, legalNameSet: null, sourceCodeAdded: null, noteAdded: null };
+  const base: SupplierCondition[] = (p.conditions ?? (p.terms.some((t) => t !== null) ? [{ id: `${p.id}-orig`, name: "Condição original", terms: [...p.terms], from: null, at: "", by: "" }] : [])).map((c) => ({ ...c }));
+  const hadAliases = p.aliases !== undefined; const aliases = [...(p.aliases ?? [])]; const notes: string[] = [];
   for (const m of g.members) {
     if (m.id === p.id) continue;
     const s = d.suppliers.find((x) => x.id === m.id);
     if (!s) throw new Error(`Cadastro incorporado ${m.id} não encontrado.`);
     if (s.mergedInto) throw new Error(`Cadastro ${s.name} já foi incorporado.`);
     for (const k of ["planned", "committed", "expenses"] as const) for (const r of d[k] as { id: string; supplierId: string }[]) if (r.supplierId === s.id) { trail.repointed.push({ entity: k, id: r.id, from: s.id }); r.supplierId = p.id; }
-    if (m.role === "condicao" && m.condition) {
+    const terms = m.condition?.terms ?? (s.terms.some((t) => t !== null) ? s.terms : null);
+    if (terms) {
       const id = `${p.id}-m-${s.id}`;
-      base.push({ id, name: m.condition.name, terms: [...m.condition.terms], from: m.condition.from, at: meta.at, by: meta.by, note: `Incorporada de "${s.name}" (${s.id})${m.condition.missingYear ? "; vigência sem ano na fonte" : ""}`, kind: m.condition.kind, periods: m.condition.kind === "vigencia" && m.condition.from ? [{ from: m.condition.from, at: meta.at, by: meta.by }] : [] });
+      const name = m.condition?.name ?? `Prazos do cadastro "${s.name}"`;
+      const src = m.condition?.from ? `; início informado na fonte ${m.condition.from} (não aplicado)` : m.condition?.missingYear ? "; vigência sem ano na fonte" : "";
+      base.push({ id, name, terms: [...terms], from: null, at: meta.at, by: meta.by, note: `Incorporada de "${s.name}" (${s.id})${src}`, ...(m.condition ? { kind: m.condition.kind } : {}), periods: [] });
       trail.conditionsAdded.push(id);
     }
-    p.aliases = [...new Set([...(p.aliases ?? []), s.name, ...(s.aliases ?? [])])];
+    if (m.paymentInstruction) notes.push(`Instrução de pagamento de "${s.name}": ${m.paymentInstruction}`);
+    for (const n of [s.name, ...(s.aliases ?? [])]) if (!aliases.includes(n) && n !== p.name) { aliases.push(n); trail.aliasesAdded.push(n); }
     s.mergedInto = p.id;
     trail.incorporated.push({ id: s.id, name: s.name, role: m.role });
   }
-  p.conditions = base;
-  if (g.legalName && !p.legalName) p.legalName = g.legalName;
-  if (g.sourceCode && !p.sourceCodes?.some((c) => c.code === g.sourceCode)) p.sourceCodes = [...(p.sourceCodes ?? []), { source: "FLUXO xlsm", code: g.sourceCode }];
+  if (hadAliases || aliases.length) p.aliases = aliases;
+  if (trail.conditionsAdded.length || p.conditions) p.conditions = base; else trail.conditionsMaterialized = false;
+  if (notes.length) { trail.noteAdded = notes.join("\n"); p.note = [p.note, trail.noteAdded].filter(Boolean).join("\n"); }
+  if (g.legalName && !p.legalName) { p.legalName = g.legalName; trail.legalNameSet = g.legalName; }
+  if (g.sourceCode && !p.sourceCodes?.some((c) => c.code === g.sourceCode)) { trail.sourceCodeAdded = { source: "FLUXO xlsm", code: g.sourceCode }; p.sourceCodes = [...(p.sourceCodes ?? []), trail.sourceCodeAdded]; }
   p.mergedFrom = [...(p.mergedFrom ?? []), { requestId: meta.requestId, at: meta.at, by: meta.by, ids: trail.incorporated.map((x) => x.id) }];
   return trail;
 }
-/** Reverte pela trilha (pura). Restaura vínculos e cadastros sem tocar valores. */
-export function revertMerge(d: ScenarioData, t: MergeTrail, original: Supplier) {
+/** Reverte pela trilha (pura), desfazendo somente o que a unificação fez; edições posteriores no principal e em outros registros permanecem.
+ *  Nunca restaura um backup antigo inteiro. Vínculo só volta se o registro ainda aponta para o principal. */
+export function revertMerge(d: ScenarioData, t: MergeTrail) {
   for (const r of t.repointed) { const x = (d[r.entity] as { id: string; supplierId: string }[]).find((y) => y.id === r.id); if (x && x.supplierId === t.principalId) x.supplierId = r.from; }
-  for (const i of t.incorporated) { const s = d.suppliers.find((x) => x.id === i.id); if (s) delete s.mergedInto; }
-  d.suppliers = d.suppliers.map((s) => (s.id === t.principalId ? structuredClone(original) : s));
+  for (const i of t.incorporated) { const s = d.suppliers.find((x) => x.id === i.id); if (s?.mergedInto === t.principalId) delete s.mergedInto; }
+  const p = d.suppliers.find((s) => s.id === t.principalId); if (!p) return;
+  const added = new Set(t.conditionsAdded);
+  if (p.conditions) { const kept = p.conditions.filter((c) => !added.has(c.id) || !!c.periods?.length || !!c.history?.length);
+    if (t.conditionsMaterialized && kept.length === 1 && kept[0]!.id === `${p.id}-orig` && kept[0]!.terms.join() === p.terms.join() && !kept[0]!.history?.length) delete p.conditions; else p.conditions = kept; }
+  if (p.aliases) { p.aliases = p.aliases.filter((a) => !t.aliasesAdded.includes(a)); if (!p.aliases.length && t.aliasesAdded.length && !t.hadAliases) delete p.aliases; }
+  if (t.noteAdded && p.note?.includes(t.noteAdded)) p.note = p.note.replace(`\n${t.noteAdded}`, "").replace(t.noteAdded, "");
+  if (t.legalNameSet && p.legalName === t.legalNameSet) delete p.legalName;
+  if (t.sourceCodeAdded) { p.sourceCodes = (p.sourceCodes ?? []).filter((c) => !(c.source === t.sourceCodeAdded!.source && c.code === t.sourceCodeAdded!.code)); if (!p.sourceCodes.length) delete p.sourceCodes; }
+  p.mergedFrom = (p.mergedFrom ?? []).filter((m) => m.requestId !== t.requestId); if (!p.mergedFrom.length) delete p.mergedFrom;
+}
+/** Conjunto consolidado (principal + incorporados, transitivo) para resumo financeiro sem duplicar. */
+export function supplierFamily(d: Pick<ScenarioData, "suppliers">, id: string): Set<string> {
+  const root = principalOf(d, id); const out = new Set([root]); let grew = true;
+  while (grew) { grew = false; for (const s of d.suppliers) if (s.mergedInto && out.has(s.mergedInto) && !out.has(s.id)) { out.add(s.id); grew = true; } }
+  return out;
+}
+/** Impressão financeira independente de fornecedor: soma por entidade/estado/categoria/data e lista de IDs com valor/datas/parcelas. */
+export function financialFingerprint(d: ScenarioData): string {
+  const agg = new Map<string, number>(); const recs: string[] = [];
+  for (const k of ["planned", "committed", "expenses"] as const) for (const r of d[k] as unknown as Record<string, unknown>[]) {
+    const { supplierId: _s, ...rest } = r; recs.push(`${k}:${JSON.stringify(rest)}`);
+    const key = `${k}|${String(r["status"] ?? "")}|${String(r["categoryId"] ?? "")}|${String(r["dueDate"] ?? r["baseDate"] ?? "")}`; agg.set(key, (agg.get(key) ?? 0) + Number(r["value"] ?? 0));
+  }
+  return JSON.stringify([[...agg].sort(), recs.sort(), d.payments, d.effectivations, d.receipts, d.adjustments]);
 }
 /** Segue redirecionamento de incorporados (importação futura por nome antigo cai no principal). */
 export function principalOf(d: Pick<ScenarioData, "suppliers">, id: string): string {

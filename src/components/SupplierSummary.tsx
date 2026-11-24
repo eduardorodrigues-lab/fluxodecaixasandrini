@@ -1,3 +1,4 @@
+import { supplierFamily } from "@/lib/supplierUnification";
 import { useMemo, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { AlertTriangle, BarChart3, Building2, CheckCircle2, Clock, ExternalLink, Layers } from "lucide-react";
@@ -10,11 +11,12 @@ const addDays = (iso: string, n: number) => { const [y, m, d] = iso.split("-").m
 
 /** Read-only presentation of the supplier's effectivated titles (committed + expenses); never changes data. */
 export function supplierTotals(d: ScenarioData, supplierId: string, today = todaySP()) {
+  const fam = supplierFamily(d, supplierId); // principal + incorporados, cada registro uma vez
   const from = addDays(today, -365), d30 = addDays(today, 30), d60 = addDays(today, 60), d90 = addDays(today, 90);
   const r = { total12: 0, open: 0, paid: 0, overdue: 0, next30: 0, next60: 0, next90: 0 };
   const titles = [
-    ...d.committed.filter(c => c.supplierId === supplierId).map(c => ({ kind: "committed" as const, id: c.id, value: c.value, status: c.status, ref: c.effectiveDate ?? c.dueDate, due: c.extensionDate ?? c.dueDate })),
-    ...d.expenses.filter(e => e.supplierId === supplierId).map(e => ({ kind: "expense" as const, id: e.id, value: e.value, status: e.status, ref: e.baseDate, due: e.extensionDate ?? (e.termDays === null ? e.baseDate : addDays(e.baseDate, e.termDays)) })),
+    ...d.committed.filter(c => fam.has(c.supplierId)).map(c => ({ kind: "committed" as const, id: c.id, value: c.value, status: c.status, ref: c.effectiveDate ?? c.dueDate, due: c.extensionDate ?? c.dueDate })),
+    ...d.expenses.filter(e => fam.has(e.supplierId)).map(e => ({ kind: "expense" as const, id: e.id, value: e.value, status: e.status, ref: e.baseDate, due: e.extensionDate ?? (e.termDays === null ? e.baseDate : addDays(e.baseDate, e.termDays)) })),
   ];
   for (const t of titles) {
     if (t.status === "cancelado") continue;
