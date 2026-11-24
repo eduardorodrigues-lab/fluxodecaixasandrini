@@ -97,9 +97,12 @@ export type PayState = "Em aberto" | "Parcial" | "Pago" | "Cancelado";
 export function titleStatus(value: number, status: string, payments: Payment[]) {
   const active = payments.filter((p) => !p.reversedAt);
   const paid = active.reduce((a, p) => a + p.amount, 0);
-  const open = value - paid;
-  const state: PayState = status === "cancelado" ? "Cancelado" : paid <= 0 ? "Em aberto" : open > 0 ? "Parcial" : "Pago";
-  return { paid, open, state, payments: active };
+  const cancelled = status === "cancelado";
+  // Cancelamento: obrigação vigente e aberto zero; valor original preservado no registro/histórico.
+  const obligation = cancelled ? 0 : value;
+  const open = cancelled ? 0 : value - paid;
+  const state: PayState = cancelled ? "Cancelado" : paid <= 0 ? "Em aberto" : open > 0 ? "Parcial" : "Pago";
+  return { paid, open, state, payments: active, original: value, obligation, cancelledValue: cancelled ? value : 0, paidOnCancelled: cancelled ? paid : 0 };
 }
 export function paymentsFor(data: Pick<ScenarioData, "payments">, kind: Payment["titleKind"], id: string) {
   return (data.payments ?? []).filter((p) => p.titleKind === kind && p.titleId === id);

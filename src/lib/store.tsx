@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { defaultFlowPeriod } from "./dates";
 import { produce, setAutoFreeze } from "immer";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -100,7 +101,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const ackChannel = useRef<BroadcastChannel | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveMsg, setSaveMsg] = useState("");
-  const [ui, setUiS] = useState<UiState>({ view: "horizontal", start: "2026-10-01", end: "2026-11-30", supplierId: "", group: "", flowMode: "consolidada" });
+  const [ui, setUiS] = useState<UiState>(() => ({ view: "horizontal", ...defaultFlowPeriod(), supplierId: "", group: "", flowMode: "consolidada" }));
   const qc = useQueryClient();
   const fetchOfficialRpc = useServerFn(getOfficial);
   const fetchOfficial = async (input: Parameters<typeof fetchOfficialRpc>[0]) => decodeOfficial(await fetchOfficialRpc(input));

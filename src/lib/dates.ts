@@ -61,3 +61,19 @@ export function dateInputError(text: string, allowEmpty = false, min?: string | 
   if (min && date < min || max && date > max) return "A data final não pode ser anterior à data inicial.";
   return "";
 }
+
+/** Civil date (YYYY-MM-DD) of `now` in America/Sao_Paulo. */
+export function todayInSaoPaulo(now: Date = new Date()): string {
+  const p = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
+  const g = (t: string) => p.find((x) => x.type === t)?.value ?? "";
+  return `${g("year")}-${g("month")}-${g("day")}`;
+}
+/** Monday of the ISO week containing `s` (Sunday belongs to the week that started the previous Monday). */
+export const mondayOf = (s: string) => addDays(s, -((toD(s).getUTCDay() + 6) % 7));
+/** Default Flow opening period: Monday of current São Paulo week through end of the following month. */
+export function defaultFlowPeriod(now: Date = new Date()) {
+  const start = mondayOf(todayInSaoPaulo(now));
+  const d = toD(start);
+  const end = toS(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 2, 0)));
+  return { start, end };
+}

@@ -107,7 +107,7 @@ export function groupByDocument(rows: ConsultaRow[]): ConsultaRow[] {
     const first = [...g].sort((a, b) => (a.effective ?? "").localeCompare(b.effective ?? ""))[0];
     if (!first) throw new Error("Grupo vazio");
     const pays = g.flatMap((r) => r.payments).sort((a, b) => a.date.localeCompare(b.date));
-    return { ...first, boletoNumber: g.map(r=>r.boletoNumber).filter(Boolean).join("; ") || null, search: g.flatMap((r) => [...consultaCells(r), ...(r.search ?? [])]), key: "doc:" + k, parcel: `${g.length} parcela(s)`, value, paid, open, state: g.every(r=>r.state==="Planejada") ? "Planejada" : paid <= 0 ? "Em aberto" : open > 0 ? "Parcialmente pago" : "Pago", lastPay: pays.at(-1)?.date ?? null, payments: pays, history: g.flatMap((r) => r.history), extended: g.some((r) => r.extended) ? first.extended ?? g.find((r) => r.extended)?.extended ?? null : null };
+    return { ...first, boletoNumber: g.map(r=>r.boletoNumber).filter(Boolean).join("; ") || null, search: g.flatMap((r) => [...consultaCells(r), ...(r.search ?? [])]), key: "doc:" + k, parcel: `${g.length} parcela(s)`, value, paid, open, state: g.every(r=>r.state==="Planejada") ? "Planejada" : g.every(r=>r.state==="Cancelado") ? "Cancelado" : paid <= 0 ? "Em aberto" : open > 0 ? "Parcialmente pago" : "Pago", lastPay: pays.at(-1)?.date ?? null, payments: pays, history: g.flatMap((r) => r.history), extended: g.some((r) => r.extended) ? first.extended ?? g.find((r) => r.extended)?.extended ?? null : null };
   });
 }
 
@@ -134,7 +134,7 @@ function ConsultaBoletos({ d, onManage }: { d: ScenarioData; onManage?: ((ref: L
   const allF = useMemo(() => all.filter((r) => columnTest(cf.f, C_COLS, cVals(r))), [all, cf.f]);
   const rows = useMemo(() => consultaReport(allF, f, byDoc, report.query, report.sort), [allF, f, byDoc, report.query, report.sort]);
   const pager = usePager(rows.length, rows);
-  const tot = rows.reduce((a, r) => ({ v: a.v + r.value, p: a.p + r.paid, o: a.o + r.open }), { v: 0, p: 0, o: 0 });
+  const tot = rows.reduce((a, r) => { const c = r.state === "Cancelado"; return { v: a.v + (c ? 0 : r.value), c: a.c + (c ? r.value : 0), p: a.p + r.paid, o: a.o + r.open }; }, { v: 0, c: 0, p: 0, o: 0 });
   const up = (p: Partial<ConsultaFilter>) => setF({ ...f, ...p });
 
   const exportXls = () => {
@@ -150,7 +150,7 @@ function ConsultaBoletos({ d, onManage }: { d: ScenarioData; onManage?: ((ref: L
     const th = HEAD.map((h) => `<th>${h}</th>`).join("");
     const escapeHtml = (s: string) => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c);
     const tb = rows.map((r) => `<tr>${consultaCells(r).map((c, i) => `<td class="${[5, 8, 9].includes(i) ? "n" : ""}">${escapeHtml(c)}</td>`).join("")}</tr>`).join("");
-    w.document.write(`<html><head><title>Consulta de boletos e pagamentos</title><style>@page{size:A4 landscape;margin:10mm}body{font:9px sans-serif}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:2px 4px;text-align:left}.n{text-align:right}</style></head><body><h3>Consulta de boletos e pagamentos</h3><p>Títulos ${fmtBRL(tot.v)} · Pago ${fmtBRL(tot.p)} · Em aberto ${fmtBRL(tot.o)} · ${rows.length} linhas</p><table><thead><tr>${th}</tr></thead><tbody>${tb}</tbody></table></body></html>`);
+    w.document.write(`<html><head><title>Consulta de boletos e pagamentos</title><style>@page{size:A4 landscape;margin:10mm}body{font:9px sans-serif}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:2px 4px;text-align:left}.n{text-align:right}</style></head><body><h3>Consulta de boletos e pagamentos</h3><p>Obrigação vigente ${fmtBRL(tot.v)}${tot.c ? ` · Cancelado ${fmtBRL(tot.c)}` : ""} · Pago ${fmtBRL(tot.p)} · Em aberto ${fmtBRL(tot.o)} · ${rows.length} linhas</p><table><thead><tr>${th}</tr></thead><tbody>${tb}</tbody></table></body></html>`);
     w.document.close();
     w.focus();
     setTimeout(() => w.print(), 200);
@@ -172,7 +172,7 @@ function ConsultaBoletos({ d, onManage }: { d: ScenarioData; onManage?: ((ref: L
       </div>
       <div className="filter-bar"><ReportSearch value={report.query} onChange={report.setQuery} count={rows.length} /><ColumnFilter cols={C_COLS} filter={cf} suggest={suggestFrom(all, cVals)} /></div>
       <div className="mb-2 flex gap-4 text-xs">
-        <span>Valor dos títulos <b className="tabular-nums">{fmtBRL(tot.v)}</b></span>
+        <span>Obrigação vigente <b className="tabular-nums">{fmtBRL(tot.v)}</b></span>{tot.c > 0 && <span>Cancelado (valor original) <b className="tabular-nums">{fmtBRL(tot.c)}</b></span>}
         <span>Valor pago <b className="tabular-nums">{fmtBRL(tot.p)}</b></span>
         <span>Saldo em aberto <b className="tabular-nums">{fmtBRL(tot.o)}</b></span>
         <span className="text-muted-foreground">{rows.length} {byDoc ? "documentos" : "parcelas"}</span>

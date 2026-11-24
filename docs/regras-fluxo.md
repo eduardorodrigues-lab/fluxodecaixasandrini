@@ -354,3 +354,8 @@ Notas do rascunho aparecem em painéis laterais com rolagem horizontal; cada not
 - Valores em centavos inteiros (meio para longe do zero); parcelas da mesma nota (fornecedor+documento exatos) preservam o total arredondado com resíduo na última; cada delta fica no manifesto.
 - Compras da aba EFETUADAS = efetivado sem baixa; despesas = título a confirmar, nunca pagas por data; sem cutoff.
 - Rascunhos do navegador de gerações anteriores da base não são reabertos.
+
+## Cancelamento e abertura do Fluxo (24/11/2026)
+- Título cancelado: obrigação vigente e saldo em aberto = 0; valor original permanece no registro/histórico (`titleStatus.original`/`cancelledValue`). Pagamentos ativos não são apagados; o alerta PAG_CANCELADO pede estorno/crédito explícito.
+- Consultas mostram "Obrigação vigente" e, separadamente, "Cancelado (valor original)".
+- Fluxo abre na segunda-feira da semana vigente em America/Sao_Paulo até o fim do mês seguinte; período escolhido pelo usuário não é sobrescrito durante o uso.
