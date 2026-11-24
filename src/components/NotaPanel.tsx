@@ -2,7 +2,7 @@ import { SupplierCreateCard } from "./SupplierForm";
 import { buildSupplier, emptySupplierInput, type SupplierInput } from "@/lib/fornecedores";
 import { requestDecision } from "@/lib/decisions";
 const askDiscardSupplier = async () => (await requestDecision({ title: "Descartar cadastro do fornecedor?", message: "O lançamento continua preenchido; apenas este cadastro em preenchimento será descartado.", action: "Descartar cadastro", destructive: true, cancelLabel: "Continuar editando" })) !== null;
-import { ArrowLeftRight, Calculator, Check, Coins, CreditCard, FileText, Info, Link2, ListChecks, Plus, SlidersHorizontal, Tags, Trash2 } from "lucide-react";
+import { Calculator, Check, Coins, CreditCard, FileText, Info, Link2, ListChecks, Plus, SlidersHorizontal, Tags, Trash2 } from "lucide-react";
 import { SupplierSummary } from "./SupplierSummary";
 import { splitOrigin } from "@/lib/originText";
 import { supplierIdentity, supplierIdentityOptions } from "@/lib/supplierIdentity";
@@ -198,7 +198,7 @@ export function NovaNota({ d: source, isBase, onCancel, onConfirm, onManagePlann
   const cancel = () => void discard();
   const footer = !chosen ? <button className="btn" onClick={cancel}>Cancelar</button> : review
     ? <><button className="btn" disabled={saving} onClick={() => { setReview(false); setChecked(false); }}>Voltar</button><button className="btn btn-primary" disabled={saving || (stage === "committed" && !checked)} title={stage === "committed" && !checked ? "Confirme a conferência dos valores e vencimentos" : ""} onClick={() => void done(onConfirm(n, saveAs))}>{saveLabel ?? (saving ? "Salvando…" : isBase ? "Confirmar e salvar" : "Confirmar na simulação")}</button></>
-    : <><p className="mr-auto hidden max-w-md text-xs text-muted-foreground md:flex md:gap-2"><Info className="h-5 w-5 shrink-0 text-primary" /><span><b className="block text-sm text-foreground">Alterações e correções</b>Após gravar, você pode corrigir valores, datas, parcelamento e demais dados em Gerenciar lançamento.</span></p><button className="btn launch-foot-btn" onClick={cancel}>Cancelar</button><button className="btn launch-foot-btn" onClick={async () => { if (n.plannedId && !await askConfirm("O vínculo com a previsão será descartado ao trocar o tipo. Continuar?")) return; pick(stage === "planned" ? "committed" : "planned"); }}><ArrowLeftRight className="h-4 w-4" />Trocar tipo</button><button className="btn btn-primary launch-foot-btn launch-foot-main" onClick={next}><Check className="h-4 w-4" />Revisar e confirmar</button></>;
+    : <><p className="mr-auto hidden max-w-md text-xs text-muted-foreground md:flex md:gap-2"><Info className="h-5 w-5 shrink-0 text-primary" /><span><b className="block text-sm text-foreground">Alterações e correções</b>Após gravar, você pode corrigir valores, datas, parcelamento e demais dados em Gerenciar lançamento.</span></p><button className="btn launch-foot-btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary launch-foot-btn launch-foot-main" onClick={next}><Check className="h-4 w-4" />Revisar e confirmar</button></>;
   return (
     <SidePanel expanded centered={review} wide title={title} sub={isBase ? "Grava no fluxo real ao confirmar" : "Simulação — não altera o fluxo real"} onClose={cancel} dirty={false} footer={footer}>
       {protection.recovered && <p role="status">Preenchimento local recuperado · revise antes de salvar.</p>}{protection.warning && <p role="alert" className="text-destructive">{protection.warning}</p>}
