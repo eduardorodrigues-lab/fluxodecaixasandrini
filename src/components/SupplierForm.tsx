@@ -54,9 +54,9 @@ export function SupplierFormFields({ d, id, value, onChange, review }: { d: Scen
 }
 
 /** Card de cadastro (mesmo recipiente do card de visualização). Cancelar fecha imediatamente se limpo; nunca cria fornecedor. */
-export function SupplierCreateCard({ d, id, value, onChange, dirty, onCancel, onConfirm, saving, saveLabel, error, confirmLabel = "Confirmar fornecedor", title = "Novo fornecedor" }: {
+export function SupplierCreateCard({ d, id, value, onChange, dirty, onCancel, onConfirm, saving, saveLabel, error, confirmLabel = "Confirmar fornecedor", title = "Novo fornecedor", stageLocally = false }: {
   d: ScenarioData; id: string; value: SupplierInput; onChange: (v: SupplierInput) => void; dirty: boolean; onCancel: () => void; onConfirm: () => void;
-  saving?: boolean; saveLabel?: string | undefined; error?: string; confirmLabel?: string; title?: string;
+  saving?: boolean; saveLabel?: string | undefined; error?: string; confirmLabel?: string; title?: string; stageLocally?: boolean;
 }) {
   const [review, setReview] = useState(false);
   const valid = !supplierInputErrors(d, id, value).length;
@@ -66,7 +66,7 @@ export function SupplierCreateCard({ d, id, value, onChange, dirty, onCancel, on
     {error && <p role="alert" className="text-destructive">{error}</p>}
     <footer className="flex flex-wrap justify-end gap-2 border-t border-border pt-3">
       {review ? <Button variant="outline" disabled={saving} onClick={() => setReview(false)}>Voltar e editar</Button> : <Button variant="outline" onClick={onCancel}>Cancelar</Button>}
-      <Button disabled={!valid || saving} onClick={() => (review ? onConfirm() : setReview(true))}>{review ? saveLabel ?? (saving ? "Salvando…" : confirmLabel) : "Revisar e confirmar"}</Button>
+      <Button disabled={!valid || saving} onClick={() => (stageLocally || review ? onConfirm() : setReview(true))}>{stageLocally ? confirmLabel : review ? saveLabel ?? (saving ? "Salvando…" : confirmLabel) : "Revisar e confirmar"}</Button>
     </footer>
   </section>;
 }

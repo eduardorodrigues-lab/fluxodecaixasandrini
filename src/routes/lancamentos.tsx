@@ -1,3 +1,4 @@
+import { applyNewLaunch } from "@/lib/newLaunch";
 import { useOperationSave } from "@/components/useOperationSave";
 import { LaunchFilterPanel, useLaunchFilters } from "@/components/LaunchFilters";
 import { filterLaunchRows, formatLaunchTime } from "@/lib/launchFilters";
@@ -18,7 +19,7 @@ import { Children, cloneElement, isValidElement, useMemo, useRef, memo, useState
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { DateInput, MoneyInput, PageHeader } from "@/components/kit";
 import { ConditionPicker, DadosNotaPanel, Field, guardClose, NovaNota, ParcelaPanel, ProrrogarPanel, Section, SidePanel, type NoteFields } from "@/components/NotaPanel";
-import { applyNote, editCommittedNote, editPlannedParcel, extendPlannedParcel, parcelLabels, saveSupplierCondition } from "@/lib/notas";
+import { editCommittedNote, editPlannedParcel, extendPlannedParcel, parcelLabels, saveSupplierCondition } from "@/lib/notas";
 import { committedDate, distributePlanned, expenseDate, paymentsFor, splitCents, titleStatus } from "@/lib/engine/engine";
 import { closePlanned, confirmExtension, linkLegacyTitle, plannedSummary, reopenPlanned, reverseEffectivation, reversePayment, todaySP } from "@/lib/engine/actions";
 import type { CategoryKind, EditLog, ExtensionEvent, Planned, ScenarioData } from "@/lib/engine/types";
@@ -133,8 +134,8 @@ function Page() {
     void operation.saveMutation(d,fn);
     return true;
   };
-  const savePanel = async (fn: (x: ScenarioData) => void) => {
-    try { const ok=await operation.saveMutation(d,fn); if(ok)setPanel(null); return ok; }
+  const savePanel = async (fn: (x: ScenarioData) => void, directInclusion = false) => {
+    try { const ok=await operation.saveMutation(d,fn,[],directInclusion); if(ok)setPanel(null); return ok; }
     catch(e) { setErr((e as Error).message); return false; }
   };
   const doPanel = (fn: (x: ScenarioData) => void) => { void savePanel(fn); };
@@ -285,7 +286,7 @@ function Page() {
 
       {managed && <ManageLaunchPanel key={`${managed.kind}:${managed.id}`} launch={managed} onClose={() => setManaged(null)} />}
       {panel?.t === "pay" && <PagamentoPanel d={d} kind={panel.kind} titleId={panel.id} label={panel.label} saving={operation.saving} saveError={operation.error} saveLabel={operation.saveLabel} onCancel={() => {operation.reset();setPanel(null);}} onConfirm={async (r) => { const ok = await operation.saveMutation(d,(x) => r.origin === "conta" ? registerPaymentBatch(x, { batchId: uid(), titleKind: panel.kind, titleId: panel.id, lines: r.lines, note: r.note, form: r.form }) : coverTitleWithCard(x, { id: uid(), at: now(), by: user?.email ?? "", titleKind: panel.kind, titleId: panel.id, cardId: r.cardId, date: r.date, amount: r.amount, fee: r.fee, installments: r.installments, form: "boleto" })); if (ok) setPanel(null); return ok; }} />}
-      {panel?.t === "new" && <NovaNota d={d} isBase={active.isBase} onManagePlanned={(id) => { setPanel(null); setManaged({ kind: "planned", id }); }} onCancel={() => {operation.reset();setPanel(null);}} saving={operation.saving} saveError={operation.error} saveLabel={active.isBase ? operation.saveLabel : undefined} onConfirm={(n, sv) => savePanel((x) => { applyNote(x, n, { id: uid, at: now() }); if (sv) saveSupplierCondition(x, n.supplierId, sv.terms, now(), sv.name, user?.email ?? ""); })} />}
+      {panel?.t === "new" && <NovaNota d={d} isBase={active.isBase} onManagePlanned={(id) => { setPanel(null); setManaged({ kind: "planned", id }); }} onCancel={() => {operation.reset();setPanel(null);}} saving={operation.saving} saveError={operation.error} saveLabel={active.isBase ? operation.saveLabel : undefined} onConfirm={(n, sv, creationId) => savePanel((x) => { applyNewLaunch(x, n, creationId, now()); if (sv) saveSupplierCondition(x, n.supplierId, sv.terms, now(), sv.name, user?.email ?? ""); }, !n.plannedId)} />}
       {panel?.t === "parcela" && <ParcelaPanel saving={operation.saving} saveError={operation.error} saveLabel={active.isBase ? operation.saveLabel : undefined} label={panel.label} amount={panel.amount} date={panel.date} onCancel={() => {operation.reset();setPanel(null);}} onSave={(a, dt, note) => doPanel((x) => { panel.save(x, a, dt); const r = panel.log(x); if (r) (r.editLog ??= []).push({ at: now(), by: user?.email ?? "", note, parcel: panel.label, before: { amount: panel.amount, date: panel.date }, after: { amount: a, date: dt } }); })} />}
       {panel?.t === "nota" && <DadosNotaPanel saving={operation.saving} saveError={operation.error} saveLabel={active.isBase ? operation.saveLabel : undefined} d={d} init={panel.init} siblings={panel.siblings} onCancel={() => {operation.reset();setPanel(null);}} onSave={(f) => doPanel((x) => panel.save(x, f))} />}
       {panel?.t === "prorrogar" && <ProrrogarPanel saving={operation.saving} saveError={operation.error} saveLabel={active.isBase ? operation.saveLabel : undefined} label={panel.label} current={panel.current} original={panel.original} history={panel.history} isBase={active.isBase} onCancel={() => {operation.reset();setPanel(null);}} onSave={(to, note) => doPanel((x) => panel.save(x, to, note))} />}

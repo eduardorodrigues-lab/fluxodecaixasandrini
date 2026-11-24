@@ -1,10 +1,10 @@
 import { documentGroups } from "./documentGroups";
 // Nova nota (painel lateral): geração de parcelas, validação e gravação como lançamentos por parcela.
-// Funções puras sobre o rascunho do cenário — chamadas via update() só após "Revisar e confirmar".
+// Funções puras preparadas no pacote isolado; inclusão por Salvar, alterações por revisão.
 import { distributePlanned, splitCents } from "@/lib/engine/engine";
 import { effectivate, plannedRemaining } from "@/lib/engine/actions";
 import type { CategoryKind, Committed, ExtensionEvent, ScenarioData, Supplier, SupplierCondition } from "@/lib/engine/types";
-import { addDays } from "@/lib/dates";
+import { addDays, parseBRDate } from "@/lib/dates";
 import { supplierActive, validateSupplierNames } from "./fornecedores";
 import type { BatchNote } from "./efetivacao";
 
@@ -45,21 +45,21 @@ export function validateNote(n: NoteDraft): string[] {
   if (!n.categoryId) e.push("Selecione o subgrupo.");
   if (!n.supplierId) e.push("Selecione o fornecedor.");
   if (n.stage === "committed" && !n.document.trim()) e.push("Informe o documento.");
-  if (!n.total || n.total <= 0) e.push("Informe o valor total.");
-  if (!n.baseDate) e.push("Informe a data base.");
+  if (n.total === null || !Number.isInteger(n.total) || n.total < 0) e.push("Informe o valor total.");
+  if (!n.baseDate || !parseBRDate(n.baseDate)) e.push("Informe a data base.");
   if (!n.parcels.length && !n.plannedNotes?.length) e.push("Gere ou adicione as parcelas.");
-  if (n.parcels.some((p) => !p.date)) e.push("Toda parcela precisa de vencimento.");
-  if (n.parcels.some((p) => !(p.amount > 0))) e.push("Toda parcela precisa de valor positivo.");
+  if (n.parcels.some((p) => !p.date || !parseBRDate(p.date))) e.push("Toda parcela precisa de vencimento.");
+  if (n.parcels.some((p) => !Number.isInteger(p.amount) || p.amount < 0)) e.push("Toda parcela precisa de valor válido em centavos.");
   if (n.parcels.some(p => p.boletoNumber !== undefined && p.boletoNumber !== null && typeof p.boletoNumber !== "string")) e.push("Número do boleto deve ser texto.");
-  if (n.parcels.some((p) => p.ext && p.date && p.ext < p.date)) e.push("Prorrogação anterior ao vencimento.");
+  if (n.parcels.some((p) => p.ext && (!parseBRDate(p.ext) || (p.date && p.ext < p.date)))) e.push("Prorrogação anterior ao vencimento.");
   const notes=n.plannedNotes??[];
   for(const note of notes){
-    if(!note.document.trim() || note.total===null || !note.baseDate || !note.parcels.length) e.push("Confira documento, total, data base e parcelas de cada nota.");
-    if(note.parcels.some(p=>p.amount===null || p.amount<=0 || !p.date || (p.extension && p.date && p.extension<p.date))) e.push("Confira valores e datas das notas planejadas.");
+    if(!note.document.trim() || note.total===null || !Number.isInteger(note.total) || note.total<0 || !note.baseDate || !parseBRDate(note.baseDate) || !note.parcels.length) e.push("Confira documento, total, data base e parcelas de cada nota.");
+    if(note.parcels.some(p=>p.amount===null || !Number.isInteger(p.amount) || p.amount<0 || !p.date || !parseBRDate(p.date) || (p.extension && p.date && p.extension<p.date))) e.push("Confira valores e datas das notas planejadas.");
     if(note.total!==note.parcels.reduce((s,p)=>s+(p.amount??0),0))e.push(`Parcelas da nota ${note.document} diferem do total.`);
   }
   if(new Set(notes.flatMap(note=>note.parcels.map(p=>p.id))).size!==notes.flatMap(note=>note.parcels).length)e.push("Parcela de nota duplicada.");
-  if (n.total && parcelsTotal(n.parcels)+notes.reduce((s,n)=>s+(n.total??0),0) !== n.total) e.push(notes.length ? "Total das parcelas e notas difere do valor previsto; informe o saldo sem nota com vencimentos ou revise o total expressamente." : "Total das parcelas difere do valor da nota.");
+  if (n.total !== null && parcelsTotal(n.parcels)+notes.reduce((s,n)=>s+(n.total??0),0) !== n.total) e.push(notes.length ? "Total das parcelas e notas difere do valor previsto; informe o saldo sem nota com vencimentos ou revise o total expressamente." : "Total das parcelas difere do valor da nota.");
   return e;
 }
 const extHist = (p: DraftParcel, at: string): ExtensionEvent[] => (p.ext ? [{ from: null, to: p.ext, at, note: "Prorrogação informada na criação" }] : []);

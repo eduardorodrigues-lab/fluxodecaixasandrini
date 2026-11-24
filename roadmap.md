@@ -1,5 +1,9 @@
 # Roadmap
 
+## Novas inclusões — Salvar direto autorizado 24/11/2026
+- [x] Inclusão independente direta com validação, identidade estável e pacote atômico; revisões existentes preservadas
+- [x] 506 testes aprovados (6 opcionais ignorados); 18 fluxos de navegador sintético, incluindo celular e recuperação. Sem gravações oficiais ou publicação; confirmação hospedada real não testada.
+
 ## Correções autorizadas 24/11/2026 (cancelamento, salvamento, desempenho, lote)
 - [x] 1 Cancelado com aberto/obrigação zero e original separado (MATHEUS: base v229 já marca as 2 parcelas como cancelado; Fluxo já as excluía — exibição corrigida)
 - [x] 6 Fluxo abre na segunda da semana em São Paulo

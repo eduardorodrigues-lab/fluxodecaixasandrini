@@ -1,5 +1,13 @@
 # Fluxo de Caixa Sandrini — Regras, schema e critérios de aceite (NÃO homologado)
 
+## Inclusão direta autorizada — 24/11/2026 (prevalece sobre os fluxos históricos abaixo)
+- Novos lançamentos independentes, Planejada/Efetivado e Compra/Despesa: preencher → **Salvar** → confirmação real do servidor. Sem tela de revisão da inclusão, checkbox de conferência ou segunda confirmação; sem autosave.
+- Fornecedor/condições criados dentro da inclusão ficam locais e são dependências do mesmo pacote atômico. Cadastros fora da inclusão e alterações em registros existentes mantêm revisão. Efetivação vinculada, cancelamento, lote, unificação, pagamentos/estornos e adição de parcelas a documento salvo não são inclusões independentes.
+- Validação no formulário e no helper: valores inteiros em centavos ≥ 0 (zero explícito preservado, vazio inválido), datas civis válidas, todas as parcelas com vencimento, soma exata e prorrogações coerentes. Efetivar não paga.
+- Identidade de inclusão reaproveita o ID recuperável do formulário (ID da previsão/noteId), com IDs de parcelas determinísticos. Se já está na base, a inclusão é bloqueada e indica Gerenciar; não duplica nem sobrescreve por título da janela.
+- A infraestrutura isolada existente conserva pacote/requestId, proteção de duplo clique, autenticação, versões, dependências, recuperação limitada de confirmação e remoção seletiva de pendências. Falha mantém preenchimento; ACK confirmado com atualização falhada não autoriza reenvio.
+- Evidências e limites em `docs/novos-lancamentos-salvar-direto-2026-11-24.md`; nenhuma escrita oficial, migração ou publicação nesta execução.
+
 ## Identificação derivada de notas parceladas importadas — 24/11/2026
 - `documentGroups` reconhece séries numéricas A1/A2/A3 por origem, fornecedor exato, documento, pedido opcional e emissão; suporta datas seriais Excel e linhas não adjacentes. NoteId existente prevalece. Zeros à esquerda e séries/emissões diferentes não são fundidos.
 - Lacunas, duplicatas, datas/documentos sem prova ou sufixos arbitrários permanecem individuais; não deduz total do maior sufixo isolado. Denominador da série completa é a quantidade observada; a ausência de uma parcela terminal não indicada na fonte é limite explícito.
