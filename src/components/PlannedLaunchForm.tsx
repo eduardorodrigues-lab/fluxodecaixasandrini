@@ -18,6 +18,7 @@ import { fmtBRL } from "@/lib/money";
 import { fmtDate } from "@/lib/dates";
 import { todaySP } from "@/lib/engine/actions";
 import { HistoryView } from "./HistoryView";
+import { SupplierSummary } from "./SupplierSummary";
 import type { ScenarioData, Supplier } from "@/lib/engine/types";
 import { produce } from 'immer';
 import { measureSavePhase } from '@/lib/saveTiming';
@@ -201,7 +202,7 @@ export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onCl
 
       {JSON.stringify(fields)!==JSON.stringify(initial.fields) && <p>Dados compartilhados do planejamento: {Object.keys(fields).filter(k=>fields[k as keyof typeof fields]!==initial.fields[k as keyof typeof fields]).map(k=>`${({supplierId:"Fornecedor",categoryId:"Subgrupo",purchaseCode:"Pedido",document:"Documento",notes:"Descrição"})[k as keyof typeof fields]}: ${k==="supplierId" ? supplierIdentity(d,{supplierId:initial.fields.supplierId}).name : k==="categoryId" ? d.categories.find(c=>c.id===initial.fields.categoryId)?.name || "Não informado" : initial.fields[k as keyof typeof fields] || "Não informado"} → ${k==="supplierId" ? supplierIdentity(d,{supplierId:fields.supplierId}).name : k==="categoryId" ? d.categories.find(c=>c.id===fields.categoryId)?.name || "Não informado" : fields[k as keyof typeof fields] || "Não informado"}`).join("; ")}.</p>}
       <p>Justificativa: {reason}. A confirmação salva somente esta operação revisada. Outras pendências não são incluídas.</p>
-    </> : <>
+    </> : <div className="launch-grid launch-grid-2"><div className="min-w-0 space-y-5">
       {real ? <>
         <div className="eff-summary" aria-label="Resumo do pedido">
           <span>Valor previsto / referência <b>{refValue===null ? "Não informado" : fmtBRL(refValue)}</b>{initial.record.value===0 && refValue!==null && <small> · digitado neste rascunho</small>}</span>
@@ -229,6 +230,6 @@ export function PlannedLaunchForm({ launch, onClose }: { launch: LaunchRef; onCl
       <Field l="Justificativa"><textarea className="inp" value={reason} onChange={e=>setReason(e.target.value)}/></Field>
       <details><summary>Notas já efetivadas vinculadas ({linked.length} parcelas)</summary><table className="tbl"><thead><tr><th>Documento / nota</th><th>Pedido</th><th>Parcela</th><th>Número do boleto</th><th>Valor</th><th>Vencimento</th><th>Situação</th></tr></thead><tbody>{linked.map(c=><tr key={c.id}><td>{c.document}</td><td>{c.purchaseCode || "Não informado"}</td><td>{c.parcelNo ? `${c.parcelNo}/${c.parcelCount}` : c.id}</td><td>{c.boletoNumber || "Não informado"}</td><td>{fmtBRL(c.value)}</td><td>{fmtDate(c.extensionDate??c.dueDate)}</td><td>{linkedStates.get(c.id)}</td></tr>)}</tbody></table>{!linked.length && <p>Nenhuma nota com vínculo comprovado.</p>}</details>
       <details onToggle={e=>setHistoryOpen((e.currentTarget as HTMLDetailsElement).open)}><summary>Comparativo e histórico do planejamento</summary>{historyOpen && <><PlanVsActualDetail d={d} plannedId={launch.id} />{active.isBase && auditH.status === "loading" && <p role="status">Carregando histórico…</p>}{auditH.status === "error" && <p className="text-destructive">{auditH.error}</p>}<HistoryView data={d} entries={history.map(a=>({...a,changes:a.changes.filter(c=>c.id===launch.id)}))}/></>}</details>
-    </>}
+    </div><SupplierSummary d={d} supplierId={fields.supplierId} name={supplierIdentity(d, { supplierId: fields.supplierId }).name} /></div>}
   </SidePanel>;
 }

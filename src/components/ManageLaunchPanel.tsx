@@ -23,6 +23,7 @@ import type { ScenarioData } from "@/lib/engine/types";
 import { createLaunchDates, formatLaunchTime } from '@/lib/launchFilters';
 
 import { PlannedLaunchForm } from "./PlannedLaunchForm";
+import { SupplierSummary } from "./SupplierSummary";
 import { produce } from 'immer';
 import { measureSavePhase } from '@/lib/saveTiming';
 
@@ -37,7 +38,7 @@ function ExistingLaunchPanel({ launch, onClose }: { launch: LaunchRef; onClose: 
   const [initial] = useState(() => managedDocument(d, launch));
   const [parcels, setParcels] = useState(initial.parcels);
   const [fields, setFields] = useState(initial.fields);
-  const [tab, setTab] = useState("Resumo"), [reason, setReason] = useState("");
+  const [tab, setTab] = useState("Lançamento"), [reason, setReason] = useState("");
   const [datesRequested, setDatesRequested] = useState(false);
   const auditH = useAuditHistory(active.isBase && (tab === "Histórico" || datesRequested));
   const audit = auditH.entries;
@@ -92,7 +93,7 @@ function ExistingLaunchPanel({ launch, onClose }: { launch: LaunchRef; onClose: 
   };
   const confirm = async () => { if(review && await saving.save(review.before,review.data)) onClose(); };
   const changeSelection = (keys: string[]) => { setSelected(keys); setRemaining(null); setChecked(false); };
-  const labels = ["Resumo", "Parcelas", "Dados do documento", "Histórico"];
+  const labels = ["Lançamento", "Resumo", "Parcelas", "Dados do documento", "Histórico"];
   const finance = [["Planejado original", launch.kind === "planned" ? initial.record.value : null], ["Saldo restante previsto", summary.remaining], ["Efetivado", summary.effective], ["Pago", summary.paid], ["Efetivado em aberto", summary.open]] as const;
   const startEffectivation = (keys: string[]) => { changeSelection(keys); setEff(true); setSpreadKeys([]); setError(""); };
   if (pay) return <PagamentoPanel d={d} kind={launch.kind === "expense" ? "expense" : "committed"} titleId={pay.id} label={`${initial.fields.document} · ${pay.label}`} saving={saving.saving} saveError={saving.error} saveLabel={saving.saveLabel} onCancel={() => {saving.reset();setPay(null);}} onConfirm={async (r) => {
@@ -110,7 +111,8 @@ function ExistingLaunchPanel({ launch, onClose }: { launch: LaunchRef; onClose: 
       <p>Justificativa: {reason || "Alteração de dados do documento"}</p>
       <p className="text-muted-foreground">A confirmação salva somente esta operação revisada; outras pendências permanecem não salvas.</p>
     </> : <>
-      <div className="flex flex-wrap gap-1 border-b border-border pb-2">{labels.map((l) => <Button key={l} size="sm" variant={tab === l ? "default" : "outline"} onClick={() => setTab(l)}>{l}</Button>)}</div>
+      <div className="flex flex-wrap gap-1 border-b border-border pb-2">{labels.map((l) => <Button key={l} size="sm" variant={tab === l ? "default" : "outline"} onClick={() => setTab(l)}>{l === "Parcelas" ? `Parcelas (${parcels.length})` : l}</Button>)}</div>
+      <div className="launch-grid launch-grid-2"><div className="min-w-0 space-y-4">
       {tab === "Resumo" && <>
         <dl className="grid grid-cols-1 gap-x-6 gap-y-4 border-b border-border pb-4 sm:grid-cols-2 lg:grid-cols-3">
           {[["Fornecedor", supplierIdentity(d, initial.record).name], ["Categoria / subgrupo", category ? `${category.kind === "compra" ? "Compra" : "Despesa"} / ${category.name}` : ""], ["Pedido", fields.purchaseCode], ["Documento", fields.document], ["Descrição", splitOrigin(fields.notes).text], ["Parcelas", `${parcels.length} · ${Object.entries(parcels.reduce<Record<string, number>>((counts, p) => { const label = situation(p); counts[label] = (counts[label] ?? 0) + 1; return counts; }, {})).map(([label, count]) => `${count} ${label.toLocaleLowerCase("pt-BR")}`).join(" · ")}`]].map(([label, value]) => <div key={label}><dt className="lbl">{label}</dt><dd className="break-words font-medium">{shown(value)}</dd></div>)}
@@ -122,7 +124,8 @@ function ExistingLaunchPanel({ launch, onClose }: { launch: LaunchRef; onClose: 
         <Button variant="outline" onClick={() => setTab("Parcelas")}>Gerenciar parcelas ({parcels.length})</Button>
         <section><h3 className="mb-2 font-semibold">Cadastro e última alteração · horário de Brasília</h3>{active.isBase && auditH.status !== "ready" && <p className="mb-1 text-muted-foreground">{auditH.status === "loading" ? "Carregando auditoria…" : auditH.status === "error" ? auditH.error : "Datas do próprio registro. As datas da auditoria são carregadas sob demanda."} {auditH.status === "idle" && <Button size="sm" variant="outline" onClick={() => setDatesRequested(true)}>Carregar datas da auditoria</Button>}</p>}<table className="tbl"><thead><tr><th>Parcela</th><th>Cadastrado em</th><th>Responsável pelo cadastro</th><th>Última alteração</th><th>Responsável pela alteração</th></tr></thead><tbody>{recordDates.map((r, i) => <tr key={i}><td>{r.parcel}</td><td>{formatLaunchTime(r.created)}</td><td>{r.createdBy || 'Não disponível'}</td><td>{formatLaunchTime(r.updated)}</td><td>{r.updatedBy || 'Não disponível'}</td></tr>)}</tbody></table></section>
       </>}
-      {tab === "Parcelas" && <>
+      {(tab === "Dados do documento" || tab === "Lançamento") && <div className="launch-card space-y-3"><h3 className="font-semibold">Dados gerais</h3><p className="text-warning-foreground">Alterações destes campos afetam todas as {parcels.length} parcelas deste documento, não outras notas do mesmo pedido.</p><fieldset disabled={!canEdit} className="grid grid-cols-1 gap-3 sm:grid-cols-2"><CatSubFields d={d} kind={d.categories.find((c) => c.id === fields.categoryId)?.kind ?? "compra"} categoryId={fields.categoryId} onChange={(_, categoryId) => setFields({ ...fields, categoryId })} /><Field l="Fornecedor"><SupplierSearch d={d} existing value={fields.supplierId} onChange={(supplierId) => setFields({ ...fields, supplierId })} /></Field>{([['purchaseCode', 'Pedido'], ['document', 'Documento'], ['notes', 'Descrição']] as const).map(([key, label]) => <Field key={key} l={label}><input className="inp" value={fields[key]} onChange={(e) => setFields({ ...fields, [key]: e.target.value })} disabled={!canEdit} /></Field>)}</fieldset></div>}
+      {(tab === "Parcelas" || tab === "Lançamento") && <div className="launch-card space-y-3"><h3 className="font-semibold">Parcelas</h3>
         {launch.kind === "planned" && <section className="space-y-3 border-b border-border pb-4">
           <div className="flex flex-wrap items-center gap-2"><Button size="sm" variant="outline" disabled={!canEdit || !eligible.length} onClick={() => changeSelection(eligible.map((p) => p.key))}>Selecionar todas as planejadas</Button><Button size="sm" variant="outline" onClick={() => changeSelection([])}>Limpar seleção</Button><span role="status">{chosen.length}/{eligible.length} planejadas selecionadas · {fmtBRL(chosenTotal)}</span></div>
           <div className="flex flex-wrap gap-2"><Button disabled={!canEdit || !chosen.length} onClick={() => startEffectivation(chosenKeys)}>Efetivar selecionadas ({chosen.length})</Button><Button variant="outline" disabled={!canEdit || !eligible.length} onClick={() => startEffectivation(eligible.map((p) => p.key))}>Efetivar documento inteiro</Button>{eff && <Button variant="outline" onClick={() => { setEff(false); setChecked(false); }}>Voltar à edição de parcelas</Button>}</div>
@@ -146,10 +149,10 @@ function ExistingLaunchPanel({ launch, onClose }: { launch: LaunchRef; onClose: 
         {eff && <><Field l="Saldo restante previsto (informação manual)"><MoneyInput value={remaining} onChange={(v) => { setRemaining(v); setChecked(false); }} /></Field><p className="text-muted-foreground">Referência matemática: {fmtBRL(original - parcels.filter((p) => chosenKeys.includes(p.key)).reduce((s, p) => s + (p.amount ?? 0), 0))}. Não é aplicada automaticamente.</p><label className="flex gap-2"><input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} />Conferi o saldo restante informado e os vencimentos das parcelas não selecionadas; R$ 0,00 encerra o restante.</label></>}
         <Field l="Justificativa para valores, datas, efetivação ou cancelamento"><textarea className="inp w-full" value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
         {launch.kind !== "planned" && initial.parcels.filter((p) => p.paid > 0).map((p) => <div key={p.key}><h3 className="font-semibold">Baixas — parcela {p.label}</h3><BaixasList d={d} kind={launch.kind === "expense" ? "expense" : "committed"} titleId={p.id} canReverse={active.isBase && canEdit && !dirty} onReverse={async (id, n) => { if(await saving.saveMutation(d,x=>reversePayment(x,id,n,new Date().toISOString())))onClose(); }} /></div>)}
-      </>}
-      {tab === "Dados do documento" && <><p className="text-warning-foreground">Alterações destes campos afetam todas as {parcels.length} parcelas deste documento, não outras notas do mesmo pedido.</p><fieldset disabled={!canEdit} className="grid grid-cols-1 gap-3 sm:grid-cols-2"><CatSubFields d={d} kind={d.categories.find((c) => c.id === fields.categoryId)?.kind ?? "compra"} categoryId={fields.categoryId} onChange={(_, categoryId) => setFields({ ...fields, categoryId })} /><Field l="Fornecedor"><SupplierSearch d={d} existing value={fields.supplierId} onChange={(supplierId) => setFields({ ...fields, supplierId })} /></Field>{([['purchaseCode', 'Pedido'], ['document', 'Documento'], ['notes', 'Descrição']] as const).map(([key, label]) => <Field key={key} l={label}><input className="inp" value={fields[key]} onChange={(e) => setFields({ ...fields, [key]: e.target.value })} disabled={!canEdit} /></Field>)}</fieldset></>}
+      </div>}
       {tab === "Histórico" && <>{active.isBase && auditH.status === "loading" && <p role="status">Carregando histórico…</p>}{auditH.status === "error" && <p className="text-destructive">{auditH.error}</p>}{initial.records.map((r) => <div key={r.id}>{r.editLog?.map((h, i) => <p key={i}>{fmtDate(h.at.slice(0, 10))} {h.at.slice(11, 19)} · {h.by} · {splitOrigin(h.note).text} · {h.note.startsWith("Número do boleto") ? `Número do boleto: ${h.before.boletoNumber || "Não informado"} → ${h.after.boletoNumber || "Não informado"}` : ""} · {fmtBRL(h.before.amount)} → {fmtBRL(h.after.amount)} · {fmtDate(h.before.date)} → {fmtDate(h.after.date)}</p>)}{'extensionHistory' in r && r.extensionHistory.map((h, i) => <p key={`ext-${i}`}>{fmtDate(h.at.slice(0, 10))} · {fmtDate(h.from)} → {fmtDate(h.to)} · {splitOrigin(h.note).text}</p>)}</div>)}<HistoryView data={d} entries={history.map((a) => ({ at: a.at, user: a.user_email ?? "", changes: a.changes.filter((c) => initial.records.some((r) => r.id === c.id)) }))} />{!history.length && !initial.records.some((r) => r.editLog?.length) && <p>Sem alterações registradas neste documento.</p>}</>}
       {tab === "Resumo" && "plannedId" in initial.record && <PlanVsActualDetail d={d} plannedId={initial.record.plannedId as string | null} />}
+      </div><SupplierSummary d={d} supplierId={fields.supplierId} name={supplierIdentity(d, { supplierId: fields.supplierId }).name} /></div>
     </>}
   </SidePanel>;
 }
