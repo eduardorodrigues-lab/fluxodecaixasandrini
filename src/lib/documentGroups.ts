@@ -4,7 +4,10 @@ export interface DocumentGroup { key: string; document: string; titles: Committe
 export interface DocumentIndex { byId: Map<string, DocumentGroup>; ambiguous: { id: string; document: string; reason: string }[] }
 
 
-/** Presentation only. Imported A-number series require corroborating source cells and contiguous rows. */
+/** Presentation only. Imported A-number series require matching source identities and dates,
+ * not adjacent worksheet rows (the source can be ordered by due date).
+ * Existing note IDs always take precedence; this never writes inferred links to records.
+ */
 export function documentGroups(d: Pick<ScenarioData, "committed">): DocumentIndex {
   const byId = new Map<string, DocumentGroup>(), ambiguous: DocumentIndex["ambiguous"] = [];
   const candidates = new Map<string, { title: Committed; base: string; number: number }[]>();
@@ -15,17 +18,19 @@ export function documentGroups(d: Pick<ScenarioData, "committed">): DocumentInde
     if (c.noteId) { const key = JSON.stringify([c.supplierId || c.sourceSupplier, c.noteId]); explicit.set(key, [...(explicit.get(key) ?? []), c]); continue; }
     const rawDocument = c.importOrigin?.raw?.[2];
     const identifier = typeof rawDocument === "string" ? rawDocument : c.document;
-    const m = /^(\d{4,})A([1-9]\d*)$/.exec(identifier);
+    const m = /^(\d+)A([1-9]\d*)$/.exec(identifier);
     if (!m) {
       if (!c.importOrigin && c.supplierId && c.document) { const key = JSON.stringify([c.supplierId, c.purchaseCode, c.document]); explicit.set(key, [...(explicit.get(key) ?? []), c]); }
       continue;
     }
     const o = c.importOrigin, raw = o?.raw;
-    if (!o || o.sheet !== "COMPRAS DIRETAS_EFETUADAS" || !raw || (c.document !== identifier && c.document !== m[1]) || raw[1] !== c.sourceSupplier || typeof raw[0] !== "string" || !c.sourceSupplier?.trim()) {
+    if (!o?.file || o.sheet !== "COMPRAS DIRETAS_EFETUADAS" || !raw || raw[2] !== identifier || (c.document !== identifier && c.document !== m[1]) || raw[1] !== c.sourceSupplier || !c.sourceSupplier?.trim() || !sourceDate(raw[3]) || !sourceDate(raw[6]) || !Number.isSafeInteger(Number(m[2]))) {
       ambiguous.push({ id: c.id, document: c.document, reason: "Identificação sem comprovação suficiente na origem" }); continue;
     }
     const base = m[1]; if (!base) continue;
-    const key = JSON.stringify([c.sourceSupplier, c.supplierId, o.file, o.sheet, raw[0], raw[3], base]);
+    // Missing purchase codes are valid; neither fuzzy supplier names nor document prefixes
+    // establish a link. Separate source dates/orders and pre-existing links stay separate.
+    const key = JSON.stringify([c.sourceSupplier, c.supplierId, o.file, o.sheet, raw[0] ?? "", sourceDate(raw[3]), base, c.plannedId, c.effectivationId]);
     candidates.set(key, [...(candidates.get(key) ?? []), { title: c, base, number: Number(m[2]) }]);
   }
   for (const [key, titles] of explicit) {
@@ -35,13 +40,22 @@ export function documentGroups(d: Pick<ScenarioData, "committed">): DocumentInde
   }
   for (const [key, entries] of candidates) {
     entries.sort((a, b) => a.number - b.number);
-    const firstRow = entries[0]?.title.importOrigin?.row;
-    const sourceDate = (c: Committed) => { const value = c.importOrigin?.raw?.[6]; return value && typeof value === "object" && "d" in value ? String(value.d) : typeof value === "string" ? value : ""; };
-    const safe = entries.length > 1 && firstRow !== undefined && entries.every((x, i) => x.number === i + 1 && x.title.importOrigin?.row === firstRow + i && !!sourceDate(x.title) && (!i || sourceDate(x.title) > sourceDate(entries[i - 1]?.title ?? x.title)));
-    const unrelated = d.committed.some((c) => !entries.some((e) => e.title.id === c.id) && c.importOrigin?.file === entries[0]?.title.importOrigin?.file && c.importOrigin?.sheet === entries[0]?.title.importOrigin?.sheet && entries.some((e) => Math.abs((c.importOrigin?.row ?? -100) - (e.title.importOrigin?.row ?? 100)) === 1) && c.document.match(/^(\d{4,})A([1-9]\d*)$/)?.[1] === entries[0]?.base && c.sourceSupplier === entries[0]?.title.sourceSupplier);
-    if (!safe || unrelated) { for (const x of entries) ambiguous.push({ id: x.title.id, document: x.title.document, reason: "Série incompleta, duplicada ou com sequência de origem/vencimentos ambígua" }); continue; }
+    const safe = entries.length > 1 && new Set(entries.map(x => x.title.importOrigin?.row)).size === entries.length && entries.every((x, i) => x.number === i + 1 && Number.isInteger(x.title.importOrigin?.row) && (!i || sourceDate(x.title.importOrigin?.raw?.[6]) > sourceDate(entries[i - 1]?.title.importOrigin?.raw?.[6])));
+    if (!safe) { for (const x of entries) ambiguous.push({ id: x.title.id, document: x.title.document, reason: "Série incompleta, duplicada ou com sequência de origem/vencimentos ambígua; total de parcelas não comprovado" }); continue; }
     const group: DocumentGroup = { key, document: entries[0]?.base ?? "", titles: entries.map((x) => x.title), labels: new Map(entries.map((x) => [x.title.id, `${x.number}/${entries.length}`])) };
     for (const x of entries) byId.set(x.title.id, group);
   }
   return { byId, ambiguous };
+}
+
+/** Compare source dates only, never changed due dates/extensions. Excel serials are
+ * converted without timezone serialization; malformed/missing dates cannot prove a series. */
+function sourceDate(value: unknown): string {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0 && value < 2958466) {
+    return new Date(Date.UTC(1899, 11, 30) + Math.floor(value) * 86400000).toISOString().slice(0, 10);
+  }
+  const text = typeof value === "string" ? value : value && typeof value === "object" && "d" in value && typeof value.d === "string" ? value.d : "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return "";
+  const date = new Date(`${text}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === text ? text : "";
 }

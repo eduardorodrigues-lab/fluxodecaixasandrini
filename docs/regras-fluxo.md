@@ -1,5 +1,10 @@
 # Fluxo de Caixa Sandrini — Regras, schema e critérios de aceite (NÃO homologado)
 
+## Identificação derivada de notas parceladas importadas — 24/11/2026
+- `documentGroups` reconhece séries numéricas A1/A2/A3 por origem, fornecedor exato, documento, pedido opcional e emissão; suporta datas seriais Excel e linhas não adjacentes. NoteId existente prevalece. Zeros à esquerda e séries/emissões diferentes não são fundidos.
+- Lacunas, duplicatas, datas/documentos sem prova ou sufixos arbitrários permanecem individuais; não deduz total do maior sufixo isolado. Denominador da série completa é a quantidade observada; a ausência de uma parcela terminal não indicada na fonte é limite explícito.
+- Nota 2409 de FOUR ALL: três linhas individuais, 1/3, 2/3, 3/3, preservando documentos 2409A1/A2/A3 e raw. Sem gravação, migração, mudança de valores/datas/baixas/etapas ou cálculo. Evidências e limites: `docs/notas-parceladas-importadas-2026-11-24.md`.
+
 ## Revisão global e recuperação de confirmação — 18/11/2026 14:55 UTC
 - Salvar global captura revisão antes/depois das alterações de outros módulos, sem Recebimentos, sem cálculo diário e sem envio ao abrir/voltar. Confirmar usa o mesmo caminho isolado/versionado. Campos intactos não aparecem; vazio e zero são distintos.
 - Pacote protegido antes do envio na chave existente: requestId, operações, captura das pendências, dependências e identificação humana da revisão. Ver alterações é somente leitura dessa captura, inclusive após recarga. Edições posteriores não modificam o pacote; a confirmação preserva essas edições e as pendências independentes.

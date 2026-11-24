@@ -1,5 +1,10 @@
 # Roadmap
 
+## Notas parceladas importadas — autorizado 24/11/2026
+- [x] Normalização derivada por origem/fornecedor/documento; reconhecer 2409A1/A2/A3 sem mutação financeira
+- [x] 59 testes focados/436 regressões aprovados; candidato local intacto em 2.191 dias; compilação OK; navegador fictício lista/Gerenciar
+- [x] Evidências e limites em docs/notas-parceladas-importadas-2026-11-24.md; sem reimportação, escrita oficial ou publicação; versão ativa não conferida
+
 ## Bancos — confirmação única autorizada 19/11/2026
 - [x] Conferência complementar dos caminhos de Bancos e inventário dos módulos fora do escopo; 37 testes e navegador fictício (11 commits); autorização separada necessária para Metas/ajustes/plataformas/observações
 - [x] Migrar ações de Bancos do update global para revisão isolada; recuperação explícita de conta legada e proteção local
