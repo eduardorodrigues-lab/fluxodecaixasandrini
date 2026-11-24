@@ -3,11 +3,12 @@
 ## Correções autorizadas 24/11/2026 (cancelamento, salvamento, desempenho, lote)
 - [x] 1 Cancelado com aberto/obrigação zero e original separado (MATHEUS: base v229 já marca as 2 parcelas como cancelado; Fluxo já as excluía — exibição corrigida)
 - [x] 6 Fluxo abre na segunda da semana em São Paulo
-- [ ] 2 Desconhecido sem rotina manual / operações independentes com fila / migrar módulos update()
-- [ ] 3 Medições e redução de carga (diff no commit exige migração — aguarda aprovação)
-- [ ] 4 Cancelar/X imediato sem diálogo quando não houve edição (conferir)
-- [ ] 5 Edição em massa por checkbox
-- [ ] 7 Adicionar parcelas a efetivado existente
+- [ ] 2 Desconhecido sem rotina manual / operações independentes com fila / migrar módulos update() — proposta em docs/proposta-salvamento-desempenho-2026-11-24.md, aguarda aprovação
+- [ ] 3 Medições e redução de carga — proposta de banco escrita; aguarda aprovação de Eduardo
+- [x] 4 Cancelar/X imediato sem edição; com edição: manter rascunho/descartar/continuar (Gerenciar lançamento)
+- [x] 5 Edição em massa por checkbox (efetivados): prorrogar, valor, subgrupo, cancelar; revisão e confirmação única
+- [x] 7 Adicionar parcelas a efetivado existente com novo total antes de confirmar
+- [x] Navegador isolado (dados fictícios): itens 1, 4, 5, 6, 7 conferidos; nenhuma gravação
 
 ## History response 500 — authorized 24/11/2026
 - [x] Sweep documented in docs/conferencia-respostas-grandes-2026-11-24.md; official reads/confirmation/conflicts/receipts compressed losslessly; 444 tests passed (6 optional skipped), compilation OK; signed-in History/Banks/Launches/Targets read-only checks passed; real writes/concurrency and published deployment not exercised

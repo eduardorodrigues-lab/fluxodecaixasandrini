@@ -17,3 +17,4 @@
 - Drafts/pending packets/form drafts are keyed by `params.baseGeneration`; older generations stay stored, never rehydrated — prevents contaminating a replaced base.
 - Banks use `bankOperation` and the shared isolated confirmation; only explicitly reviewed account IDs recover legacy drafts, and transfers/initial-balance transitions capture bank dependencies — prevents global second saves and concurrent balance changes.
 - A definitively rejected packet (conflict/failed) is retried by rebasing the same ops on a freshly read official version with a new requestId (`rejectedRetry.ts`); same-record conflicts stay blocked and changed dependencies need explicit confirmation — lets simultaneous editors keep saving without overwriting each other.
+- Bulk edits of effectivated titles use `bulkEdit.ts` (planBulk/applyBulk) with per-item snapshots taken at selection; any blocked item aborts the whole batch — prevents partial batches and silent overwrites of concurrent changes.

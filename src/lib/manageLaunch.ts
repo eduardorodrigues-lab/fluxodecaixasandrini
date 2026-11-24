@@ -41,7 +41,7 @@ export function applyManaged(d: ScenarioData, input: ManageInput) {
   const current = managedDocument(d, ref);
   if (JSON.stringify(current.parcels) !== JSON.stringify(before) || JSON.stringify(current.fields) !== JSON.stringify(initialFields)) throw new Error("O documento mudou. Reabra para conferir os dados atuais.");
   const newRows = parcels.filter(p=>!before.some(b=>b.key===p.key));
-  if (ref.kind !== "planned" && (before.some(b=>!parcels.some(p=>p.key===b.key)) || (newRows.length && (ref.kind !== "committed" || !("noteId" in current.record) || !current.record.noteId || current.records.some(r=>!("noteId" in r) || r.noteId!==("noteId" in current.record ? current.record.noteId : undefined)))))) throw new Error("Reparcelamento exige nota com vínculo explícito; conserve as parcelas existentes.");
+  if (ref.kind !== "planned" && (before.some(b=>!parcels.some(p=>p.key===b.key)) || (newRows.length && (ref.kind !== "committed" || new Set(current.records.map(r=>"noteId" in r ? r.noteId ?? "" : "")).size !== 1)))) throw new Error("Reparcelamento exige nota com vínculo explícito; conserve as parcelas existentes.");
   if (ref.kind === "planned" && (before.some((b) => !parcels.some((p) => p.key === b.key)) || new Set(parcels.map((p) => p.key)).size !== parcels.length)) throw new Error("Conserve os IDs existentes; cancele a parcela em vez de removê-la.");
   if (JSON.stringify(current.records) !== JSON.stringify(input.beforeRecords ?? current.records)) throw new Error("O documento mudou. Seu rascunho foi preservado; confira as alterações concorrentes.");
   const changed = parcels.filter((p) => JSON.stringify(p) !== JSON.stringify(before.find((b) => b.key === p.key)));
@@ -81,12 +81,15 @@ export function applyManaged(d: ScenarioData, input: ManageInput) {
     }
   } else {
     if(ref.kind === "committed" && newRows.length) {
-      const source=d.committed.find(c=>c.id===ref.id); if(!source?.noteId)throw new Error("Nota sem vínculo explícito.");
-      let no=Math.max(0,...current.records.map(r=>"parcelNo" in r ? r.parcelNo ?? 0 : 0));
+      const source=d.committed.find(c=>c.id===ref.id); if(!source)throw new Error("Documento inexistente.");
+      // Documento sem vínculo de nota: cria o vínculo explícito nas parcelas atuais (IDs, números e valores preservados) e registra no histórico.
+      const noteId=source.noteId ?? `nota-${source.id}`;
+      if(!source.noteId) for(const old of current.records){ const c=d.committed.find(x=>x.id===old.id); if(!c||c.noteId)throw new Error("Documento mudou."); c.noteId=noteId; (c.editLog ??= []).push({at,by,note:`${reason} · vínculo de nota criado para incluir nova parcela`,parcel:c.id,before:{amount:c.value,date:c.extensionDate??c.dueDate},after:{amount:c.value,date:c.extensionDate??c.dueDate}}); }
+      let no=Math.max(current.records.length,...current.records.map(r=>"parcelNo" in r ? r.parcelNo ?? 0 : 0));
       for(const p of newRows) {
         if(p.amount===null || !p.date)throw new Error("Confira nova parcela.");
         const n=++no;
-        d.committed.push({id:p.id,supplierId:fields.supplierId,categoryId:fields.categoryId,purchaseCode:fields.purchaseCode,document:fields.document,value:p.amount,dueDate:p.date,extensionDate:p.extension,extensionHistory:p.extension ? [{at,from:null,to:p.extension,note:reason}] : [],extensionInfo:"",legacyAbatement:null,origin:"manual",plannedId:source.plannedId,effectivationId:null,noteId:source.noteId,parcelNo:n,parcelCount:no,notes:fields.notes,status:"ativo",condition:null,editLog:[{at,by,note:`${reason} · Nova parcela`,parcel:p.key,before:{amount:0,date:null},after:{amount:p.amount,date:p.extension??p.date}}]});
+        d.committed.push({id:p.id,supplierId:fields.supplierId,categoryId:fields.categoryId,purchaseCode:fields.purchaseCode,document:fields.document,value:p.amount,dueDate:p.date,extensionDate:p.extension,extensionHistory:p.extension ? [{at,from:null,to:p.extension,note:reason}] : [],extensionInfo:"",legacyAbatement:null,origin:"manual",plannedId:source.plannedId,effectivationId:null,noteId,parcelNo:n,parcelCount:no,notes:fields.notes,status:"ativo",condition:null,editLog:[{at,by,note:`${reason} · Nova parcela`,parcel:p.key,before:{amount:0,date:null},after:{amount:p.amount,date:p.extension??p.date}}]});
       }
       // Existing parcel numbers/counts and payments remain untouched, including paid history.
     }

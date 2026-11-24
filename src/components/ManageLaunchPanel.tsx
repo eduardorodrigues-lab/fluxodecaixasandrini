@@ -11,7 +11,8 @@ import { HistoryView } from "@/components/HistoryView";
 import { askConfirm } from "@/lib/decisions";
 import { currentParcels, effectivateManual } from "@/lib/efetivacao";
 import { distributePlanned } from "@/lib/engine/engine";
-import { guardClose } from "@/components/NotaPanel";
+import { askCloseDraft } from "@/lib/decisions";
+import { useFormDraft } from "./useFormDraft";
 import { registerPaymentBatch, coverTitleWithCard } from "@/lib/engine/banco";
 import { reversePayment, todaySP } from "@/lib/engine/actions";
 import { supplierIdentity } from "@/lib/supplierIdentity";
@@ -32,7 +33,7 @@ export function ManageLaunchPanel({ launch, onClose }: { launch: LaunchRef; onCl
 }
 
 function ExistingLaunchPanel({ launch, onClose }: { launch: LaunchRef; onClose: () => void }) {
-  const { active, update, canEdit, user, allSims } = useApp();
+  const { active, update, canEdit, user, allSims, official } = useApp();
   const saving = useOperationSave();
   const d = active.data;
   const [initial] = useState(() => managedDocument(d, launch));
@@ -50,7 +51,18 @@ function ExistingLaunchPanel({ launch, onClose }: { launch: LaunchRef; onClose: 
   const [effId] = useState(() => `ef-${uid()}`);
   const [spreadTotal, setSpreadTotal] = useState<number | null>(null);
   const [spreadKeys, setSpreadKeys] = useState<string[]>([]);
-  const dirty = eff || JSON.stringify(parcels) !== JSON.stringify(initial.parcels) || JSON.stringify(fields) !== JSON.stringify(initial.fields);
+  const dirty = eff || !!reason.trim() || JSON.stringify(parcels) !== JSON.stringify(initial.parcels) || JSON.stringify(fields) !== JSON.stringify(initial.fields);
+  // Proteção local do preenchimento (nunca envia): restaura somente se ainda corresponde ao documento atual.
+  const protection = useFormDraft({ user: user?.id ?? "", org: official.orgId, mode: active.id, form: "gerenciar", record: `${launch.kind}:${launch.id}` }, { parcels, fields, reason },
+    (v) => { if (JSON.stringify(v.parcels.filter((p) => initial.parcels.some((b) => b.key === p.key)).map((p) => p.key)) !== JSON.stringify(initial.parcels.map((p) => p.key))) return false; if (JSON.stringify(v.parcels) === JSON.stringify(initial.parcels) && JSON.stringify(v.fields) === JSON.stringify(initial.fields) && !v.reason.trim()) return false; setParcels(v.parcels); setFields(v.fields); setReason(v.reason); return true; });
+  const close = async () => {
+    if (saving.protected) { protection.flush(); onClose(); return; }
+    if (!dirty) { protection.clear(); onClose(); return; }
+    const choice = await askCloseDraft();
+    if (choice === "keep") { protection.flush(); onClose(); } else if (choice === "discard" && protection.clear()) onClose();
+  };
+  const activeTotal = (ps: ManagedParcel[]) => ps.reduce((sum, p) => sum + (p.status === "cancelado" ? 0 : p.amount ?? 0), 0);
+  const added = parcels.filter((p) => !initial.parcels.some((b) => b.key === p.key));
   const patch = (key: string, p: Partial<ManagedParcel>) => { setParcels((all) => all.map((r) => r.key === key ? { ...r, ...p } : r)); setChecked(false); };
   const eligible = eligiblePlanned(launch, parcels);
   const chosen = selectedPlanned(launch, parcels, selected);
@@ -91,7 +103,7 @@ function ExistingLaunchPanel({ launch, onClose }: { launch: LaunchRef; onClose: 
   const prepare = () => {
     try { const started=performance.now(); const next = produce(d, build); setReview({ before:d, data: next }); measureSavePhase('review',started); setError(""); } catch (e) { setError((e as Error).message); }
   };
-  const confirm = async () => { if(review && await saving.save(review.before,review.data)) onClose(); };
+  const confirm = async () => { if(review && await saving.save(review.before,review.data)) { protection.clear(); onClose(); } };
   const changeSelection = (keys: string[]) => { setSelected(keys); setRemaining(null); setChecked(false); };
   const labels = ["Lançamento", "Resumo", "Parcelas", "Dados do documento", "Histórico"];
   const finance = [["Planejado original", launch.kind === "planned" ? initial.record.value : null], ["Saldo restante previsto", summary.remaining], ["Efetivado", summary.effective], ["Pago", summary.paid], ["Efetivado em aberto", summary.open]] as const;
@@ -99,14 +111,15 @@ function ExistingLaunchPanel({ launch, onClose }: { launch: LaunchRef; onClose: 
   if (pay) return <PagamentoPanel d={d} kind={launch.kind === "expense" ? "expense" : "committed"} titleId={pay.id} label={`${initial.fields.document} · ${pay.label}`} saving={saving.saving} saveError={saving.error} saveLabel={saving.saveLabel} onCancel={() => {saving.reset();setPay(null);}} onConfirm={async (r) => {
     const kind = launch.kind === "expense" ? "expense" : "committed";
     const ok = await saving.saveMutation(d, x => r.origin === "conta" ? registerPaymentBatch(x, { batchId: uid(), titleKind: kind, titleId: pay.id, lines: r.lines, note: r.note, form: r.form }) : coverTitleWithCard(x, { id: uid(), at: new Date().toISOString(), by: user?.email ?? "", titleKind: kind, titleId: pay.id, cardId: r.cardId, date: r.date, amount: r.amount, fee: r.fee, installments: r.installments, form: "boleto" }));
-    if(ok)onClose(); return ok;
+    if(ok){protection.clear();onClose();} return ok;
   }} />;
-  return <SidePanel expanded wide centered={!!review} title={review ? "Revisar lançamento" : "Gerenciar lançamento"} sub={`${supplierIdentity(d, initial.record).name} · Documento ${initial.fields.document || "Não informado"} · Pedido ${initial.fields.purchaseCode || "Não informado"}`} onClose={()=>{if(saving.protected)onClose();else void guardClose(dirty, onClose)();}} dirty={false} footer={review ? <><Button variant="outline" disabled={saving.saving} onClick={() => {if(saving.reset())setReview(null);}}>Voltar</Button><Button variant="outline" onClick={saving.protected ? onClose : guardClose(dirty, onClose)}>{saving.protected ? "Fechar (acompanhamento continua)" : "Cancelar"}</Button><Button disabled={!canEdit || saving.saving} onClick={confirm}>{active.isBase ? saving.saveLabel : saving.saving ? "Salvando…" : "Confirmar na simulação"}</Button></> : <><Button variant="outline" disabled={saving.saving} onClick={guardClose(dirty, onClose)}>Cancelar</Button><Button disabled={!canEdit || !dirty} onClick={prepare}>Revisar antes de salvar</Button></>}>
+  return <SidePanel expanded wide centered={!!review} title={review ? "Revisar lançamento" : "Gerenciar lançamento"} sub={`${supplierIdentity(d, initial.record).name} · Documento ${initial.fields.document || "Não informado"} · Pedido ${initial.fields.purchaseCode || "Não informado"}`} onClose={()=>void close()} dirty={false} footer={review ? <><Button variant="outline" disabled={saving.saving} onClick={() => {if(saving.reset())setReview(null);}}>Voltar</Button><Button variant="outline" onClick={()=>void close()}>{saving.protected ? "Fechar (acompanhamento continua)" : "Cancelar"}</Button><Button disabled={!canEdit || saving.saving} onClick={confirm}>{active.isBase ? saving.saveLabel : saving.saving ? "Salvando…" : "Confirmar na simulação"}</Button></> : <><Button variant="outline" disabled={saving.saving} onClick={()=>void close()}>Cancelar</Button><Button disabled={!canEdit || !dirty} onClick={prepare}>Revisar antes de salvar</Button></>}>
     {saving.error && <p role="alert" className="text-destructive">{saving.error}</p>}
     {error && <p role="alert" className="text-destructive">{error}</p>}
     {review ? <>
       <table className="tbl"><thead><tr><th>Parcela</th><th>Escopo</th><th>Antes → depois</th><th>Vencimento → depois</th><th>Status → depois</th><th>Número do boleto antes → depois</th></tr></thead><tbody>{parcels.filter(p=>JSON.stringify(p)!==JSON.stringify(initial.parcels.find(b=>b.key===p.key)) || eff && chosenKeys.includes(p.key)).map((p) => { const b = initial.parcels.find((x) => x.key === p.key); return <tr key={p.key}><td>{p.label}</td><td>{chosenKeys.includes(p.key) && eff ? "Efetivar" : JSON.stringify(b) === JSON.stringify(p) ? "Não afetada" : "Alterada"}</td><td>{fmtBRL(b?.original)} → {fmtBRL(p.amount)}</td><td>{fmtDate(b?.extension ?? b?.date)} → {fmtDate(p.extension ?? p.date)}</td><td>{b?.status} → {eff && chosenKeys.includes(p.key) ? "Efetivado" : p.status === "cancelado" ? "Cancelado (efeito futuro zero)" : p.status}</td><td>{b?.boletoNumber || "Não informado"} → {p.boletoNumber || "Não informado"}</td></tr>; })}</tbody></table>
       {JSON.stringify(fields) !== JSON.stringify(initial.fields) && <div><h3 className="font-semibold">Dados compartilhados — documento inteiro</h3>{(Object.keys(fields) as (keyof typeof fields)[]).filter((k) => fields[k] !== initial.fields[k]).map((k) => <p key={k}>{({ supplierId: "Fornecedor", categoryId: "Subgrupo", purchaseCode: "Pedido", document: "Documento", notes: "Descrição" })[k]}: {k === "supplierId" ? supplierIdentity(d, { supplierId: initial.fields[k] }).name : k === "categoryId" ? d.categories.find((c) => c.id === initial.fields[k])?.name : initial.fields[k]} → {k === "supplierId" ? supplierIdentity(d, { supplierId: fields[k] }).name : k === "categoryId" ? d.categories.find((c) => c.id === fields[k])?.name : fields[k]}</p>)}</div>}
+      <p className="font-medium">Total vigente das parcelas: {fmtBRL(activeTotal(initial.parcels))} → <b>{fmtBRL(activeTotal(parcels))}</b>{added.length > 0 && ` · ${added.length} nova(s) parcela(s): ${fmtBRL(activeTotal(added))}. Parcelas anteriores, IDs e pagamentos permanecem.`}</p>
       {eff && <p>Saldo restante previsto confirmado manualmente: <b>{fmtBRL(remaining)}</b>. Efetivar não registra pagamento.</p>}
       <p>Justificativa: {reason || "Alteração de dados do documento"}</p>
       <p className="text-muted-foreground">A confirmação salva somente esta operação revisada; outras pendências permanecem não salvas.</p>
@@ -142,7 +155,8 @@ function ExistingLaunchPanel({ launch, onClose }: { launch: LaunchRef; onClose: 
           <td data-label="Pago" className="num">{fmtBRL(p.paid)}</td><td data-label="Situação">{situation(p)}</td>
           <td data-label="Ações"><div className="flex flex-col gap-2"><Button size="sm" variant="outline" disabled={!canEdit || p.paid > 0 || p.status === "cancelado"} onClick={() => patch(p.key, { status: "cancelado" })}>Cancelar parcela</Button>{launch.kind !== "planned" && <Button size="sm" variant="outline" disabled={!active.isBase || !canEdit || dirty || p.status === "cancelado" || p.paid >= (p.amount ?? 0)} onClick={() => setPay(p)}>Registrar pagamento</Button>}</div></td>
         </tr>)}</tbody></table></div>
-        {launch.kind === "committed" && "noteId" in initial.record && initial.record.noteId && <Button variant="outline" disabled={!canEdit} onClick={()=>{const id=uid();const no=Math.max(0,...parcels.map(p=>Number.parseInt(p.label)||0))+1;setParcels([...parcels,{key:id,id,label:`${no} (nova)`,original:0,amount:null,date:null,extension:null,status:"ativo",paid:0}]);}}>+ Adicionar parcela da nota</Button>}
+        {launch.kind === "committed" && <Button variant="outline" disabled={!canEdit} onClick={()=>{const id=uid();const no=Math.max(0,...parcels.map(p=>Number.parseInt(p.label)||0))+1;setParcels([...parcels,{key:id,id,label:`${no} (nova)`,original:0,amount:null,date:null,extension:null,status:"ativo",paid:0}]);}}>+ Adicionar parcela/vencimento</Button>}
+        {added.length > 0 && <p role="status" className="font-medium">Novo total do documento: {fmtBRL(activeTotal(initial.parcels))} → {fmtBRL(activeTotal(parcels))} ({added.length} nova(s)). {!("noteId" in initial.record && initial.record.noteId) && "Será criado o vínculo de nota entre as parcelas, sem alterar IDs, números ou valores existentes."}</p>}
         {parcels.filter(p=>!initial.parcels.some(b=>b.key===p.key)).map(p=><Button key={p.key} variant="outline" onClick={()=>setParcels(ps=>ps.filter(r=>r.key!==p.key))}>Remover linha nova {p.label}</Button>)}
         <Button variant="destructive" disabled={!canEdit || parcels.some((p) => p.paid > 0)} onClick={() => { setParcels((all) => all.map((p) => ({ ...p, status: "cancelado" }))); setChecked(false); }}>Cancelar documento</Button>
         {!eff && <details><summary>Redistribuir valores — seleção independente</summary><div className="space-y-2 py-2"><p>Esta seleção é exclusiva da redistribuição, não utiliza a seleção de efetivação. Cancelar parcela usa apenas o botão da respectiva linha.</p>{parcels.map((p) => <label className="mr-3 inline-flex gap-1" key={p.key}><input type="checkbox" disabled={p.paid > 0 || p.status === "cancelado" || !canEdit} checked={spreadKeys.includes(p.key)} onChange={() => setSpreadKeys(spreadKeys.includes(p.key) ? spreadKeys.filter((k) => k !== p.key) : [...spreadKeys, p.key])} />{p.label}</label>)}<Field l="Total a redistribuir nas selecionadas"><MoneyInput value={spreadTotal} onChange={setSpreadTotal} /></Field><Button variant="outline" disabled={!canEdit || !spreadKeys.length} onClick={async () => { try { const next = redistributeSelected(parcels, spreadKeys, spreadTotal); if (await askConfirm(`Redistribuir ${fmtBRL(spreadTotal)} em ${spreadKeys.length} parcelas selecionadas, com resíduo na última? Datas e outras parcelas não mudam.`, { title: "Redistribuir valores?", action: "Preparar redistribuição" })) { setParcels(next); setChecked(false); } } catch (e) { setError((e as Error).message); } }}>Preparar redistribuição</Button></div></details>}

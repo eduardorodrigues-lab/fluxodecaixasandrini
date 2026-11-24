@@ -3,6 +3,7 @@ import { LaunchFilterPanel, useLaunchFilters } from "@/components/LaunchFilters"
 import { filterLaunchRows, formatLaunchTime } from "@/lib/launchFilters";
 import { reportCSV } from "@/lib/reportTable";
 import { ManageLaunchPanel } from "@/components/ManageLaunchPanel";
+import { BulkEditPanel } from "@/components/BulkEditPanel";
 import { createLaunchPresentation } from "@/lib/launchPresentation";
 import type { LaunchRef } from "@/lib/manageLaunch";
 import { supplierIdentity } from "@/lib/supplierIdentity";
@@ -100,7 +101,7 @@ const AmbiguousDocuments = memo(function AmbiguousDocuments({ d, groups, onManag
 
 function Page() {
   const target = Route.useSearch();
-  const { active, update, changes, user, allSims, official } = useApp();
+  const { active, update, changes, user, allSims, official, canEdit } = useApp();
   const [auditDates, setAuditDates] = useState(false);
   const auditH = useAuditHistory(active.isBase && auditDates);
   const audit = auditH.entries;
@@ -125,6 +126,8 @@ function Page() {
   const [open, setOpen] = useState<{ kind: string; id: string } | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [managed, setManaged] = useState<LaunchRef | null>(null);
+  const [bulk, setBulk] = useState<string[]>([]), [bulkOpen, setBulkOpen] = useState(false);
+  const toggleBulk = (k: string) => setBulk((all) => all.includes(k) ? all.filter((x) => x !== k) : [...all, k]);
   const act = (fn: (x: ScenarioData) => void) => { const e = update(fn); setErr(e ?? ""); return !e; };
   const actAlone = (fn: (x: ScenarioData) => void, what: string) => {
     void operation.saveMutation(d,fn);
@@ -188,6 +191,8 @@ function Page() {
       {(consultasVisited || tab === "consultas") && <div hidden={tab !== "consultas"}><CachedConsultas d={consultasData} onManage={setManaged} /></div>}
       {(pvaVisited || tab === "pva") && <div hidden={tab !== "pva"}><CachedPva key={`${official.orgId}:${active.id}`} d={pvaData} /></div>}
       {(tab === "planned" || tab === "committed") && active.isBase && auditH.status !== "ready" && <p className="mb-1 text-xs text-muted-foreground" role="status">Colunas de cadastro/alteração: {auditH.status === "loading" ? "carregando auditoria…" : auditH.status === "error" ? auditH.error : "datas do próprio registro (auditoria carregada sob demanda)."} {auditH.status === "idle" && <button className="underline" onClick={() => setAuditDates(true)}>Incluir datas da auditoria</button>}</p>}
+      {tab === "committed" && bulk.length > 0 && <div className="mb-2 flex flex-wrap items-center gap-2 rounded border border-primary bg-primary/5 p-2 text-sm" role="status"><b>{bulk.length} parcela(s) marcada(s)</b>{(() => { const visible = new Set(efetivados.map((r) => `${r.t}:${r.t === "committed" ? r.c.id : r.e.id}`)); const hidden = bulk.filter((k) => !visible.has(k)).length; return hidden ? <span className="text-warning-foreground">· {hidden} fora do filtro atual continuam marcadas</span> : null; })()}<Button size="sm" disabled={!canEdit} onClick={() => { operation.reset(); setBulkOpen(true); }}>Editar selecionadas</Button><Button size="sm" variant="outline" onClick={() => setBulk([])}>Limpar seleção</Button></div>}
+      {bulkOpen && <BulkEditPanel d={d} keys={bulk} by={user?.email ?? ""} canEdit={canEdit} isBase={active.isBase} saving={operation.saving} saveLabel={operation.saveLabel} saveError={operation.error} onSave={async (fn) => { const ok = await operation.saveMutation(d, fn); if (ok) setBulk([]); return ok; }} onClose={() => setBulkOpen(false)} />}
       {tab === "committed" && <AmbiguousDocuments d={d} groups={model.groups} onManage={setManaged} />}
       {tab === "consultas" || tab === "pva" ? null : <div className="card overflow-auto launch-table">
         {tab === "planned" && (
@@ -213,7 +218,7 @@ function Page() {
             {!plannedRows.length && <tr><td colSpan={14} className="text-center text-muted-foreground">Nenhum resultado para os filtros informados</td></tr>}</tbody></table>
         )}
         {tab === "committed" && (
-          <table className="tbl"><thead><tr><SortHead label="Categoria" column={0} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Subgrupo" column={1} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Fornecedor" column={2} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Código do pedido" column={3} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Documento" column={4} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Número do boleto" column={14} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Descrição" column={5} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Parcela" column={6} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Valor da parcela" column={7} sort={committedReport.sort} onSort={committedReport.toggle} numeric={true} /><SortHead label="Vencimento" column={8} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Prorrogar para" column={9} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Situação do lançamento" column={10} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Situação do pagamento" column={11} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Pago" column={12} sort={committedReport.sort} onSort={committedReport.toggle} numeric={true} /><SortHead label="Saldo em aberto" column={13} sort={committedReport.sort} onSort={committedReport.toggle} numeric={true} /><th>Cadastrado em<br />(Brasília)</th><th>Última alteração<br />(Brasília)</th><th>Ações</th></tr></thead>
+          <table className="tbl"><thead><tr><th><input type="checkbox" aria-label="Marcar todas desta página" checked={committedPager.slice(efetivados).length > 0 && committedPager.slice(efetivados).every((r) => bulk.includes(`${r.t}:${r.t === "committed" ? r.c.id : r.e.id}`))} onChange={(e) => { const page = committedPager.slice(efetivados).map((r) => `${r.t}:${r.t === "committed" ? r.c.id : r.e.id}`); setBulk((all) => e.target.checked ? [...new Set([...all, ...page])] : all.filter((k) => !page.includes(k))); }} /></th><SortHead label="Categoria" column={0} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Subgrupo" column={1} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Fornecedor" column={2} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Código do pedido" column={3} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Documento" column={4} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Número do boleto" column={14} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Descrição" column={5} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Parcela" column={6} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Valor da parcela" column={7} sort={committedReport.sort} onSort={committedReport.toggle} numeric={true} /><SortHead label="Vencimento" column={8} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Prorrogar para" column={9} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Situação do lançamento" column={10} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Situação do pagamento" column={11} sort={committedReport.sort} onSort={committedReport.toggle} numeric={false} /><SortHead label="Pago" column={12} sort={committedReport.sort} onSort={committedReport.toggle} numeric={true} /><SortHead label="Saldo em aberto" column={13} sort={committedReport.sort} onSort={committedReport.toggle} numeric={true} /><th>Cadastrado em<br />(Brasília)</th><th>Última alteração<br />(Brasília)</th><th>Ações</th></tr></thead>
             <tbody>{committedPager.slice(efetivados).flatMap((r) => {
               if (r.t === "committed") {
                 const c = r.c;
@@ -224,7 +229,7 @@ function Page() {
                 const pl = c.plannedId ? d.planned.find((p) => p.id === c.plannedId) : null;
                 return [
                   <tr key={c.id} id={`pending-${c.id}`} tabIndex={0} onClick={(event) => { if (!(event.target as HTMLElement).closest("button, input")) setManaged({ kind: "committed", id: c.id, parcel: c.id }); }} onKeyDown={(event) => { if (event.key === "Enter" && event.target === event.currentTarget) setManaged({ kind: "committed", id: c.id, parcel: c.id }); }} className={target.focus === c.id ? "bg-warning-soft" : ""}>
-                    <td>{kindL(c.categoryId)}</td><Txt v={catOf(c.categoryId)?.name} /><Txt v={supplierIdentity(d, c).name} /><Txt v={c.purchaseCode} /><Txt v={groups.byId.get(c.id)?.document ?? c.document} /><Txt v={c.boletoNumber || "Não informado"} /><Txt v={c.notes} />
+                    <td><input type="checkbox" aria-label={`Marcar ${label}`} checked={bulk.includes(`committed:${c.id}`)} onChange={() => toggleBulk(`committed:${c.id}`)} /></td><td>{kindL(c.categoryId)}</td><Txt v={catOf(c.categoryId)?.name} /><Txt v={supplierIdentity(d, c).name} /><Txt v={c.purchaseCode} /><Txt v={groups.byId.get(c.id)?.document ?? c.document} /><Txt v={c.boletoNumber || "Não informado"} /><Txt v={c.notes} />
                     <td>{lb}</td><td className="num">{fmtBRL(c.value)}</td><td>{fmtDate(c.dueDate)}</td><td>{c.extensionDate ? <span className="tag tag-warn">{fmtDate(c.extensionDate)}</span> : "—"}</td>
                     <td>{c.status === "cancelado" ? "Cancelado" : c.origin === "efetivacao" ? "Efetivado (previsão)" : c.origin === "legado" ? "Efetivado (histórico)" : "Efetivado"}</td>
                     <td><span className={`tag ${ts.state === "Pago" ? "tag-ok" : ts.state === "Parcial" ? "tag-warn" : ""}`}>{ts.state === "Parcial" ? "Parcialmente pago" : ts.state}</span>{ts.payments.some((p) => p.method === "cartao") && <span className="tag tag-ok ml-1">{ts.payments.every((p) => p.method === "cartao") && ts.open <= 0 ? "Quitado com cartão" : "parte no cartão"}</span>}</td>
@@ -234,7 +239,7 @@ function Page() {
                       <Button variant="outline" size="sm" onClick={() => setManaged({ kind: "committed", id: c.id, parcel: c.id })}>Gerenciar lançamento</Button>
                     </Acoes></td>
                   </tr>,
-                  isOpen("det", c.id) && <tr key={c.id + "-d"}><td colSpan={18} className="bg-muted">
+                  isOpen("det", c.id) && <tr key={c.id + "-d"}><td colSpan={19} className="bg-muted">
                     <div className="flex flex-wrap items-end gap-3 p-1 text-xs">
                       <span>Origem: <b>{c.origin === "efetivacao" ? `efetivação da previsão ${pl?.purchaseCode || pl?.document || ""}` : c.origin === "legado" ? "histórico (abatimento pelo código do pedido)" : "manual"}</b></span>
                       {c.origin === "efetivacao" ? <span className="text-muted-foreground">Base de abatimento do histórico: não se aplica (vínculo explícito)</span> : <label>Base de abatimento do histórico<br /><MoneyInput value={c.legacyAbatement} onChange={(v) => act((x) => { const t = x.committed.find((y) => y.id === c.id); if (t) { t.legacyAbatement = v; if (v !== null) t.origin = "legado"; } })} /></label>}
@@ -249,7 +254,7 @@ function Page() {
               const ts = titleStatus(e.value, e.status, model.paymentsFor("expense", e.id));
               const label = `${(supplierIdentity(d, e).name) ?? "—"} · ${e.document || "sem documento"}`;
               return [
-                <tr key={e.id} id={`pending-${e.id}`} tabIndex={0} onClick={(event) => { if (!(event.target as HTMLElement).closest("button, input")) setManaged({ kind: "expense", id: e.id, parcel: e.id }); }} onKeyDown={(event) => { if (event.key === "Enter" && event.target === event.currentTarget) setManaged({ kind: "expense", id: e.id, parcel: e.id }); }} className={target.focus === e.id ? "bg-warning-soft" : ""}>
+                <tr key={e.id} id={`pending-${e.id}`} tabIndex={0} onClick={(event) => { if (!(event.target as HTMLElement).closest("button, input")) setManaged({ kind: "expense", id: e.id, parcel: e.id }); }} onKeyDown={(event) => { if (event.key === "Enter" && event.target === event.currentTarget) setManaged({ kind: "expense", id: e.id, parcel: e.id }); }} className={target.focus === e.id ? "bg-warning-soft" : ""}><td><input type="checkbox" aria-label={`Marcar ${label}`} checked={bulk.includes(`expense:${e.id}`)} onChange={() => toggleBulk(`expense:${e.id}`)} /></td>
                   <td>{kindL(e.categoryId, "despesa")}</td><Txt v={catOf(e.categoryId)?.name} /><Txt v={supplierIdentity(d, e).name} /><td>—</td><Txt v={e.document} /><Txt v={e.boletoNumber || "Não informado"} /><Txt v={e.notes} />
                   <td>1/1</td><td className="num">{fmtBRL(e.value)}</td><td>{orig ? fmtDate(orig) : <span className="tag tag-warn">não distribuída</span>}</td><td>{e.extensionDate ? <span className="tag tag-warn">{fmtDate(e.extensionDate)}</span> : "—"}</td>
                   <td>{e.status === "cancelado" ? "Cancelado" : "Efetivado"}</td>
@@ -260,10 +265,10 @@ function Page() {
                     <Button variant="outline" size="sm" onClick={() => setManaged({ kind: "expense", id: e.id, parcel: e.id })}>Gerenciar lançamento</Button>
                   </Acoes></td>
                 </tr>,
-                isOpen("det", e.id) && <tr key={e.id + "-d"}><td colSpan={18} className="bg-muted p-2"><div className="lbl mb-1">Baixas da parcela</div><BaixasList d={d} kind="expense" titleId={e.id} canReverse={active.isBase} onReverse={(id, n) => {void operation.saveMutation(d,(x) => reversePayment(x, id, n, now()));}} />{e.cardId && <p className="mt-1">Compra no cartão — paga pela fatura{e.invoiceId ? "" : " (fatura ainda não fechada)"}.</p>}</td></tr>,
+                isOpen("det", e.id) && <tr key={e.id + "-d"}><td colSpan={19} className="bg-muted p-2"><div className="lbl mb-1">Baixas da parcela</div><BaixasList d={d} kind="expense" titleId={e.id} canReverse={active.isBase} onReverse={(id, n) => {void operation.saveMutation(d,(x) => reversePayment(x, id, n, now()));}} />{e.cardId && <p className="mt-1">Compra no cartão — paga pela fatura{e.invoiceId ? "" : " (fatura ainda não fechada)"}.</p>}</td></tr>,
               ];
             })}
-            {!efetivados.length && <tr><td colSpan={18} className="text-center text-muted-foreground">Nenhum resultado para os filtros informados</td></tr>}</tbody></table>
+            {!efetivados.length && <tr><td colSpan={19} className="text-center text-muted-foreground">Nenhum resultado para os filtros informados</td></tr>}</tbody></table>
         )}
         {tab === "payments" && (
           <table className="tbl"><thead><tr><SortHead label="Data" column={0} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><SortHead label="Título" column={1} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><SortHead label="Conta" column={2} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><SortHead label="Valor" column={3} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={true} /><SortHead label="Obs." column={4} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><SortHead label="Situação" column={5} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><th>Ações</th></tr></thead>

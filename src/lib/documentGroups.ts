@@ -35,7 +35,7 @@ export function documentGroups(d: Pick<ScenarioData, "committed">): DocumentInde
   }
   for (const [key, titles] of explicit) {
     const sorted = [...titles].sort((a, b) => (a.parcelNo ?? 0) - (b.parcelNo ?? 0) || a.dueDate.localeCompare(b.dueDate));
-    const group: DocumentGroup = { key, document: sorted[0]?.document ?? "", titles: sorted, labels: new Map(sorted.map((c, i) => [c.id, `${c.parcelNo ?? i + 1}/${c.parcelCount ?? sorted.length}`])) };
+    const group: DocumentGroup = { key, document: sorted[0]?.document ?? "", titles: sorted, labels: new Map(sorted.map((c, i) => [c.id, `${c.parcelNo ?? i + 1}/${Math.max(c.parcelCount ?? 0, sorted.length)}`])) };
     for (const c of sorted) byId.set(c.id, group);
   }
   for (const [key, entries] of candidates) {
