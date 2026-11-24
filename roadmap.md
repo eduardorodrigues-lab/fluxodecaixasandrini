@@ -1,6 +1,7 @@
 # Roadmap
 
 ## History response 500 — authorized 24/11/2026
+- [x] Sweep documented in docs/conferencia-respostas-grandes-2026-11-24.md; official reads/confirmation/conflicts/receipts compressed losslessly; 444 tests passed (6 optional skipped), compilation OK; signed-in History/Banks/Launches/Targets read-only checks passed; real writes/concurrency and published deployment not exercised
 - [x] Diagnose serialization-size limit and compress the complete read-only audit projection without changing financial data/access
 - [x] 440 tests passed (6 optional candidate tests skipped), compilation OK; real signed-in history loaded/refreshed/reloaded with three HTTP 200 responses (~2.16 MB), 24,889 rows and no runtime errors; no writes/publishing
 

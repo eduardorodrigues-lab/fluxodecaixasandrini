@@ -21,6 +21,7 @@ import { measureSavePhase } from './saveTiming';
 import { prepareRejectedRetry } from './rejectedRetry';
 import { askConfirm } from './decisions';
 import { decodeAudit } from './auditTransport';
+import { decodeOfficial, decodeConfirmation, decodeCommit } from './largeJsonTransport';
 setAutoFreeze(false);
 // Rascunho do fluxo real = lista de alterações (antes/depois por registro); a tela aplica sobre a base atual.
 interface OpsSession { scope: string; baseVersion: number; requestId: string; ops: Change[]; legacyRequestIds?: string[] | undefined; submissionModel?: 'reviewed' }
@@ -101,11 +102,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [saveMsg, setSaveMsg] = useState("");
   const [ui, setUiS] = useState<UiState>({ view: "horizontal", start: "2026-10-01", end: "2026-11-30", supplierId: "", group: "", flowMode: "consolidada" });
   const qc = useQueryClient();
-  const fetchOfficial = useServerFn(getOfficial);
+  const fetchOfficialRpc = useServerFn(getOfficial);
+  const fetchOfficial = async (input: Parameters<typeof fetchOfficialRpc>[0]) => decodeOfficial(await fetchOfficialRpc(input));
   const fetchAudit = useServerFn(listAudit);
-  const commitFn = useServerFn(commitOps);
+  const commitRpc = useServerFn(commitOps);
+  const commitFn = async (input: Parameters<typeof commitRpc>[0]) => decodeCommit(await commitRpc(input));
   const fetchOrgs = useServerFn(listMyOrgs);
-  const checkRequest = useServerFn(checkCommitRequest);
+  const checkRequestRpc = useServerFn(checkCommitRequest);
+  const checkRequest = async (input: Parameters<typeof checkRequestRpc>[0]) => decodeConfirmation(await checkRequestRpc(input));
   const [orgId, setOrgIdS] = useState<string | null>(null);
 
   useEffect(() => {

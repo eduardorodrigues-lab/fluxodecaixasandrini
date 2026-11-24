@@ -8,6 +8,7 @@ import { type ReviewedOperation } from './operationSave';
 import { NORMALIZATION_REVISION } from './commitReceipt';
 import { prepareCommit, settleAfterRecheck } from './commitCore';
 import { encodeAudit } from './auditTransport';
+import { encodeLargeJson } from './largeJsonTransport';
 
 // Base OFICIAL compartilhada: leitura sob RLS do próprio usuário; gravação apenas via servidor
 // (verifica papel, versão esperada, idempotência e grava auditoria antes/depois).
@@ -45,7 +46,7 @@ export const getOfficial = createServerFn({ method: "GET" })
   .handler(async ({ data: input, context }) => {
     const m = await myOrg(context.supabase, context.userId, input.orgId);
     const data = await readOfficialDoc(m.org_id);
-    return { orgId: m.org_id, orgName: m.organizations?.name ?? "", role: m.role, version: data.version, updatedAt: data.updated_at, normalization: NORMALIZATION_REVISION, dataJson: JSON.stringify(normalizeData(data.data)) };
+    return { orgId: m.org_id, orgName: m.organizations?.name ?? "", role: m.role, version: data.version, updatedAt: data.updated_at, normalization: NORMALIZATION_REVISION, dataJson: encodeLargeJson(JSON.stringify(normalizeData(data.data))) };
   });
 
 export const listAudit = createServerFn({ method: "GET" })
@@ -72,7 +73,7 @@ export const checkCommitRequest = createServerFn({ method: 'GET' })
     const m=await myOrg(context.supabase,context.userId,input.orgId);
     const {data,error}=await context.supabase.from('audit_log').select('version_to, changes').eq('org_id',m.org_id).eq('request_id',input.requestId).maybeSingle();
     if(error)throw new Error('Não foi possível conferir a confirmação anterior. Preenchimento preservado; nenhum novo envio.');
-    return data ? {version:data.version_to,opsJson:JSON.stringify(data.changes)} : null;
+    return data ? {version:data.version_to,opsJson:encodeLargeJson(JSON.stringify(data.changes))} : null;
   });
 
 export const commitOfficial = createServerFn({ method: "POST" })
@@ -131,7 +132,7 @@ export const commitOps = createServerFn({ method: "POST" })
       const cur = await readOfficialDoc(m.org_id);
       const prepared = await prepareCommit(cur.data, m.org_id, input.requestId, ops, dependencies);
       // A concurrent copy of this same request may have committed meanwhile: re-check before reporting conflict/noop.
-      if (prepared.status === "conflict") return settleAfterRecheck({ status: "conflict" as const, version: cur.version, conflictsJson: prepared.conflictsJson, receipt: undefined }, await auditedRequest(context.supabase, m.org_id, input.requestId));
+      if (prepared.status === "conflict") return settleAfterRecheck({ status: "conflict" as const, version: cur.version, conflictsJson: encodeLargeJson(prepared.conflictsJson), receipt: undefined }, await auditedRequest(context.supabase, m.org_id, input.requestId));
       if (prepared.status === "noop") return settleAfterRecheck({ status: "noop" as const, version: cur.version, conflictsJson: "[]", receipt: undefined }, await auditedRequest(context.supabase, m.org_id, input.requestId));
       const { next, applied, summary, changesJson, digest } = prepared;
       // commit_official re-checks role, locks the row, compares version and is unique per request_id (audit).
@@ -149,7 +150,7 @@ export const commitOps = createServerFn({ method: "POST" })
       // SQL stores exactly _data and confirms expected+1; duplicates must be reconciled by reading.
       const receipt = x.status === 'ok' && x.version === cur.version + 1 ? {
         orgId: m.org_id, userId: context.userId, requestId: input.requestId, fromVersion: cur.version,
-        version: x.version, normalization: NORMALIZATION_REVISION, changesJson, digest,
+        version: x.version, normalization: NORMALIZATION_REVISION, changesJson: encodeLargeJson(changesJson), digest,
       } : undefined;
       return { status: x.status, version: x.version ?? -1, conflictsJson: "[]", receipt };
     }
