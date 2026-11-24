@@ -1,3 +1,4 @@
+import { ArrowLeftRight, Calculator, Check, Coins, CreditCard, FileText, Info, Link2, ListChecks, Plus, SlidersHorizontal, Tags, Trash2 } from "lucide-react";
 import { SupplierSummary } from "./SupplierSummary";
 import { splitOrigin } from "@/lib/originText";
 import { supplierIdentity, supplierIdentityOptions } from "@/lib/supplierIdentity";
@@ -42,8 +43,8 @@ export function SidePanel({ title, sub, onClose, footer, children, wide, dirty, 
     </div>
   );
 }
-export const Section = ({ n, title, children }: { n?: number; title: string; children: ReactNode }) => (
-  <section><h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">{n && <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[11px] text-primary-foreground">{n}</span>}{title}</h3>{children}</section>
+export const Section = ({ n, title, icon, actions, children }: { n?: number; title: string; icon?: ReactNode; actions?: ReactNode; children: ReactNode }) => (
+  <section className="launch-section"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">{n && <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[11px] text-primary-foreground">{n}</span>}{icon && <span className="launch-icon">{icon}</span>}{title}</h3>{actions && <div className="flex flex-wrap gap-2">{actions}</div>}</div>{children}</section>
 );
 export const Field = ({ l, full, children }: { l: string; full?: boolean; children: ReactNode }) => (
   <label className={`flex flex-col gap-1 ${full ? "md:col-span-2" : ""}`}><span className="lbl">{l}</span>{children}</label>
@@ -196,7 +197,7 @@ export function NovaNota({ d: source, isBase, onCancel, onConfirm, onManagePlann
   const cancel = () => void discard();
   const footer = !chosen ? <button className="btn" onClick={cancel}>Cancelar</button> : review
     ? <><button className="btn" disabled={saving} onClick={() => { setReview(false); setChecked(false); }}>Voltar</button><button className="btn btn-primary" disabled={saving || (stage === "committed" && !checked)} title={stage === "committed" && !checked ? "Confirme a conferência dos valores e vencimentos" : ""} onClick={() => void done(onConfirm(n, saveAs))}>{saveLabel ?? (saving ? "Salvando…" : isBase ? "Confirmar e salvar" : "Confirmar na simulação")}</button></>
-    : <><p className="mr-auto hidden max-w-md text-xs text-muted-foreground md:block"><b className="block text-foreground">Alterações e correções</b>Após gravar, você pode corrigir valores, datas, parcelamento e demais dados em Gerenciar lançamento.</p><button className="btn" onClick={async () => { if (n.plannedId && !await askConfirm("O vínculo com a previsão será descartado ao trocar o tipo. Continuar?")) return; pick(stage === "planned" ? "committed" : "planned"); }}>Trocar tipo</button><button className="btn" onClick={cancel}>Cancelar</button><button className="btn btn-primary" onClick={next}>Revisar e confirmar</button></>;
+    : <><p className="mr-auto hidden max-w-md text-xs text-muted-foreground md:flex md:gap-2"><Info className="h-5 w-5 shrink-0 text-primary" /><span><b className="block text-sm text-foreground">Alterações e correções</b>Após gravar, você pode corrigir valores, datas, parcelamento e demais dados em Gerenciar lançamento.</span></p><button className="btn launch-foot-btn" onClick={cancel}>Cancelar</button><button className="btn launch-foot-btn" onClick={async () => { if (n.plannedId && !await askConfirm("O vínculo com a previsão será descartado ao trocar o tipo. Continuar?")) return; pick(stage === "planned" ? "committed" : "planned"); }}><ArrowLeftRight className="h-4 w-4" />Trocar tipo</button><button className="btn btn-primary launch-foot-btn launch-foot-main" onClick={next}><Check className="h-4 w-4" />Revisar e confirmar</button></>;
   return (
     <SidePanel expanded centered={review} wide title={title} sub={isBase ? "Grava no fluxo real ao confirmar" : "Simulação — não altera o fluxo real"} onClose={cancel} dirty={false} footer={footer}>
       {protection.recovered && <p role="status">Preenchimento local recuperado · revise antes de salvar.</p>}{protection.warning && <p role="alert" className="text-destructive">{protection.warning}</p>}
@@ -225,10 +226,10 @@ export function NovaNota({ d: source, isBase, onCancel, onConfirm, onManagePlann
         </div>
       ) : <>
         <div className="launch-grid">
-          <div className="space-y-3 min-w-0">
+          <div className="launch-col">
             {stage === "committed" && <div className="launch-card">
-          <Section title="Vínculo com previsão">
-            <div className="grid grid-cols-1 gap-3 rounded-lg border border-border bg-card p-3 md:grid-cols-2">
+          <Section title="Vínculo com previsão" icon={<Link2 className="h-4 w-4" />}>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <Field l="Previsão — abre Gerenciar lançamento" full><select className="inp h-8" value={n.plannedId ?? ""} onChange={(e) => linkTo(e.target.value)}><option value="">Cadastrar sem previsão</option>{prevs.map(({ p, rem }) => <option key={p.id} value={p.id}>{supplierIdentity(d, p).name} · {p.purchaseCode || p.document || "sem código"} · pendente {fmtBRL(rem)}</option>)}</select></Field>
               {link && <div className="md:col-span-2 space-y-1">
                 <div>Pendente na previsão: <b>{fmtBRL(link.rem)}</b> · substituído por este lançamento: <b>{fmtBRL(Math.min(link.rem, n.total ?? 0))}</b> · restante: <b>{fmtBRL(rest)}</b></div>
@@ -238,7 +239,7 @@ export function NovaNota({ d: source, isBase, onCancel, onConfirm, onManagePlann
           </Section>
             </div>}
             <div className="launch-card">
-        <Section title="Dados gerais">
+        <Section title="Dados gerais" icon={<FileText className="h-4 w-4" />}>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <CatSubFields d={d} kind={n.kind} categoryId={n.categoryId} onChange={(kind, categoryId) => up({ kind, categoryId })} />
             {err("Selecione o subgrupo.")}
@@ -250,21 +251,21 @@ export function NovaNota({ d: source, isBase, onCancel, onConfirm, onManagePlann
         </Section>
             </div>
           </div>
-          <div className="space-y-3 min-w-0">
+          <div className="launch-col">
             <div className="launch-card">
-          <Section title="Tipo de lançamento">
+          <Section title="Tipo de lançamento" icon={<Tags className="h-4 w-4" />}>
             <div className="grid grid-cols-2 gap-2">{([["committed", "Efetivado"], ["planned", "Planejado"]] as const).map(([k, l]) => <button key={k} type="button" aria-pressed={stage === k} className={`rounded-lg border px-3 py-2 font-semibold ${stage === k ? "border-primary bg-primary/10 text-primary" : "border-border bg-card hover:border-primary"}`} onClick={() => { if (stage !== k) void (async () => { if (n.plannedId && !await askConfirm("O vínculo com a previsão será descartado ao trocar o tipo. Continuar?")) return; pick(k); })(); }}>{stage === k ? "✓ " : ""}{l}</button>)}</div>
           </Section>
             </div>
             <div className="launch-card">
-              <Section title="Valores e prazos"><div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Section title="Valores e prazos" icon={<Coins className="h-4 w-4" />}><div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field l={stage === "planned" ? "Valor total previsto" : "Valor total"}><MoneyInput className="h-8 w-full" value={n.total} onChange={(total) => up({ total })} />{err("Informe o valor total.")}</Field>
             <Field l="Data base para os prazos"><DateInput value={n.baseDate} onChange={(baseDate) => up({ baseDate })} />{err("Informe a data base.")}</Field>
               </div></Section>
             </div>
             <div className="launch-card">
         {stage === "committed" ? (
-        <Section title="Condição de pagamento">
+        <Section title="Condição de pagamento" icon={<CreditCard className="h-4 w-4" />}>
           {!sup ? <p className="text-muted-foreground">Selecione o fornecedor para continuar.</p> : <>
             <div className="grid grid-cols-1 gap-2">
               {([["manual", "Preencher manualmente", "Informe a quantidade de parcelas, o valor e o vencimento de cada uma."], ["condicao", "Usar uma condição cadastrada como sugestão", "Selecione a condição e gere parcelas para conferência."]] as const).map(([k, l, t]) => (
@@ -284,7 +285,7 @@ export function NovaNota({ d: source, isBase, onCancel, onConfirm, onManagePlann
           </>}
         </Section>
         ) : (
-        <Section title="Condição de pagamento">
+        <Section title="Condição de pagamento" icon={<CreditCard className="h-4 w-4" />}>
           {!sup ? <p className="text-muted-foreground">Selecione o fornecedor para ver as condições cadastradas.</p>
             : <ConditionPicker key={sup.id} d={d} supplierId={sup.id} baseDate={n.baseDate} hint={link?.p.condition ? `Condição usada na previsão: ${link.p.condition.name} (${termsTxt(link.p.condition.terms)} dias)` : undefined}
                 disabled={!n.total || !n.baseDate} disabledHint="Informe valor total e data base"
@@ -296,27 +297,26 @@ export function NovaNota({ d: source, isBase, onCancel, onConfirm, onManagePlann
           <SupplierSummary d={d} supplierId={sup?.id ?? ""} name={sup?.name ?? ""} />
         </div>
         <div className="launch-card">
-        <Section title={stage === "planned" ? "Parcelas previstas" : "Parcelas efetivas"}>
+        <Section title={stage === "planned" ? "Parcelas previstas" : "Parcelas"} icon={<ListChecks className="h-4 w-4" />} actions={<>
+            <button className="btn" onClick={() => up({ parcels: [...n.parcels, { amount: 0, date: n.parcels.at(-1)?.date ?? n.baseDate, ext: null }] })}><Plus className="h-4 w-4" />Adicionar parcela</button>
+            <button className="btn" disabled={!n.parcels.length || !diff} onClick={() => up({ parcels: adjustLast(n.parcels, (n.total ?? 0)-(n.plannedNotes??[]).reduce((s,n)=>s+(n.total??0),0)) })}><SlidersHorizontal className="h-4 w-4" />Ajustar valores</button>
+</>}>
           <div className="overflow-auto rounded-lg border border-border">
-            <table className="tbl"><thead><tr><th>Parcela</th><th>Número do boleto</th><th className="num">{stage === "committed" ? "Valor real" : "Valor"}</th><th>{stage === "committed" ? "Vencimento real" : "Vencimento"}</th><th>Prorrogar para</th><th /></tr></thead>
-              <tbody>{n.parcels.map((p, i) => <tr key={i}><td>{i + 1}/{n.parcels.length}</td><td><input className="inp w-full" aria-label={`Número do boleto parcela ${i+1}`} value={p.boletoNumber ?? ""} onChange={e=>setP(i,{boletoNumber:e.target.value || null})}/></td><td className="num"><MoneyInput value={p.amount} onChange={(v) => setP(i, { amount: v ?? 0 })} /></td><td><DateInput value={p.date} onChange={(v) => setP(i, { date: v })} /></td><td><DateInput allowEmpty value={p.ext} onChange={(v) => setP(i, { ext: v })} /></td><td><button className="btn btn-danger" aria-label={`Remover parcela ${i + 1}`} onClick={() => up({ parcels: n.parcels.filter((_, k) => k !== i) })}>Remover</button></td></tr>)}
+            <table className="tbl launch-parcel-table"><thead><tr><th>Parcela</th><th>Número do boleto</th><th className="num">{stage === "committed" ? "Valor real" : "Valor"}</th><th>{stage === "committed" ? "Vencimento real" : "Vencimento"}</th><th>Prorrogar para</th><th>Ações</th></tr></thead>
+              <tbody>{n.parcels.map((p, i) => <tr key={i}><td>{i + 1}/{n.parcels.length}</td><td><input className="inp w-full" aria-label={`Número do boleto parcela ${i+1}`} value={p.boletoNumber ?? ""} onChange={e=>setP(i,{boletoNumber:e.target.value || null})}/></td><td className="num"><MoneyInput value={p.amount} onChange={(v) => setP(i, { amount: v ?? 0 })} /></td><td><DateInput value={p.date} onChange={(v) => setP(i, { date: v })} /></td><td><DateInput allowEmpty value={p.ext} onChange={(v) => setP(i, { ext: v })} /></td><td><button className="btn btn-icon text-destructive" title="Remover parcela" aria-label={`Remover parcela ${i + 1}`} onClick={() => up({ parcels: n.parcels.filter((_, k) => k !== i) })}><Trash2 className="h-4 w-4" /></button></td></tr>)}
                 {!n.parcels.length && <tr><td colSpan={6} className="text-center text-muted-foreground">{stage === "committed" ? "Escolha como informar os valores reais e gere as linhas." : "Gere as parcelas pela condição ou adicione manualmente."}</td></tr>}</tbody></table>
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <button className="btn" onClick={() => up({ parcels: [...n.parcels, { amount: 0, date: n.parcels.at(-1)?.date ?? n.baseDate, ext: null }] })}>+ Adicionar parcela</button>
-            <button className="btn" disabled={!n.parcels.length || !diff} onClick={() => up({ parcels: adjustLast(n.parcels, (n.total ?? 0)-(n.plannedNotes??[]).reduce((s,n)=>s+(n.total??0),0)) })}>Ajustar diferença na última parcela</button>
           </div>
         </Section>
         </div>
-        {stage === "planned" && <Section title="Notas fiscais conhecidas (opcional)"><p className="mb-2 text-muted-foreground">Cadastrar nota não efetiva. As notas ficam planejadas; o saldo sem nota continua nas parcelas acima.</p>{n.plannedNotes?.length ? <EffectivationNotes planning d={d} supplierId={n.supplierId} purchaseCode={n.purchaseCode} notes={n.plannedNotes} disabled={false} onChange={plannedNotes=>up({plannedNotes})} onAdd={()=>up({plannedNotes:[...(n.plannedNotes??[]),{id:`note-${uid()}`,document:"",total:null,effectiveDate:null,baseDate:n.baseDate??todaySP(),condition:null,parcels:[]}]})}/> : <button className="btn" onClick={()=>up({plannedNotes:[{id:`note-${uid()}`,document:n.document,total:n.total,effectiveDate:null,baseDate:n.baseDate??todaySP(),condition:n.condition??null,parcels:n.parcels.map(p=>({id:`title-${uid()}`,amount:p.amount,date:p.date,extension:p.ext,boletoNumber:p.boletoNumber}))}],parcels:[]})}>+ Adicionar nota fiscal</button>}</Section>}
-        <Section title="Resumo">
-          <div className="grid grid-cols-3 gap-3 rounded-lg border border-border bg-card p-4">
-            <div><div className="lbl">Total previsto</div><div className="num text-sm font-semibold">{n.total===null ? "Não informado" : fmtBRL(n.total)}</div></div>
-            <div><div className="lbl">Notas + saldo sem nota</div><div className="num text-sm font-semibold">{fmtBRL(tot)}</div></div>
-            <div><div className="lbl">Diferença</div><div className={`num text-sm font-semibold ${diff ? "text-destructive" : "text-primary"}`}>{n.total===null ? "Não disponível" : fmtBRL(diff)}</div></div>
+        {stage === "planned" && <details className="launch-card"><summary className="cursor-pointer font-semibold">Detalhar por nota fiscal (opcional)</summary><Section title="Notas fiscais conhecidas"><p className="mb-2 text-muted-foreground">Cadastrar nota não efetiva. As notas ficam planejadas; o saldo sem nota continua nas parcelas acima.</p>{n.plannedNotes?.length ? <EffectivationNotes planning d={d} supplierId={n.supplierId} purchaseCode={n.purchaseCode} notes={n.plannedNotes} disabled={false} onChange={plannedNotes=>up({plannedNotes})} onAdd={()=>up({plannedNotes:[...(n.plannedNotes??[]),{id:`note-${uid()}`,document:"",total:null,effectiveDate:null,baseDate:n.baseDate??todaySP(),condition:null,parcels:[]}]})}/> : <button className="btn" onClick={()=>up({plannedNotes:[{id:`note-${uid()}`,document:n.document,total:n.total,effectiveDate:null,baseDate:n.baseDate??todaySP(),condition:n.condition??null,parcels:n.parcels.map(p=>({id:`title-${uid()}`,amount:p.amount,date:p.date,extension:p.ext,boletoNumber:p.boletoNumber}))}],parcels:[]})}>+ Adicionar nota fiscal</button>}</Section></details>}
+        <div className="launch-card"><Section title="Resumo" icon={<Calculator className="h-4 w-4" />}>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 [&>div]:rounded-lg [&>div]:border [&>div]:border-border [&>div]:bg-background [&>div]:p-3">
+            <div><div className="lbl">Total do lançamento</div><div className="text-lg font-bold tabular-nums">{n.total===null ? "Não informado" : fmtBRL(n.total)}</div></div>
+            <div><div className="lbl">Total das parcelas</div><div className="text-lg font-bold tabular-nums">{fmtBRL(tot)}</div></div>
+            <div><div className="lbl">Diferença</div><div className={`text-lg font-bold tabular-nums ${diff ? "text-destructive" : "text-primary"}`}>{n.total===null ? "Não disponível" : fmtBRL(diff)}</div></div>
           </div>
           {tried && errs.length > 0 && <ul className="mt-2 list-disc pl-5 text-destructive">{errs.map((e) => <li key={e}>{e}</li>)}</ul>}
-        </Section>
+        </Section></div>
       </>}
     </SidePanel>
   );

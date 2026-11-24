@@ -32,25 +32,25 @@ export function supplierTotals(d: ScenarioData, supplierId: string, today = toda
 }
 
 const Kpi = ({ icon, label, value, tone }: { icon: ReactNode; label: string; value: number; tone?: string }) => (
-  <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"><span className={tone ?? "text-primary"}>{icon}</span><div className="min-w-0"><div className="text-xs text-muted-foreground">{label}</div><div className={`truncate font-semibold tabular-nums ${tone ?? ""}`}>{fmtBRL(value)}</div></div></div>
+  <div className="flex h-full items-center gap-3 rounded-lg border border-border bg-background p-3"><span className={`launch-icon ${tone ?? ""}`}>{icon}</span><div className="min-w-0"><div className="text-xs text-muted-foreground">{label}</div><div className={`truncate text-lg font-bold tabular-nums ${tone ?? ""}`}>{fmtBRL(value)}</div></div></div>
 );
 
 export function SupplierSummary({ d, supplierId, name }: { d: ScenarioData; supplierId: string; name: string }) {
   const t = useMemo(() => supplierId ? supplierTotals(d, supplierId) : null, [d, supplierId]);
-  return <aside className="launch-card space-y-3 self-start">
-    <h3 className="flex items-center gap-2 font-semibold"><Building2 className="h-5 w-5 text-primary" />Resumo do fornecedor</h3>
+  return <aside className="launch-card launch-supplier flex flex-col gap-3">
+    <h3 className="flex items-center gap-2 font-semibold"><span className="launch-icon"><Building2 className="h-4 w-4" /></span>Resumo do fornecedor</h3>
     {!t ? <p className="text-muted-foreground">Selecione o fornecedor para ver o resumo.</p> : <>
       <div className="rounded-lg bg-primary/10 px-3 py-2 font-semibold uppercase text-primary">{name}</div>
-      <div className="grid grid-cols-2 gap-2">
-        <Kpi icon={<Layers className="h-5 w-5" />} label="Total de lançamentos (12 meses)" value={t.total12} />
-        <Kpi icon={<Clock className="h-5 w-5" />} label="Em aberto" value={t.open} tone="text-warning-foreground" />
-        <Kpi icon={<CheckCircle2 className="h-5 w-5" />} label="Total pago" value={t.paid} />
+      <div className="grid auto-rows-fr grid-cols-2 gap-2">
+        <Kpi icon={<Layers className="h-5 w-5" />} label="Total últimos 12 meses" value={t.total12} />
+        <Kpi icon={<Clock className="h-5 w-5" />} label="Em aberto" value={t.open} tone="text-warning" />
+        <Kpi icon={<CheckCircle2 className="h-5 w-5" />} label="Pago" value={t.paid} tone="text-primary" />
         <Kpi icon={<AlertTriangle className="h-5 w-5" />} label="Vencido" value={t.overdue} tone="text-destructive" />
       </div>
       <div className="flex items-center gap-2 font-semibold"><BarChart3 className="h-4 w-4 text-primary" />A vencer por período</div>
-      <div className="grid grid-cols-3 gap-2">{([["Próx. 30 dias", t.next30], ["Próx. 60 dias", t.next60], ["Próx. 90 dias", t.next90]] as const).map(([l, v]) => <div key={l} className="rounded-lg border border-border p-2"><div className="text-xs text-muted-foreground">{l}</div><div className="font-semibold tabular-nums">{fmtBRL(v)}</div></div>)}</div>
+      <div className="grid auto-rows-fr grid-cols-3 gap-2">{([["1–30 dias", t.next30], ["31–60 dias", t.next60], ["61–90 dias", t.next90]] as const).map(([l, v]) => <div key={l} className="rounded-lg border border-border bg-background p-2 text-center"><div className="text-xs text-muted-foreground">{l}</div><div className="font-bold tabular-nums">{fmtBRL(v)}</div></div>)}</div>
       <p className="text-xs text-muted-foreground">Somente efetivados; planejados não entram. Períodos sem sobreposição.</p>
-      <Link to="/referencias" className="flex items-center justify-center gap-2 rounded-lg bg-primary/10 py-2 font-semibold text-primary hover:bg-primary/15"><ExternalLink className="h-4 w-4" />Ver detalhes do fornecedor</Link>
+      <Link to="/referencias" className="mt-auto flex items-center justify-center gap-2 rounded-lg bg-primary/10 py-2 font-semibold text-primary hover:bg-primary/15"><ExternalLink className="h-4 w-4" />Ver detalhes do fornecedor</Link>
     </>}
   </aside>;
 }
