@@ -34,7 +34,14 @@ async def main():
     assert await rows.first.locator('td').nth(1).inner_text() in ['Planejamento','Efetivação']
     assert 'Etapa' in await page.get_by_role('region',name='Tabela de Lançamentos',exact=True).locator('th').nth(1).inner_text()
     for cell in ['Planejamento remanescente:','obrigação vigente:','Saldo em aberto:']:assert await page.get_by_text(cell,exact=False).count()>0
-    await page.screenshot(path=str(OUT/'1_tabela.png'));print('PASS tabela única, Etapa primeira, contagens e totais separados');checks+=1
+    primary=page.locator('[data-filter-row="primary"]');secondary=page.locator('[data-filter-row="secondary"]')
+    for label in ['Busca rápida','Fornecedor','Etapa','Situação do lançamento']:assert await primary.get_by_label(label,exact=True).count()==1
+    for label in ['Categoria','Subgrupo','Período','De','Até']:assert await secondary.get_by_label(label,exact=True).count()==1
+    assert await page.locator('[data-filter-row="more"]').count()==0
+    review=page.locator('details').filter(has_text='Auditoria e identificações para revisão')
+    assert await review.count()==1 and not await review.get_attribute('open')
+    await page.get_by_role('region',name='Filtros de lançamentos',exact=True).screenshot(path=str(OUT/'0_layout_filtros.png'))
+    await page.screenshot(path=str(OUT/'1_tabela.png'));print('PASS layout em duas linhas, totais compactos, auditoria recolhida, tabela e Etapa preservados');checks+=1
     # filtro compartilhado, zero, busca e ordenação
     await stage.select_option('planned');await count(page,8)
     assert await page.locator('[data-stage="committed"]').count()==0
@@ -50,8 +57,13 @@ async def main():
     await page.get_by_role('button',name='Mais filtros',exact=True).click()
     await page.get_by_label('Situação do pagamento',exact=True).select_option('Pago');await count(page,1)
     assert 'same-2' in await rows.first.get_attribute('data-launch-key')
+    await page.get_by_role('button',name='Mais filtros',exact=True).click()
+    assert await page.locator('[data-filter-row="more"]').count()==0
+    assert await page.get_by_text('Pagamento: Pago',exact=True).count()==1
+    await count(page,1)
     await page.get_by_role('button',name='Limpar filtros',exact=True).click();await count(page,14)
     # zero presente em ambas fontes
+    await page.get_by_role('button',name='Mais filtros',exact=True).click()
     await page.get_by_label('Valor mínimo (R$)',exact=True).fill('0')
     await page.get_by_label('Valor máximo (R$)',exact=True).fill('0');await count(page,2)
     assert await page.locator('[data-stage="planned"]').count()==1

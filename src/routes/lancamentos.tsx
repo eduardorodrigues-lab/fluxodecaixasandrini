@@ -99,7 +99,7 @@ const EMPTY_GROUPS = { byId: new Map(), ambiguous: [] };
 const AmbiguousDocuments = memo(function AmbiguousDocuments({ d, groups, onManage }: { d: ScenarioData; groups: ReturnType<typeof createLaunchPresentation>["groups"]; onManage: (ref: LaunchRef) => void }) {
   if (!groups.ambiguous.length) return null;
   const titles = new Map(d.committed.map(c => [c.id, c]));
-  return <details className="mb-2 text-xs"><summary>Identificações para revisão ({groups.ambiguous.length}) — mantidas individualmente</summary><div className="max-h-52 overflow-auto"><table className="tbl"><thead><tr><th>Fornecedor</th><th>Identificação</th><th>Motivo</th><th /></tr></thead><tbody>{groups.ambiguous.map(a => <tr key={a.id}><td>{supplierIdentity(d, titles.get(a.id)).name}</td><td>{a.document}</td><td>{a.reason}</td><td><Button size="sm" variant="outline" onClick={() => onManage({ kind: "committed", id: a.id, parcel: a.id })}>Gerenciar lançamento</Button></td></tr>)}</tbody></table></div></details>;
+  return <div className="space-y-1"><p>Identificações mantidas individualmente:</p><div className="max-h-52 overflow-auto"><table className="tbl"><thead><tr><th>Fornecedor</th><th>Identificação</th><th>Motivo</th><th /></tr></thead><tbody>{groups.ambiguous.map(a => <tr key={a.id}><td>{supplierIdentity(d, titles.get(a.id)).name}</td><td>{a.document}</td><td>{a.reason}</td><td><Button size="sm" variant="outline" onClick={() => onManage({ kind: "committed", id: a.id, parcel: a.id })}>Gerenciar lançamento</Button></td></tr>)}</tbody></table></div></div>;
 });
 
 function Page() {
@@ -156,6 +156,11 @@ function Page() {
   const suggestions = useMemo(() => suggestFrom(paymentIndex, r => r.values), [paymentIndex]);
   const paymentsPager = usePager(paymentRows.length, paymentRows.length + paymentsReport.query + JSON.stringify(paymentsReport.sort) + paymentsCF.key);
   const noteInit = (o: { categoryId: string; supplierId: string; purchaseCode?: string; document: string; notes: string }, fb: CategoryKind): NoteFields => ({ kind: kindOfCat(o.categoryId) || fb, categoryId: o.categoryId, supplierId: o.supplierId, purchaseCode: o.purchaseCode ?? "", document: o.document, notes: o.notes });
+  const reviewCount = target.etapa !== "planned" ? groups.ambiguous.length : 0;
+  const launchReview = <details className="mb-2 text-xs"><summary className="cursor-pointer select-none font-medium">Auditoria e identificações para revisão{reviewCount ? ` (${reviewCount})` : ""}</summary><div className="mt-2 space-y-2">
+    {active.isBase && auditH.status !== "ready" && <p className="text-muted-foreground" role="status">Colunas de cadastro/alteração: {auditH.status === "loading" ? "carregando auditoria…" : auditH.status === "error" ? auditH.error : "datas do próprio registro (auditoria carregada sob demanda)."} {auditH.status === "idle" && <button className="underline" onClick={() => setAuditDates(true)}>Incluir datas da auditoria</button>}</p>}
+    {target.etapa !== "planned" && <AmbiguousDocuments d={d} groups={model.groups} onManage={setManaged} />}
+  </div></details>;
 
   return (
     <div>
@@ -168,10 +173,8 @@ function Page() {
       {tab === "payments" && <div className="filter-bar"><ReportSearch value={report.query} onChange={report.setQuery} count={paymentRows.length} /><ColumnFilter cols={PAYMENT_COLS} filter={cf} suggest={suggestions} /><Button variant="outline" size="sm" onClick={() => { report.setQuery(""); cf.clear(); }}>Limpar filtros</Button></div>}
       {(consultasVisited || tab === "consultas") && <div hidden={tab !== "consultas"}><CachedConsultas d={consultasData} onManage={setManaged} /></div>}
       {(pvaVisited || tab === "pva") && <div hidden={tab !== "pva"}><CachedPva key={`${official.orgId}:${active.id}`} d={pvaData} /></div>}
-      {tab === "launches" && active.isBase && auditH.status !== "ready" && <p className="mb-1 text-xs text-muted-foreground" role="status">Colunas de cadastro/alteração: {auditH.status === "loading" ? "carregando auditoria…" : auditH.status === "error" ? auditH.error : "datas do próprio registro (auditoria carregada sob demanda)."} {auditH.status === "idle" && <button className="underline" onClick={() => setAuditDates(true)}>Incluir datas da auditoria</button>}</p>}
       {bulkOpen && <BulkEditPanel d={d} keys={bulk} by={user?.email ?? ""} canEdit={canEdit} isBase={active.isBase} saving={operation.saving} saveLabel={operation.saveLabel} saveError={operation.error} onSave={async (fn) => { const ok = await operation.saveMutation(d, fn); if (ok) setBulk([]); return ok; }} onClose={() => setBulkOpen(false)} />}
-      {tab === "launches" && target.etapa !== "planned" && <AmbiguousDocuments d={d} groups={model.groups} onManage={setManaged} />}
-      {(launchVisited || tab === "launches") && <div hidden={tab !== "launches"}><UnifiedLaunchList key={`${official.orgId}:${active.id}`} d={launchData} model={launchModel} stage={target.etapa ?? ''} onStage={etapa=>void navigate({search:prev=>({...prev,tab:"launches",etapa,focus:undefined}),resetScroll:false})} focus={target.focus} onManage={setManaged} canEdit={canEdit} bulk={bulk} setBulk={setBulk} onBulk={keys=>{setBulk(keys);operation.reset();setBulkOpen(true);}}/></div>}
+      {(launchVisited || tab === "launches") && <div hidden={tab !== "launches"}><UnifiedLaunchList key={`${official.orgId}:${active.id}`} d={launchData} model={launchModel} stage={target.etapa ?? ''} onStage={etapa=>void navigate({search:prev=>({...prev,tab:"launches",etapa,focus:undefined}),resetScroll:false})} focus={target.focus} onManage={setManaged} canEdit={canEdit} bulk={bulk} setBulk={setBulk} onBulk={keys=>{setBulk(keys);operation.reset();setBulkOpen(true);}} afterFilters={launchReview}/></div>}
       {tab === "payments" && <div className="card overflow-auto launch-table">
         {tab === "payments" && (
           <table className="tbl"><thead><tr><SortHead label="Data" column={0} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><SortHead label="Título" column={1} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><SortHead label="Conta" column={2} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><SortHead label="Valor" column={3} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={true} /><SortHead label="Obs." column={4} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><SortHead label="Situação" column={5} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><th>Ações</th></tr></thead>
