@@ -37,9 +37,9 @@ const Kpi = ({ icon, label, value, tone }: { icon: ReactNode; label: string; val
   <div className="flex h-full items-center gap-3 rounded-lg border border-border bg-background p-3"><span className={`launch-icon ${tone ?? ""}`}>{icon}</span><div className="min-w-0"><div className="text-xs text-muted-foreground">{label}</div><div className={`truncate text-lg font-bold tabular-nums ${tone ?? ""}`}>{fmtBRL(value)}</div></div></div>
 );
 
-export function SupplierSummary({ d, supplierId, name }: { d: ScenarioData; supplierId: string; name: string }) {
+export function SupplierSummary({ d, supplierId, name, compact = false }: { d: ScenarioData; supplierId: string; name: string; compact?: boolean }) {
   const t = useMemo(() => supplierId ? supplierTotals(d, supplierId) : null, [d, supplierId]);
-  return <aside className="launch-card launch-supplier flex flex-col gap-3">
+  return <aside className={`launch-card launch-supplier flex min-w-0 flex-col ${compact ? "gap-2" : "gap-3"}`}>
     <h3 className="flex items-center gap-2 font-semibold"><span className="launch-icon"><Building2 className="h-4 w-4" /></span>Resumo do fornecedor</h3>
     {!t ? <p className="text-muted-foreground">Selecione o fornecedor para ver o resumo.</p> : <>
       <div className="rounded-lg bg-primary/10 px-3 py-2 font-semibold uppercase text-primary">{name}</div>

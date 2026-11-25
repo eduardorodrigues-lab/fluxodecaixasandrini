@@ -118,7 +118,7 @@ async def main():
     print('PASS owner/fornecedor+condição+lançamento atômicos');checks+=1;await ctx.close()
     # condição específica nova no mesmo pacote, sem diálogo extra
     ctx,page=await setup(b);dl=await open_new(page,count=0)
-    await dl.get_by_text('Usar uma condição cadastrada como sugestão',exact=True).click()
+    await dl.get_by_role('button',name='Usar condição cadastrada',exact=True).click()
     await dl.get_by_label('Condição',exact=True).select_option('__esp')
     await dl.locator('table').first.locator('tbody input').first.fill('30')
     await dl.locator('table').first.locator('tbody input').first.blur()
@@ -158,8 +158,7 @@ async def main():
         print('PASS recuperação',mode);checks+=1;await ctx.close()
     # existente: revisão e adição continuam no gerenciamento
     ctx,page=await setup(b);dl=await open_new(page,count=3);await dl.get_by_role('button',name='Salvar',exact=True).click();await page.get_by_role('dialog').wait_for(state='hidden')
-    await page.get_by_label('Ações da linha').first.click()
-    await page.get_by_role('menuitem',name='Gerenciar lançamento',exact=True).click()
+    await page.get_by_role('button',name=re.compile('^Gerenciar ')).first.click()
     dl=page.get_by_role('dialog',name='Gerenciar lançamento');await dl.get_by_text('Descrição',exact=True).locator('..').locator('input').fill('Edição sintética')
     await dl.get_by_role('button',name='Revisar antes de salvar').click();await page.get_by_role('dialog',name='Revisar lançamento').wait_for()
     assert await page.evaluate('window.__commits.length')==1

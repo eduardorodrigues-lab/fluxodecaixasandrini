@@ -3,7 +3,7 @@ import { SupplierCreateCard } from "./SupplierForm";
 import { buildSupplier, emptySupplierInput, type SupplierInput } from "@/lib/fornecedores";
 import { requestDecision } from "@/lib/decisions";
 const askDiscardSupplier = async () => (await requestDecision({ title: "Descartar cadastro do fornecedor?", message: "O lançamento continua preenchido; apenas este cadastro em preenchimento será descartado.", action: "Descartar cadastro", destructive: true, cancelLabel: "Continuar editando" })) !== null;
-import { Calculator, Check, Coins, CreditCard, FileText, Info, Link2, ListChecks, Plus, SlidersHorizontal, Tags, Trash2 } from "lucide-react";
+import { Check, Coins, FileText, Link2, ListChecks, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 import { SupplierSummary } from "./SupplierSummary";
 import { splitOrigin } from "@/lib/originText";
 import { supplierIdentity, supplierIdentityOptions } from "@/lib/supplierIdentity";
@@ -32,15 +32,15 @@ export const guardClose = (dirty: boolean, close: () => void) => async () => {
 
 /** Painel lateral amplo e responsivo (tela cheia no celular).
  *  Fecha SOMENTE por X, Cancelar ou conclusão — nunca por clique no fundo ou mouse fora. */
-export function SidePanel({ title, sub, onClose, footer, children, wide, dirty, centered, expanded }: { title: string; sub?: string; onClose: () => void; footer?: ReactNode; children: ReactNode; wide?: boolean; dirty?: boolean; centered?: boolean; expanded?: boolean }) {
+export function SidePanel({ title, sub, onClose, footer, children, wide, dirty, centered, expanded, headerContent }: { title: string; sub?: string | undefined; onClose: () => void; footer?: ReactNode; children: ReactNode; wide?: boolean; dirty?: boolean; centered?: boolean; expanded?: boolean; headerContent?: ReactNode }) {
   const requestClose = guardClose(!!dirty, onClose);
   if (centered && !expanded) return <DecisionWindow title={title} description={sub} footer={footer} wide={wide}>{children}</DecisionWindow>;
   return (
     <div className={`fixed inset-0 z-50 flex bg-foreground/30 ${expanded ? "items-center justify-center sm:p-4" : "justify-end"}`}>
       <div role="dialog" aria-modal="true" aria-label={title} className={`finance-panel flex w-full flex-col bg-background shadow-2xl ${expanded ? "launch-manager h-full sm:h-[calc(100dvh-32px)]" : `h-full ${wide ? "sm:w-[min(880px,94vw)]" : "sm:w-[min(520px,94vw)]"}`}`}>
-        <div className="flex shrink-0 items-start justify-between border-b border-border bg-card px-5 py-4 text-foreground">
-          <div><div className="text-base font-semibold">{title}</div>{sub && <div className="text-xs opacity-80">{sub}</div>}</div>
-          <Button variant="ghost" size="icon" aria-label="Fechar" onClick={requestClose}>×</Button>
+        <div className={`flex shrink-0 items-start justify-between gap-2 border-b border-border bg-card text-foreground ${headerContent ? "px-4 py-3" : "px-5 py-4"}`}>
+          <div className={headerContent ? "launch-form-header" : "min-w-0"}><div className="shrink-0"><div className="text-base font-semibold">{title}</div>{sub && <div className="text-xs opacity-80">{sub}</div>}</div>{headerContent}</div>
+          <Button variant="ghost" size="icon" className="shrink-0" aria-label="Fechar" onClick={requestClose}>×</Button>
         </div>
         <div className={`min-h-0 flex-1 space-y-5 overflow-auto px-5 py-4 ${expanded ? "text-sm" : "text-xs"}`}>{children}</div>
         {footer && <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border bg-card px-5 py-3">{footer}</div>}
@@ -219,26 +219,21 @@ export function NovaNota({ d: source, isBase, onCancel, onConfirm, onManagePlann
     if (needsReview) setReview(true); else void submit();
   };
   const err = (m: string) => tried && errs.includes(m) ? <span data-launch-error role="alert" className="text-[11px] text-destructive">{m}</span> : null;
-  const title = chosen && stage === "planned" ? review ? "Revisar novo planejamento" : "Novo planejamento" : !chosen ? "Novo lançamento" : review ? `Revisar · Novo lançamento · ${stageL}` : `Novo lançamento · ${stageL}`;
+  const title = review ? stage === "planned" ? "Revisar novo planejamento" : `Revisar · Novo lançamento · ${stageL}` : "Novo lançamento";
   const cancel = () => void discard();
   const footer = !chosen ? <button className="btn" onClick={cancel}>Cancelar</button> : review
     ? <><button className="btn" disabled={saving} onClick={() => { setReview(false); setChecked(false); }}>Voltar</button><button className="btn btn-primary" disabled={saving || (stage === "committed" && !checked)} title={stage === "committed" && !checked ? "Confirme a conferência dos valores e vencimentos" : ""} onClick={() => void submit()}>{saveLabel ?? (saving ? "Salvando…" : isBase ? "Confirmar e salvar" : "Confirmar na simulação")}</button></>
-    : <><p className="mr-auto hidden max-w-md text-xs text-muted-foreground md:flex md:gap-2"><Info className="h-5 w-5 shrink-0 text-primary" /><span><b className="block text-sm text-foreground">Alterações e correções</b>Após gravar, você pode corrigir valores, datas, parcelamento e demais dados em Gerenciar lançamento.</span></p><Button variant="outline" className="launch-foot-btn" onClick={cancel}>Cancelar</Button><Button className="launch-foot-btn launch-foot-main" disabled={saving || !app.canEdit || !!alreadySaved} onClick={next}><Check className="h-4 w-4" />{saving ? "Salvando..." : needsReview ? "Revisar e confirmar" : "Salvar"}</Button></>;
+    : <><p className="mr-auto hidden text-xs text-muted-foreground md:block">Você poderá corrigir o lançamento após salvar.</p><Button variant="outline" className="launch-foot-btn" onClick={cancel}>Cancelar</Button><Button className="launch-foot-btn launch-foot-main" disabled={saving || !app.canEdit || !!alreadySaved} onClick={next}><Check className="h-4 w-4" />{saving ? "Salvando..." : needsReview ? "Revisar e confirmar" : "Salvar"}</Button></>;
   return (
-    <SidePanel expanded centered={review} wide title={title} sub={isBase ? needsReview ? "Grava no fluxo real ao confirmar" : "Novo lançamento" : "Simulação — não altera o fluxo real"} onClose={cancel} dirty={false} footer={footer}>
+    <SidePanel expanded centered={review} wide title={title} sub={!isBase ? "Simulação — não altera o fluxo real" : needsReview ? "Grava no fluxo real ao confirmar" : undefined} onClose={cancel} dirty={false} footer={footer} headerContent={!review ? <>
+      <div className="launch-stage-switch" role="group" aria-label="Tipo de lançamento">{([["committed", "Efetivado"], ["planned", "Planejado"]] as const).map(([k, l]) => <button key={k} type="button" aria-pressed={stage === k} onClick={() => { if (stage !== k) void (async () => { if (n.plannedId && !await askConfirm("O vínculo com a previsão será descartado ao trocar o tipo. Continuar?")) return; pick(k); })(); }}>{stage === k ? "✓ " : ""}{l}</button>)}</div>
+      {stage === "committed" && <label className="launch-header-link"><span className="flex items-center gap-1 whitespace-nowrap text-xs font-medium"><Link2 className="h-4 w-4 shrink-0" />Vínculo com previsão</span><select aria-label="Vínculo com previsão" className="inp h-9" value={n.plannedId ?? ""} onChange={(e) => linkTo(e.target.value)}><option value="">Cadastrar sem previsão</option>{prevs.map(({ p, rem }) => <option key={p.id} value={p.id}>{supplierIdentity(d, p).name} · {p.purchaseCode || p.document || "sem código"} · pendente {fmtBRL(rem)}</option>)}</select></label>}
+    </> : undefined}>
       <div ref={form}>
       {alreadySaved && <p role="status">Este lançamento já foi gravado. Para alterar, feche esta tela e abra Gerenciar lançamento.</p>}
       {protection.recovered && <p role="status">Preenchimento local recuperado.</p>}{protection.warning && <p role="alert" className="text-destructive">{protection.warning}</p>}
       {saveError && <p role="alert" className="text-destructive">{saveError}</p>}
-      {!chosen ? (
-        <Section n={1} title="Tipo de lançamento">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            {([["planned", "Planejada", "Previsão de compra ou despesa. Valores e condições sujeitos a mudança; documento e código podem ficar vazios. Compõe as saídas planejadas; não recebe pagamento."], ["committed", "Efetivado", "Compra, pedido ou despesa já confirmada. Compõe as saídas efetivadas e permite pagamento parcial ou total. Pode substituir uma previsão existente."]] as const).map(([k, l, t]) => (
-              <button key={k} className="rounded-lg border border-border bg-card p-4 text-left hover:border-primary hover:bg-primary/5" onClick={() => pick(k)}><div className="text-sm font-semibold">{l}</div><div className="mt-1 text-muted-foreground">{t}</div></button>
-            ))}
-          </div>
-        </Section>
-      ) : review ? (
+      {review ? (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-border bg-card p-4 md:grid-cols-3">
             {[["Tipo", stageL], ["Categoria", n.kind === "compra" ? "Compra" : "Despesa"], ["Subgrupo", sub], ["Fornecedor", sup?.name ?? "—"], ["Código do pedido", n.purchaseCode || "—"], ["Documento", n.document || "—"], ["Descrição", n.description || "—"], ["Valor total", fmtBRL(n.total)], ["Data base", fmtDate(n.baseDate)]].map(([k, v]) => <div key={k}><div className="lbl">{k}</div><div className="font-medium">{v}</div></div>)}
@@ -254,75 +249,56 @@ export function NovaNota({ d: source, isBase, onCancel, onConfirm, onManagePlann
         </div>
       ) : <>
         <div className="launch-grid">
-          <div className="launch-col">
-            {stage === "committed" && <div className="launch-card">
-          <Section title="Vínculo com previsão" icon={<Link2 className="h-4 w-4" />}>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <Field l="Previsão — abre Gerenciar lançamento" full><select className="inp h-8" value={n.plannedId ?? ""} onChange={(e) => linkTo(e.target.value)}><option value="">Cadastrar sem previsão</option>{prevs.map(({ p, rem }) => <option key={p.id} value={p.id}>{supplierIdentity(d, p).name} · {p.purchaseCode || p.document || "sem código"} · pendente {fmtBRL(rem)}</option>)}</select></Field>
-              {link && <div className="md:col-span-2 space-y-1">
-                <div>Pendente na previsão: <b>{fmtBRL(link.rem)}</b> · substituído por este lançamento: <b>{fmtBRL(Math.min(link.rem, n.total ?? 0))}</b> · restante: <b>{fmtBRL(rest)}</b></div>
+          <div className="launch-card">
+            <Section title="Dados gerais" icon={<FileText className="h-4 w-4" />}>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <CatSubFields d={d} kind={n.kind} categoryId={n.categoryId} onChange={(kind, categoryId) => up({ kind, categoryId })} />
+                <div>{err("Selecione o subgrupo.")}</div>
+                <Field l="Fornecedor" full><SupplierSearch stageLocally={!needsReview} d={d} allowCreate={!n.plannedId} onCreate={s=>setN(n=>({...n,localSuppliers:[...(n.localSuppliers??[]),s]}))} existing={!!n.plannedId} value={n.supplierId} onChange={(supplierId) => { setN(n=>({...n,supplierId})); setChecked(false); setSaveAs(null); }} />{err("Selecione o fornecedor.")}</Field>
+                <Field l={stage === "planned" ? "Código do pedido (opcional)" : "Código do pedido"}><input className="inp h-8" value={n.purchaseCode} onChange={(e) => up({ purchaseCode: e.target.value })} /></Field>
+                <Field l={stage === "planned" ? "Documento (opcional)" : "Documento"}><input className="inp h-8" value={n.document} onChange={(e) => up({ document: e.target.value })} />{err("Informe o documento.")}</Field>
+                <Field l="Descrição" full><input className="inp h-8" value={n.description} onChange={(e) => up({ description: e.target.value })} /></Field>
+              </div>
+              {link && <div className="mt-3 space-y-2 rounded-lg bg-primary/5 p-3 text-xs">
+                <div>Pendente na previsão: <b>{fmtBRL(link.rem)}</b> · substituído: <b>{fmtBRL(Math.min(link.rem, n.total ?? 0))}</b> · restante: <b>{fmtBRL(rest)}</b></div>
                 {rest > 0 && <div className="flex flex-wrap gap-4"><label className="flex items-center gap-1"><input type="radio" checked={!n.closeRest} onChange={() => up({ closeRest: false })} /> Restante continua planejado</label><label className="flex items-center gap-1"><input type="radio" checked={!!n.closeRest} onChange={() => up({ closeRest: true })} /> Encerrar o restante</label></div>}
               </div>}
-            </div>
-          </Section>
-            </div>}
-            <div className="launch-card">
-        <Section title="Dados gerais" icon={<FileText className="h-4 w-4" />}>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <CatSubFields d={d} kind={n.kind} categoryId={n.categoryId} onChange={(kind, categoryId) => up({ kind, categoryId })} />
-            <div>{err("Selecione o subgrupo.")}</div>
-            <Field l="Fornecedor" full><SupplierSearch stageLocally={!needsReview} d={d} allowCreate={!n.plannedId} onCreate={s=>setN(n=>({...n,localSuppliers:[...(n.localSuppliers??[]),s]}))} existing={!!n.plannedId} value={n.supplierId} onChange={(supplierId) => { setN(n=>({...n,supplierId})); setChecked(false); setSaveAs(null); }} />{err("Selecione o fornecedor.")}</Field>
-            <Field l={stage === "planned" ? "Código do pedido (opcional)" : "Código do pedido"}><input className="inp h-8" value={n.purchaseCode} onChange={(e) => up({ purchaseCode: e.target.value })} /></Field>
-            <Field l={stage === "planned" ? "Documento (opcional)" : "Documento"}><input className="inp h-8" value={n.document} onChange={(e) => up({ document: e.target.value })} />{err("Informe o documento.")}</Field>
-            <Field l="Descrição" full><input className="inp h-8" value={n.description} onChange={(e) => up({ description: e.target.value })} /></Field>
+            </Section>
           </div>
-        </Section>
-            </div>
+          <div className="launch-card">
+            <Section title="Valores e condição de pagamento" icon={<Coins className="h-4 w-4" />}>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field l={stage === "planned" ? "Valor total previsto" : "Valor total"}><MoneyInput className="h-8 w-full" value={n.total} onChange={(total) => up({ total })} />{err("Informe o valor total.")}</Field>
+                <Field l="Data base para os prazos"><DateInput value={n.baseDate} onChange={(baseDate) => up({ baseDate })} />{err("Informe a data base.")}</Field>
+              </div>
+              <div className="mt-4 border-t border-border pt-3">
+                {stage === "committed" ? <>
+                  {!sup ? <p className="text-muted-foreground">Selecione o fornecedor para escolher a condição de pagamento.</p> : <>
+                    <div className="launch-payment-choice" role="group" aria-label="Forma de informar valores">
+                      <button type="button" aria-pressed={how === "manual"} onClick={() => setHow("manual")}>Preencher manualmente</button>
+                      <button type="button" aria-pressed={how === "condicao"} title="Usar uma condição cadastrada como sugestão" onClick={() => setHow("condicao")}>Usar condição cadastrada</button>
+                    </div>
+                    {how === "manual" && <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
+                      <Field l="Quantidade de parcelas"><input type="number" min={1} max={120} className="inp h-8" value={qty} onChange={(e) => setQty(Math.max(1, Math.min(120, Number(e.target.value) || 1)))} /></Field>
+                      <button className="btn h-10" disabled={n.total === null} title={n.total !== null ? "" : "Informe o valor total"} onClick={async () => { if (n.parcels.length && !await askConfirm("As parcelas atuais serão substituídas por novas linhas para preenchimento.", { title: "Gerar linhas?", action: "Gerar linhas", destructive: true })) return; up({ parcels: manualParcels(n.total, qty), condition: null }); setSaveAs(null); }}>Gerar linhas</button>
+                      <p className="col-span-full text-xs text-muted-foreground">Divisão em centavos; informe os vencimentos abaixo.</p>
+                    </div>}
+                    {how === "condicao" && <div className="mt-3">
+                      <ConditionPicker compact stageLocally={!needsReview} key={sup.id} d={d} supplierId={sup.id} baseDate={n.baseDate} hint={`Sugestão para preenchimento — a condição vigente não é aplicada automaticamente.${link?.p.condition ? ` Condição usada na previsão: ${link.p.condition.name} (${termsTxt(link.p.condition.terms)} dias).` : ""}`}
+                        disabled={n.total === null || !n.baseDate} disabledHint="Informe valor total e data base"
+                        onConfirm={async (c, save) => { if (n.parcels.length && !await askConfirm("As parcelas atuais serão substituídas pelas geradas pela condição.", { title: "Gerar parcelas?", action: "Gerar parcelas", destructive: true })) return; setSaveAs(save); up({ condition: c, parcels: generateParcels(n.total ?? 0, n.baseDate ?? "", c.terms) }); }} />
+                    </div>}
+                  </>}
+                </> : <>
+                  {!sup ? <p className="text-muted-foreground">Selecione o fornecedor para ver as condições cadastradas.</p>
+                    : <ConditionPicker compact stageLocally={!needsReview} key={sup.id} d={d} supplierId={sup.id} baseDate={n.baseDate} hint={link?.p.condition ? `Condição usada na previsão: ${link.p.condition.name} (${termsTxt(link.p.condition.terms)} dias)` : undefined}
+                      disabled={n.total === null || !n.baseDate} disabledHint="Informe valor total e data base"
+                      onConfirm={(c, save) => { setSaveAs(save); up({ condition: c, parcels: generateParcels(n.total ?? 0, n.baseDate ?? "", c.terms) }); }} />}
+                </>}
+              </div>
+            </Section>
           </div>
-          <div className="launch-col">
-            <div className="launch-card">
-          <Section title="Tipo de lançamento" icon={<Tags className="h-4 w-4" />}>
-            <div className="grid grid-cols-2 gap-2">{([["committed", "Efetivado"], ["planned", "Planejado"]] as const).map(([k, l]) => <button key={k} type="button" aria-pressed={stage === k} className={`rounded-lg border px-3 py-2 font-semibold ${stage === k ? "border-primary bg-primary/10 text-primary" : "border-border bg-card hover:border-primary"}`} onClick={() => { if (stage !== k) void (async () => { if (n.plannedId && !await askConfirm("O vínculo com a previsão será descartado ao trocar o tipo. Continuar?")) return; pick(k); })(); }}>{stage === k ? "✓ " : ""}{l}</button>)}</div>
-          </Section>
-            </div>
-            <div className="launch-card">
-              <Section title="Valores e prazos" icon={<Coins className="h-4 w-4" />}><div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field l={stage === "planned" ? "Valor total previsto" : "Valor total"}><MoneyInput className="h-8 w-full" value={n.total} onChange={(total) => up({ total })} />{err("Informe o valor total.")}</Field>
-            <Field l="Data base para os prazos"><DateInput value={n.baseDate} onChange={(baseDate) => up({ baseDate })} />{err("Informe a data base.")}</Field>
-              </div></Section>
-            </div>
-            <div className="launch-card">
-        {stage === "committed" ? (
-        <Section title="Condição de pagamento" icon={<CreditCard className="h-4 w-4" />}>
-          {!sup ? <p className="text-muted-foreground">Selecione o fornecedor para continuar.</p> : <>
-            <div className="grid grid-cols-1 gap-2">
-              {([["manual", "Preencher manualmente", "Informe a quantidade de parcelas, o valor e o vencimento de cada uma."], ["condicao", "Usar uma condição cadastrada como sugestão", "Selecione a condição e gere parcelas para conferência."]] as const).map(([k, l, t]) => (
-                <label key={k} className={`flex cursor-pointer gap-2 rounded-lg border p-3 ${how === k ? "border-primary bg-primary/5" : "border-border"}`}><input type="radio" name="how" checked={how === k} onChange={() => setHow(k)} /><span><span className="block font-semibold">{l}</span><span className="text-muted-foreground">{t}</span></span></label>
-              ))}
-            </div>
-            {how === "manual" && <div className="mt-3 flex flex-wrap items-end gap-2">
-              <Field l="Quantidade de parcelas"><input type="number" min={1} max={120} className="inp h-8 w-24" value={qty} onChange={(e) => setQty(Math.max(1, Math.min(120, Number(e.target.value) || 1)))} /></Field>
-              <button className="btn" disabled={n.total === null} title={n.total !== null ? "" : "Informe o valor total"} onClick={async () => { if (n.parcels.length && !await askConfirm("As parcelas atuais serão substituídas por novas linhas para preenchimento.", { title: "Gerar linhas?", action: "Gerar linhas", destructive: true })) return; up({ parcels: manualParcels(n.total, qty), condition: null }); setSaveAs(null); }}>Gerar linhas</button>
-              <span className="text-muted-foreground">Os valores são divididos igualmente (centavos na última) e os vencimentos ficam em branco para você informar.</span>
-            </div>}
-            {how === "condicao" && <div className="mt-3">
-              <ConditionPicker stageLocally={!needsReview} key={sup.id} d={d} supplierId={sup.id} baseDate={n.baseDate} hint={`Sugestão para preenchimento — a condição vigente não é aplicada automaticamente.${link?.p.condition ? ` Condição usada na previsão: ${link.p.condition.name} (${termsTxt(link.p.condition.terms)} dias).` : ""}`}
-                disabled={n.total === null || !n.baseDate} disabledHint="Informe valor total e data base"
-                onConfirm={async (c, save) => { if (n.parcels.length && !await askConfirm("As parcelas atuais serão substituídas pelas geradas pela condição.", { title: "Gerar parcelas?", action: "Gerar parcelas", destructive: true })) return; setSaveAs(save); up({ condition: c, parcels: generateParcels(n.total ?? 0, n.baseDate ?? "", c.terms) }); }} />
-            </div>}
-          </>}
-        </Section>
-        ) : (
-        <Section title="Condição de pagamento" icon={<CreditCard className="h-4 w-4" />}>
-          {!sup ? <p className="text-muted-foreground">Selecione o fornecedor para ver as condições cadastradas.</p>
-            : <ConditionPicker stageLocally={!needsReview} key={sup.id} d={d} supplierId={sup.id} baseDate={n.baseDate} hint={link?.p.condition ? `Condição usada na previsão: ${link.p.condition.name} (${termsTxt(link.p.condition.terms)} dias)` : undefined}
-                disabled={n.total === null || !n.baseDate} disabledHint="Informe valor total e data base"
-                onConfirm={(c, save) => { setSaveAs(save); up({ condition: c, parcels: generateParcels(n.total ?? 0, n.baseDate ?? "", c.terms) }); }} />}
-        </Section>
-        )}
-            </div>
-          </div>
-          <SupplierSummary d={d} supplierId={sup?.id ?? ""} name={sup?.name ?? ""} />
+          <SupplierSummary compact d={d} supplierId={sup?.id ?? ""} name={sup?.name ?? ""} />
         </div>
         <div className="launch-card">
         <Section title={stage === "planned" ? "Parcelas previstas" : "Parcelas"} icon={<ListChecks className="h-4 w-4" />} actions={<>
@@ -335,16 +311,14 @@ export function NovaNota({ d: source, isBase, onCancel, onConfirm, onManagePlann
                 {!n.parcels.length && <tr><td colSpan={6} className="text-center text-muted-foreground">{stage === "committed" ? "Escolha como informar os valores reais e gere as linhas." : "Gere as parcelas pela condição ou adicione manualmente."}</td></tr>}</tbody></table>
           </div>
         </Section>
-        </div>
-        {stage === "planned" && <details className="launch-card"><summary className="cursor-pointer font-semibold">Detalhar por nota fiscal (opcional)</summary><Section title="Notas fiscais conhecidas"><p className="mb-2 text-muted-foreground">Cadastrar nota não efetiva. As notas ficam planejadas; o saldo sem nota continua nas parcelas acima.</p>{n.plannedNotes?.length ? <EffectivationNotes planning d={d} supplierId={n.supplierId} purchaseCode={n.purchaseCode} notes={n.plannedNotes} disabled={false} onChange={plannedNotes=>up({plannedNotes})} onAdd={()=>up({plannedNotes:[...(n.plannedNotes??[]),{id:`note-${uid()}`,document:"",total:null,effectiveDate:null,baseDate:n.baseDate??todaySP(),condition:null,parcels:[]}]})}/> : <button className="btn" onClick={()=>up({plannedNotes:[{id:`note-${uid()}`,document:n.document,total:n.total,effectiveDate:null,baseDate:n.baseDate??todaySP(),condition:n.condition??null,parcels:n.parcels.map(p=>({id:`title-${uid()}`,amount:p.amount,date:p.date,extension:p.ext,boletoNumber:p.boletoNumber}))}],parcels:[]})}>+ Adicionar nota fiscal</button>}</Section></details>}
-        <div className="launch-card"><Section title="Resumo" icon={<Calculator className="h-4 w-4" />}>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 [&>div]:rounded-lg [&>div]:border [&>div]:border-border [&>div]:bg-background [&>div]:p-3">
-            <div><div className="lbl">Total do lançamento</div><div className="text-lg font-bold tabular-nums">{n.total===null ? "Não informado" : fmtBRL(n.total)}</div></div>
-            <div><div className="lbl">Total das parcelas</div><div className="text-lg font-bold tabular-nums">{fmtBRL(tot)}</div></div>
-            <div><div className="lbl">Diferença</div><div className={`text-lg font-bold tabular-nums ${diff ? "text-destructive" : "text-primary"}`}>{n.total===null ? "Não disponível" : fmtBRL(diff)}</div></div>
+          <div className="launch-totals-bar" aria-label="Resumo do lançamento">
+            <span>Total do lançamento <b className="num">{n.total===null ? "Não informado" : fmtBRL(n.total)}</b></span>
+            <span>Total das parcelas <b className="num">{fmtBRL(tot)}</b></span>
+            <span>Diferença <b className={`num ${diff ? "text-destructive" : "text-primary"}`}>{n.total===null ? "Não disponível" : fmtBRL(diff)}</b></span>
           </div>
           {tried && errs.length > 0 && <ul className="mt-2 list-disc pl-5 text-destructive">{errs.map((e) => <li key={e}>{e}</li>)}</ul>}
-        </Section></div>
+        </div>
+        {stage === "planned" && <details className="launch-card"><summary className="cursor-pointer font-semibold">Detalhar por nota fiscal (opcional)</summary><Section title="Notas fiscais conhecidas"><p className="mb-2 text-muted-foreground">Cadastrar nota não efetiva. As notas ficam planejadas; o saldo sem nota continua nas parcelas acima.</p>{n.plannedNotes?.length ? <EffectivationNotes planning d={d} supplierId={n.supplierId} purchaseCode={n.purchaseCode} notes={n.plannedNotes} disabled={false} onChange={plannedNotes=>up({plannedNotes})} onAdd={()=>up({plannedNotes:[...(n.plannedNotes??[]),{id:`note-${uid()}`,document:"",total:null,effectiveDate:null,baseDate:n.baseDate??todaySP(),condition:null,parcels:[]}]})}/> : <button className="btn" onClick={()=>up({plannedNotes:[{id:`note-${uid()}`,document:n.document,total:n.total,effectiveDate:null,baseDate:n.baseDate??todaySP(),condition:n.condition??null,parcels:n.parcels.map(p=>({id:`title-${uid()}`,amount:p.amount,date:p.date,extension:p.ext,boletoNumber:p.boletoNumber}))}],parcels:[]})}>+ Adicionar nota fiscal</button>}</Section></details>}
       </>}
       </div>
     </SidePanel>
@@ -419,7 +393,7 @@ export function DadosNotaPanel({ d, init, siblings, onCancel, onSave, saving=fal
 export interface SaveAs { name: string; terms: (number | null)[]; from: string | null }
 /** Escolha da condição: sugere a última vigente, permite outra cadastrada ou uma específica. Parcelas só após confirmar.
  *  "Salvar como nova condição do fornecedor" é opção separada e exige confirmação. */
-export function ConditionPicker({ d, supplierId, hint, disabled, disabledHint, onConfirm, baseDate, allowSave = true, stageLocally = false }: { d: ScenarioData; supplierId: string; baseDate?: string | null | undefined; hint?: string | undefined; disabled?: boolean; disabledHint?: string; allowSave?: boolean; stageLocally?: boolean; onConfirm: (c: { name: string; terms: (number | null)[] }, saveAs: SaveAs | null) => void }) {
+export function ConditionPicker({ d, supplierId, hint, disabled, disabledHint, onConfirm, baseDate, allowSave = true, stageLocally = false, compact = false }: { d: ScenarioData; supplierId: string; baseDate?: string | null | undefined; hint?: string | undefined; disabled?: boolean; disabledHint?: string; allowSave?: boolean; stageLocally?: boolean; compact?: boolean; onConfirm: (c: { name: string; terms: (number | null)[] }, saveAs: SaveAs | null) => void }) {
   const s = d.suppliers.find((x) => x.id === supplierId)!;
   const list = supplierConditions(s).filter((c) => !c.cancelled);
   const cur = currentCondition(s, baseDate || new Date().toISOString().slice(0, 10));
@@ -433,11 +407,11 @@ export function ConditionPicker({ d, supplierId, hint, disabled, disabledHint, o
   const chosen = isEsp ? { name: "Condição específica", terms: espT } : (() => { const c = list.find((x) => x.id === sel)!; return { name: c.name, terms: c.terms }; })();
   const ok = chosen.terms.some((t) => t !== null) && !disabled && (!save || !!saveName.trim());
   return (
-    <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-4">
-      {hint && <p className="font-medium">{hint}</p>}
+    <div className={compact ? "space-y-2" : "space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-4"}>
+      {hint && <p className="text-xs font-medium text-muted-foreground">{hint}</p>}
       {!cur && <p role="status" className="text-warning-foreground">Fornecedor sem condição vigente definida na data base. Escolha uma condição cadastrada ou informe a específica — nenhuma é presumida.</p>}
       <div className="flex flex-wrap items-end gap-3">
-        <Field l="Condição"><select aria-label="Condição" className="inp h-8 min-w-56" value={sel} onChange={(e) => { setSel(e.target.value); setTouched(true); setSave(false); }}>
+        <Field l="Condição"><select aria-label="Condição" className="inp h-8 w-full min-w-0 sm:min-w-56" value={sel} onChange={(e) => { setSel(e.target.value); setTouched(true); setSave(false); }}>
           {list.map((c) => <option key={c.id} value={c.id}>{c.name}{splitOrigin(c.note).text ? ` · ${splitOrigin(c.note).text}` : ""} · {termsTxt(c.terms)} dias{c.id === cur?.id ? " (vigente na data base)" : ""}</option>)}
           <option value="__esp">Informar condição específica…</option></select></Field>
         {!isEsp && <span className="text-muted-foreground">{termsTxt(chosen.terms)} dias · {chosen.terms.filter((t) => t !== null).length} parcela(s)</span>}

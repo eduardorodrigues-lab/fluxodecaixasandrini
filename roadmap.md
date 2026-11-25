@@ -1,5 +1,9 @@
 # Roadmap
 
+## Layout do formulário de lançamento — autorizado 25/11/2026
+- [x] Cabeçalho com tipo/vínculo, três colunas, valores+condição unificados, parcelas e resumo compacto
+- [x] 515 testes, 18 regressões sintéticas de salvamento e 6 grupos visuais desktop/mobile; sem escrita oficial/publicação
+
 ## Listagem única de Lançamentos — autorizado 24/11/2026
 - [x] Consulta única das parcelas, Etapa/filtros/CSV/ordenação/paginação comuns e caminhos antigos equivalentes
 - [x] Remanescente, origem das ações, revisão/salvamento e seleção em massa só de efetivação preservados

@@ -339,7 +339,21 @@
 .launch-icon.text-warning { color: var(--warning); } .launch-icon.text-destructive { color: var(--destructive); }
 .launch-grid { display: grid; gap: 16px; grid-template-columns: minmax(0,1fr); align-items: stretch; }
 @media (min-width: 900px) { .launch-grid { grid-template-columns: minmax(0,1fr) minmax(0,1fr); } .launch-grid > .launch-supplier { grid-column: 1 / -1; } }
-@media (min-width: 1280px) { .launch-grid { grid-template-columns: minmax(0,1.1fr) minmax(0,1fr) minmax(320px,0.95fr); } .launch-grid > .launch-supplier { grid-column: auto; } }
+@media (min-width: 1280px) { .launch-grid { grid-template-columns: repeat(3,minmax(0,1fr)); } .launch-grid > .launch-supplier { grid-column: auto; } }
+.launch-grid > * { min-width: 0; }
+.launch-form-header { display: flex; min-width: 0; flex: 1; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.launch-stage-switch { display: inline-grid; grid-template-columns: repeat(2,minmax(0,1fr)); overflow: hidden; border: 1px solid var(--border); border-radius: 8px; }
+.launch-stage-switch button { min-height: 36px; padding: 6px 12px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.launch-stage-switch button[aria-pressed="true"] { background: var(--primary); color: var(--primary-foreground); }
+.launch-header-link { display: flex; min-width: 0; margin-left: auto; align-items: center; gap: 8px; }
+.launch-header-link select { width: min(320px,42vw); min-width: 0; }
+.launch-payment-choice { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 4px; border-radius: 8px; background: var(--muted); padding: 4px; }
+.launch-payment-choice button { min-height: 34px; border-radius: 6px; padding: 5px 8px; font-size: 12px; font-weight: 600; }
+.launch-payment-choice button[aria-pressed="true"] { background: var(--card); color: var(--primary); box-shadow: 0 1px 2px color-mix(in oklab, var(--foreground) 10%, transparent); }
+.launch-totals-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 18px; border-radius: 8px; background: color-mix(in oklab, var(--primary) 8%, var(--card)); padding: 9px 12px; font-size: 13px; font-weight: 600; }
+.launch-totals-bar span { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 5px; }
+.launch-parcel-table { min-width: 880px; table-layout: auto !important; }
+@media(max-width:700px) { .launch-form-header { width: 100%; } .launch-header-link { width: 100%; margin-left: 0; align-items: flex-start; flex-direction: column; gap: 3px; } .launch-header-link select { width: 100%; } .launch-stage-switch { flex: 1; } .launch-totals-bar { align-items: flex-start; flex-direction: column; } }
 @media (min-width: 1100px) { .launch-grid.launch-grid-2 { grid-template-columns: minmax(0,1fr) minmax(300px,380px); } .launch-grid.launch-grid-2 > .launch-supplier { grid-column: auto; align-self: start; } }
 .launch-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .launch-col > .launch-card:last-child { flex: 1; }
