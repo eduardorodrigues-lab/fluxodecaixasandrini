@@ -52,7 +52,7 @@ function Page() {
     if (!canEdit) { setErr("Sem permissão de edição."); return false; }
     if (!saver.reset()) { setErr("Confira o envio pendente antes de preparar outra operação."); return false; }
     try {
-      const after = produce(d, fn);
+      const after = produce(d, (x) => { fn(x); });
       const prepared = bankOperation(d, after, active.isBase ? app.changes : [], ids);
       setReviewed({ before: d, after, prepared, onAck }); setErr(""); return true;
     } catch(e) { setErr((e as Error).message); return false; }
