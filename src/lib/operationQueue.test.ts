@@ -53,3 +53,26 @@ describe('identidade do pacote', () => {
     expect(payloadIdentity([ch('Despesa', 'e1', { b: 1, a: 2 })])).toBe(payloadIdentity([ch('Despesa', 'e1', { a: 2, b: 1 })]));
   });
 });
+
+describe('edições sucessivas no mesmo registro (100→150→200)', () => {
+  const ch = (before: number, after: number) => ({ kind: 'alteração', entity: 'Recebimento', id: 'r1', before: { date: '2026-11-01', general: before }, after: { date: '2026-11-01', general: after } }) as never;
+  const reg = (requestId: string, ops: unknown[]) => ({ scope: 's', orgId: 'o', requestId, ops }) as never;
+  it('envia em sequência e uma resposta antiga nunca substitui a intenção mais recente', async () => {
+    const { rebasePending } = await import('./operationSave');
+    const sent150 = ch(100, 150);
+    // 150 em voo; usuário digita 200: o 200 espera (mesmo registro), nada paralelo.
+    let pending: Change[] = [ch(100, 200)];
+    expect(sendableChanges(pending, [reg('a', [sent150])], new Set())).toHaveLength(0);
+    // ACK atrasado do 150 chega: limpa só o que foi confirmado e mantém 200 com before=150.
+    pending = rebasePending(pending, [sent150], [sent150]);
+    expect(pending).toHaveLength(1);
+    expect((pending[0] as unknown as { before: { general: number }; after: { general: number } }).after.general).toBe(200);
+    expect((pending[0] as unknown as { before: { general: number } }).before.general).toBe(150);
+    expect(sendableChanges(pending, [], new Set())).toHaveLength(1);
+    // ACK do 200: nada pendente; reaplicar o ACK antigo do 150 depois não ressuscita valor antigo.
+    const sent200 = ch(150, 200);
+    pending = rebasePending(pending, [sent200], [sent200]);
+    expect(pending).toHaveLength(0);
+    expect(rebasePending(pending, [sent150], [sent150])).toHaveLength(0);
+  });
+});

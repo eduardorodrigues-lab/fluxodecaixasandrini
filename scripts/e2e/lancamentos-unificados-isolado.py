@@ -125,10 +125,8 @@ async def main():
     await page.get_by_label('Busca rápida',exact=True).fill('BOL-001');await count(page,1)
     await rows.first.get_by_role('button',name=re.compile('^Gerenciar ')).click()
     dl=page.get_by_role('dialog',name='Gerenciar lançamento');await dl.get_by_text('Descrição',exact=True).locator('..').locator('input').fill('Consulta unificada sintética')
-    await dl.get_by_role('button',name='Revisar antes de salvar').click();dl=page.get_by_role('dialog',name='Revisar lançamento');await dl.wait_for()
-    assert await page.evaluate('window.__commits.length')==0
-    await page.screenshot(path=str(OUT/'2_revisao.png'))
-    await dl.get_by_role('button',name='Confirmar e salvar',exact=True).click();await page.get_by_role('dialog').wait_for(state='hidden')
+    await page.screenshot(path=str(OUT/'2_edicao.png'))
+    await dl.get_by_role('button',name='Salvar',exact=True).click();await page.get_by_role('dialog').wait_for(state='hidden')
     assert await page.evaluate('window.__commits.length')==1
     assert await page.evaluate('window.__fixture.active.data.committed.find(c=>c.id==="same").value')==10000
     assert await page.evaluate('window.__fixture.active.data.planned.find(c=>c.id==="same").notes')=='Descrição same'
@@ -178,7 +176,7 @@ async def main():
     assert await page.locator('[data-launch-key] input:enabled').count()==0
     await page.locator('[data-stage="committed"]').first.get_by_role('button',name=re.compile('^Gerenciar ')).click()
     dl=page.get_by_role('dialog',name='Gerenciar lançamento')
-    assert await dl.get_by_role('button',name='Revisar antes de salvar').is_disabled()
+    assert await dl.get_by_role('button',name='Salvar',exact=True).is_disabled()
     assert await page.evaluate('window.__commits.length')==0
     await ctx.close();print('PASS visualizador somente consulta');checks+=1
     ctx,page=await setup(b,mobile=True);await count(page,14)

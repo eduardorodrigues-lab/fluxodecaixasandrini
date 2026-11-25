@@ -54,7 +54,10 @@ function Page() {
     try {
       const after = produce(d, (x) => { fn(x); });
       const prepared = bankOperation(d, after, active.isBase ? app.changes : [], ids);
-      setReviewed({ before: d, after, prepared, onAck }); setErr(""); return true;
+      setErr("");
+      // One click: the form's own Salvar (or the reason prompt of an estorno/cancelamento) is the only confirmation.
+      void saver.save(d, after, [], prepared).then((ok) => { if (ok) { onAck?.(); setReviewed(null); setPanel(null); } else setReviewed({ before: d, after, prepared, onAck }); });
+      return true;
     } catch(e) { setErr((e as Error).message); return false; }
   };
   const done = act;
@@ -143,7 +146,7 @@ function ContaPanel({ d, acc, onCancel, onSave }: { d: ScenarioData; acc?: BankA
     onCancel();
   };
   return (
-    <SidePanel title={acc ? "Editar conta" : "Nova conta"} onClose={() => void cancel()} footer={<><Button variant="outline" onClick={cancel}>Cancelar</Button><Button disabled={errs.length > 0} title={errs.join(" ")} onClick={() => { protection.flush(); onSave(a, note, id.current, () => { protection.clear(); }); }}>Revisar e confirmar</Button></>}>
+    <SidePanel title={acc ? "Editar conta" : "Nova conta"} onClose={() => void cancel()} footer={<><Button variant="outline" onClick={cancel}>Cancelar</Button><Button disabled={errs.length > 0} title={errs.join(" ")} onClick={() => { protection.flush(); onSave(a, note, id.current, () => { protection.clear(); }); }}>Salvar</Button></>}>
       {protection.warning && <p className="text-destructive">{protection.warning}</p>}
       {protection.recovered && <p>Preenchimento local recuperado; confira antes de confirmar.</p>}
         <Section n={1} title="Dados da conta"><div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -185,7 +188,7 @@ function TransfPanel({ d, sim, onCancel, onSave }: { d: ScenarioData; sim: boole
   const errs = [!f && "Selecione a origem.", !t && "Selecione o destino.", f && f === t && "Origem e destino devem ser diferentes.", !(amount && amount > 0) && "Valor positivo.", !date && "Informe a data."].filter(Boolean) as string[];
   const dirty = !!f || !!t || amount !== null || !!note;
   const footer = review ? <><button className="btn" onClick={() => setReview(false)}>Cancelar</button><button className="btn btn-primary" onClick={() => { if (amount !== null && date) onSave({ fromAccountId: f, toAccountId: t, amount, date, note }); }}>Confirmar transferência</button></>
-    : <><button className="btn" onClick={guardClose(dirty, onCancel)}>Cancelar</button><button className="btn btn-primary" disabled={errs.length > 0} title={errs.join(" ")} onClick={() => { if (amount !== null && date) onSave({ fromAccountId: f, toAccountId: t, amount, date, note }); }}>Revisar e confirmar</button></>;
+    : <><button className="btn" onClick={guardClose(dirty, onCancel)}>Cancelar</button><button className="btn btn-primary" disabled={errs.length > 0} title={errs.join(" ")} onClick={() => { if (amount !== null && date) onSave({ fromAccountId: f, toAccountId: t, amount, date, note }); }}>Salvar</button></>;
   return <SidePanel centered={review} title={`${sim ? "SIMULAÇÃO · " : ""}${review ? "Revisar transferência" : "Transferir entre contas"}`} sub={sim ? "Transferência de teste: altera só este cenário; nenhum dado real é gravado" : "Grava nas contas reais ao confirmar"} onClose={onCancel} dirty={dirty} footer={footer}>
     {review ? <Section title="Resumo"><p>Sai {fmtBRL(amount)} de <b>{accountName(d, f)}</b> e entra em <b>{accountName(d, t)}</b> em {fmtDate(date)}. Movimento neutro no consolidado (não é receita nem despesa).{note && ` Observação: ${note}`}</p></Section>
       : <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -281,7 +284,7 @@ function CoberturaPanel({ d, onCancel, onSave }: { d: ScenarioData; onCancel: ()
   const errs = [!sel && "Selecione o lançamento em aberto.", !cardId && "Selecione o cartão.", !date && "Informe a data.", !(amt && amt > 0) && "Informe o valor.", sel && amt && amt > sel.open && "Valor excede o saldo em aberto do lançamento.", !(n >= 1 && n <= 360) && "Parcelas de 1 a 360."].filter(Boolean) as string[];
   const dirty = !!q || amount !== null;
   const footer = review ? <><button className="btn" onClick={() => setReview(false)}>Cancelar</button><button className="btn btn-primary" onClick={() => { if (sel && date && amt !== null) onSave({ cardId, titleKind: sel.kind, titleId: sel.t.id, date, amount: amt, installments: n }); }}>Confirmar pagamento no cartão</button></>
-    : <><button className="btn" onClick={guardClose(dirty, onCancel)}>Cancelar</button><button className="btn btn-primary" disabled={errs.length > 0} title={errs.join(" ")} onClick={() => { if (sel && date && amt !== null) onSave({ cardId, titleKind: sel.kind, titleId: sel.t.id, date, amount: amt, installments: n }); }}>Revisar e confirmar</button></>;
+    : <><button className="btn" onClick={guardClose(dirty, onCancel)}>Cancelar</button><button className="btn btn-primary" disabled={errs.length > 0} title={errs.join(" ")} onClick={() => { if (sel && date && amt !== null) onSave({ cardId, titleKind: sel.kind, titleId: sel.t.id, date, amount: amt, installments: n }); }}>Salvar</button></>;
   return <SidePanel centered={review} wide title={review ? "Revisar pagamento no cartão" : "Pagar lançamento existente com cartão"} sub="Liquidação do fornecedor pelo cartão — não debita banco; a dívida fica no cartão até pagar a fatura" onClose={onCancel} dirty={dirty} footer={footer}>
     {!review && <Section n={1} title="Lançamento efetivado em aberto">
       <input aria-label="Buscar lançamento" className="inp h-8 w-full" list="cob-titles" placeholder="Digite fornecedor ou documento" value={q} onChange={(e) => { setQ(e.target.value); setAmount(null); }} />
@@ -367,7 +370,7 @@ function SaldoInicial({ d, isBase, canEdit, onSource, onConfirm, onRevert }: { d
     {d.params.bankTransition && <p className="text-muted-foreground">Transição confirmada em {fmtDate(d.params.bankTransition.at.slice(0, 10))} por {d.params.bankTransition.by}: saldo inicial consolidado {fmtBRL(d.params.bankTransition.legacyValue)} → contas {fmtBRL(d.params.bankTransition.accountsValue)}. {d.params.bankTransition.note}</p>}
     {mode === "legado" ? <div className="flex flex-wrap items-end gap-2">
       <label className="flex-1">Observação da transição<br /><input className="inp h-8 w-full" value={note} onChange={(e) => setNote(e.target.value)} /></label>
-      <Button disabled={!canEdit || !isBase || p.pending.length > 0 || !note.trim()} onClick={() => onConfirm(note)}>Revisar transição</Button>
+      <Button disabled={!canEdit || !isBase || p.pending.length > 0 || !note.trim()} onClick={() => onConfirm(note)}>Confirmar transição</Button>
     </div> : <Button variant="outline" disabled={!canEdit || !isBase} onClick={onRevert}>Voltar ao saldo inicial consolidado</Button>}
   </div>;
 }

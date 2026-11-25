@@ -142,7 +142,7 @@ async def main():
     await page.evaluate('(id)=>sessionStorage.setItem("fluxo:new-id:u1:org-teste:base",id)',creation_id)
     await page.get_by_role('button',name='+ Novo lançamento').click();dl=page.get_by_role('dialog')
     assert await dl.get_by_text('Este lançamento já foi gravado.',exact=False).count()==1
-    assert await dl.get_by_role('button',name='Revisar e confirmar',exact=True).is_disabled()
+    assert await dl.get_by_role('button',name='Salvar',exact=True).is_disabled()
     assert await page.evaluate('window.__commits.length')==1
     print('PASS rascunho recuperado direto e identidade confirmada bloqueia duplicação');checks+=1;await ctx.close()
     for mode in ['fail','lost','read-fail']:
@@ -160,9 +160,10 @@ async def main():
     ctx,page=await setup(b);dl=await open_new(page,count=3);await dl.get_by_role('button',name='Salvar',exact=True).click();await page.get_by_role('dialog').wait_for(state='hidden')
     await page.get_by_role('button',name=re.compile('^Gerenciar ')).first.click()
     dl=page.get_by_role('dialog',name='Gerenciar lançamento');await dl.get_by_text('Descrição',exact=True).locator('..').locator('input').fill('Edição sintética')
-    await dl.get_by_role('button',name='Revisar antes de salvar').click();await page.get_by_role('dialog',name='Revisar lançamento').wait_for()
-    assert await page.evaluate('window.__commits.length')==1
-    await page.screenshot(path=str(OUT/'2_revisao_existente.png'));print('PASS existente mantém revisão');checks+=1;await ctx.close()
+    await dl.get_by_role('button',name='Salvar',exact=True).dblclick();await page.get_by_role('dialog',name='Gerenciar lançamento').wait_for(state='hidden')
+    assert await page.get_by_role('dialog',name='Revisar lançamento').count()==0
+    assert await page.evaluate('window.__commits.length')==2, 'edição existente: um clique, uma gravação (clique duplo sem duplicidade)'
+    await page.screenshot(path=str(OUT/'2_existente_um_clique.png'));print('PASS existente salva com um clique, sem duplicar');checks+=1;await ctx.close()
     # leitor não pode incluir
     ctx,page=await setup(b,'viewer');newbtn=page.get_by_role('button',name='+ Novo lançamento')
     if await newbtn.count() and not await newbtn.is_disabled():

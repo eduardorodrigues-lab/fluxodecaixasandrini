@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 export { DateInput } from "@/components/DateField";
 import { fmtNum, parseBRL } from "@/lib/money";
 import type { Warning } from "@/lib/engine/types";
@@ -8,13 +8,15 @@ import type { Warning } from "@/lib/engine/types";
 export function MoneyInput({ value, onChange, className = "w-28" }: { value: number | null; onChange: (v: number | null) => void; className?: string }) {
   const [t, setT] = useState(fmtNum(value));
   const [invalid, setInvalid] = useState(false);
-  useEffect(() => { setT(fmtNum(value)); setInvalid(false); }, [value]);
+  const sent = useRef<{ from: number | null; v: number | null } | null>(null); // dedupes Enter+blur before the parent re-renders
+  useEffect(() => { setT(fmtNum(value)); setInvalid(false); sent.current = null; }, [value]);
   const commit = () => {
     const blank = t.trim() === "";
     const v = parseBRL(t);
     if (!blank && v === null) { setInvalid(true); return; }
     setInvalid(false); setT(fmtNum(v));
-    if (v !== value) onChange(v);
+    if (v === value || (sent.current && sent.current.from === value && sent.current.v === v)) return;
+    sent.current = { from: value, v }; onChange(v);
   };
   return <input className={`inp num ${className} ${invalid ? "border-destructive" : ""}`} value={t} placeholder="vazio" aria-invalid={invalid || undefined} title={invalid ? "Valor inválido: corrija para salvar (vazio = não informado; 0 = zero)." : undefined}
     onChange={(e) => { setT(e.target.value); if (invalid) setInvalid(false); }} onBlur={commit}

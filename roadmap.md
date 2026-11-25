@@ -2,10 +2,10 @@
 
 ## Ciclo INCLUIR→ALTERAR→SALVAR + persistência granular isolada — autorizado 25/11/2026
 - [x] 1 Immer no lote (chamada real produce/saveMutation) — teste de 22 parcelas e lote bloqueado
-- [ ] 2 Registro por operação/dependências; incerto não bloqueia independentes; consulta com backoff
-- [ ] 3 ACK limpa só o confirmado; resposta antiga não sobrepõe intenção nova
-- [ ] 4 Idempotência por org+requestId com identidade do payload (servidor e cliente)
-- [ ] 5 Células salvam ao concluir (Enter/blur) sem Salvar global; formulários um clique
+- [x] 2 Registro por operação/dependências; incerto não bloqueia independentes; consulta com backoff
+- [x] 3 ACK limpa só o confirmado; resposta antiga não sobrepõe intenção nova (teste 100→150→200)
+- [x] 4 Idempotência por org+requestId com identidade do payload (servidor e cliente); unicidade no banco não alterada
+- [x] 5 Células salvam ao concluir (Enter/blur) em Recebimentos/Metas; formulários um clique (lançamentos, fornecedor, condições, bancos, pagamentos, ajustes); ações destrutivas/lote com confirmação única
 - [ ] 6 Medições do ciclo e do modelo atual
 - [ ] 7 Modelo relacional + adaptadores + migração/conciliação + commit granular em banco de teste isolado
 - [ ] 8 Navegador sintético e relatório; conjunto para aprovação final

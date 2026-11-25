@@ -44,7 +44,7 @@ function Page() {
   return (
     <div className="space-y-3">
       <PageHeader title="Histórico / Auditoria" sub="Cada registro mostra data, horário, quem alterou e a linha completa antes e depois; em vermelho o que mudou." />
-      {active.isBase && <Link to="/recebimentos" className="text-xs underline">Revisar recebimentos recuperados</Link>}
+      {active.isBase && <Link to="/recebimentos" className="text-xs underline">Abrir recebimentos</Link>}
       <div className="flex flex-wrap gap-1 text-xs">
         <button className={`btn ${tab === "real" ? "btn-primary" : ""}`} onClick={() => setTab("real")}>Fluxo real</button>
         <button className={`btn ${tab === "sims" ? "btn-danger" : ""}`} onClick={() => { setTab("sims"); setSimId(null); }}>Simulações</button>

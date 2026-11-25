@@ -149,7 +149,7 @@ function Vertical({ rows, res, onPick, update, receipts, adjustments }: VProps) 
           <tr className="bg-muted font-semibold"><td className="sticky left-0 z-[5] bg-muted">Total</td><td /><td />{cols.map((c) => <td key={c.key} className="num">{entryKeys.has(c.key) ? <Button variant="ghost" className="h-auto w-full justify-end p-0 text-inherit" aria-label={`${c.label} · Total período · detalhar`} onClick={() => onPick(c, null)}>{fmtNum(c.total)}</Button> : fmtNum(c.total)}</td>)}</tr>
         </tbody>
       </table>
-      <div className="p-2 text-xs"><Link to="/recebimentos" className="underline">Revisar e salvar recebimentos</Link></div>
+      <div className="p-2 text-xs"><Link to="/recebimentos" className="underline">Abrir recebimentos</Link></div>
     </div>
   );
 }
