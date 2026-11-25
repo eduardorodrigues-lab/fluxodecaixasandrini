@@ -52,7 +52,7 @@ export function useOperationSave() {
   return { save, saving, error, retrying: !!request.current, protected: saving || !!app.pendingOperation,
     saveLabel: confirmationAction(saving, app.pendingOperation?.phase, !!request.current?.submittedAt),
     saveMutation: async (before: ScenarioData, fn: (d:ScenarioData)=>void, supplierIds: string[] = [], directInclusion = false) => {
-      try { if(request.current?.rejected && !app.pendingOperation) mutation.current=null; if (!mutation.current || !request.current) { const after=produce(before,fn); mutation.current={before,after}; } /* frozen only once captured */ return await save(mutation.current.before,mutation.current.after,supplierIds,undefined,directInclusion); }
+      try { if(request.current?.rejected && !app.pendingOperation) mutation.current=null; if (!mutation.current || !request.current) { const after=produce(before,(draft)=>{ fn(draft); }); /* producers never return a value: helpers like applyBulk return reports */ mutation.current={before,after}; } /* frozen only once captured */ return await save(mutation.current.before,mutation.current.after,supplierIds,undefined,directInclusion); }
       catch(e) { setError((e as Error).message); return false; }
     },
     reset: () => { if (!saving && !app.pendingOperation) { request.current = null; mutation.current = null; setError(''); return true; } return false; } };

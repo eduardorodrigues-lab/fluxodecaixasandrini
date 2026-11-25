@@ -27,7 +27,7 @@ export function BulkEditPanel({ d, keys, by, canEdit, isBase, saving, saveLabel,
   const dirty = !!reason.trim() || date !== null || amount !== null || !!categoryId || review;
   const close = async () => { if (saving || !dirty || await askConfirm("O lote ainda não foi gravado. Descartar esta edição em massa?", { title: "Fechar edição em massa?", action: "Descartar", cancelLabel: "Continuar editando" })) onClose(); };
   const prepare = () => { if (!reason.trim()) return setError("Informe a justificativa."); if (type === "category" && !categoryId) return setError("Escolha o subgrupo."); setError(""); setReview(true); };
-  const confirm = async () => { try { if (await onSave((x) => applyBulk(x, { items, action, reason, at: new Date().toISOString(), by }))) onClose(); } catch (e) { setError((e as Error).message); } };
+  const confirm = async () => { try { if (await onSave((x) => { applyBulk(x, { items, action, reason, at: new Date().toISOString(), by }); })) onClose(); } catch (e) { setError((e as Error).message); } };
   const label = (c: string) => d.categories.find((x) => x.id === c)?.name ?? "Não informado";
   const rec = (kind: BulkKind, id: string) => kind === "committed" ? d.committed.find((c) => c.id === id) : d.expenses.find((e) => e.id === id);
   return <SidePanel expanded wide title={review ? "Revisar edição em massa" : "Editar parcelas selecionadas"} sub={`${items.length} parcela(s) no escopo · ${keys.length} marcada(s)`} dirty={false} onClose={() => void close()} footer={<>

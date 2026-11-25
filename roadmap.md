@@ -1,5 +1,15 @@
 # Roadmap
 
+## Ciclo INCLUIR→ALTERAR→SALVAR + persistência granular isolada — autorizado 25/11/2026
+- [x] 1 Immer no lote (chamada real produce/saveMutation) — teste de 22 parcelas e lote bloqueado
+- [ ] 2 Registro por operação/dependências; incerto não bloqueia independentes; consulta com backoff
+- [ ] 3 ACK limpa só o confirmado; resposta antiga não sobrepõe intenção nova
+- [ ] 4 Idempotência por org+requestId com identidade do payload (servidor e cliente)
+- [ ] 5 Células salvam ao concluir (Enter/blur) sem Salvar global; formulários um clique
+- [ ] 6 Medições do ciclo e do modelo atual
+- [ ] 7 Modelo relacional + adaptadores + migração/conciliação + commit granular em banco de teste isolado
+- [ ] 8 Navegador sintético e relatório; conjunto para aprovação final
+
 ## Layout do formulário de lançamento — autorizado 25/11/2026
 - [x] Cabeçalho com tipo/vínculo, três colunas, valores+condição unificados, parcelas e resumo compacto
 - [x] 515 testes, 18 regressões sintéticas de salvamento e 6 grupos visuais desktop/mobile; sem escrita oficial/publicação
