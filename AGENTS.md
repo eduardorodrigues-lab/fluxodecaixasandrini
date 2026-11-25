@@ -40,4 +40,4 @@
 - Manual effectivation/replanning lives in pure helpers in `src/lib/efetivacao.ts`; remaining planned parcels are stored as `remainingOverride.items` with stable IDs and before/after snapshots on the effectivation — avoids FIFO abatement on the wrong parcel.
 - Source-imported records keep `origin.raw`, `sourceSupplier` (no supplier link) and exact values (fractional cents); imported receipts use `legacyZeroEstimate` and imported months `sourceExact` — reproduces Excel rules without rounding or changing manual-entry rules.
 - `service_role` statement_timeout is 120s because the single org document (~11 MB after the real load) exceeds the 8s default on commit — revisit if the document keeps growing.
-
+- Granular persistence (`db/granular/*.sql`, `src/lib/granular/`) keeps one row per record with full body, per-record version, `ord` and `changed_seq`, using the same Change protocol; it is tested only in isolated PGlite and not wired to the app until the cutover is approved — avoids monolithic rewrites without risking the active base.

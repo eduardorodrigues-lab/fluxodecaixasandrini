@@ -6,9 +6,10 @@
 - [x] 3 ACK limpa só o confirmado; resposta antiga não sobrepõe intenção nova (teste 100→150→200)
 - [x] 4 Idempotência por org+requestId com identidade do payload (servidor e cliente); unicidade no banco não alterada
 - [x] 5 Células salvam ao concluir (Enter/blur) em Recebimentos/Metas; formulários um clique (lançamentos, fornecedor, condições, bancos, pagamentos, ajustes); ações destrutivas/lote com confirmação única
-- [ ] 6 Medições do ciclo e do modelo atual
-- [ ] 7 Modelo relacional + adaptadores + migração/conciliação + commit granular em banco de teste isolado
-- [ ] 8 Navegador sintético e relatório; conjunto para aprovação final
+- [x] 6 Medições: CPU do cliente pequena (diff/apply < 100 ms em 12 MB); gargalo é ler/regravar o documento no servidor
+- [x] 7 Modelo granular + adaptador + carga/conciliação/recuperação + commit granular testados em PGlite isolado (db/granular)
+- [x] 8 Navegador sintético (inclusão, edição em um clique, células, listagem) e pacote para aprovação em db/granular/README.md
+- [ ] 9 Aplicar esquema, carga, corte e integração do app ao modo granular — aguarda aprovação de Eduardo
 
 ## Layout do formulário de lançamento — autorizado 25/11/2026
 - [x] Cabeçalho com tipo/vínculo, três colunas, valores+condição unificados, parcelas e resumo compacto
