@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Button } from './ui/button';
 import { LaunchFilterPanel, useLaunchFilters } from './LaunchFilters';
 import { ColumnFilter, columnTest, Pager, SortHead, suggestFrom, useColumnFilter, usePager, useReportState } from './ReportControls';
@@ -7,18 +7,22 @@ import { formatLaunchTime } from '@/lib/launchFilters';
 import type { createLaunchPresentation } from '@/lib/launchPresentation';
 import type { ScenarioData } from '@/lib/engine/types';
 import type { LaunchRef } from '@/lib/manageLaunch';
-import { fmtBRL } from '@/lib/money';
+import type { LaunchTotals } from '@/lib/unifiedLaunch';
 import { usePendingFocus } from './PendingFocus';
 
-export function UnifiedLaunchList({d,model,stage,onStage,focus,onManage,canEdit,bulk,setBulk,onBulk,afterFilters}: {
+export function UnifiedLaunchList({d,model,stage,onStage,focus,onManage,canEdit,bulk,setBulk,onBulk,afterFilters,onTotals}: {
   d:ScenarioData;model:ReturnType<typeof createLaunchPresentation>;stage:LaunchStage;onStage:(stage:LaunchStage)=>void;
-  focus?:string|undefined;onManage:(ref:LaunchRef)=>void;canEdit:boolean;bulk:string[];setBulk:(fn:(keys:string[])=>string[])=>void;onBulk:(keys:string[])=>void;afterFilters?:ReactNode;
+  focus?:string|undefined;onManage:(ref:LaunchRef)=>void;canEdit:boolean;bulk:string[];setBulk:(fn:(keys:string[])=>string[])=>void;onBulk:(keys:string[])=>void;afterFilters?:ReactNode;onTotals?:(totals:LaunchTotals)=>void;
 }) {
   const filters=useLaunchFilters(),report=useReportState(),columns=useColumnFilter();
   const [error,setError]=useState('');
   const rows=useMemo(()=>unifiedLaunchRows(model),[model]);
   const result=useMemo(()=>filterUnifiedLaunch(rows.filter(r=>columnTest(columns.f,LAUNCH_COLUMNS,r.values)),stage,filters.applied,filters.appliedQuery,filters.order,report.sort),[rows,stage,columns.key,filters.applied,filters.appliedQuery,filters.order,report.sort]);
   const totals=useMemo(()=>launchSummary(result),[result]);
+  // Os indicadores do cabeçalho leem exatamente este resumo do conjunto filtrado: reportado para cima, nunca recalculado em outro lugar.
+  const reportTotals=useRef(onTotals);
+  useEffect(()=>{reportTotals.current=onTotals;});
+  useEffect(()=>{reportTotals.current?.(totals);},[totals]);
   const suppliers=useMemo(()=>[...new Map(rows.map(r=>[r.facets.supplier,r.facets])).values()].sort((a,b)=>a.supplierName.localeCompare(b.supplierName,'pt-BR')),[rows]);
   const situations=useMemo(()=>[...new Set(rows.map(r=>String(r.values[10]??'')))].filter(Boolean).sort(),[rows]);
   const payments=useMemo(()=>[...new Set(rows.map(r=>String(r.values[11]??'')))].filter(Boolean).sort(),[rows]);
@@ -36,11 +40,7 @@ export function UnifiedLaunchList({d,model,stage,onStage,focus,onManage,canEdit,
       suppliers={suppliers} categories={d.categories} situations={situations} payments={payments} count={result.length} total={0} onExport={exportCSV}
       stageControl={<label className="min-w-0 space-y-1"><span className="lbl block">Etapa</span><select aria-label="Etapa" className="inp h-9 w-full" value={stage} onChange={e=>onStage(e.target.value as LaunchStage)}><option value="">Todos</option><option value="planned">Planejamento</option><option value="committed">Efetivação</option></select></label>}
       extra={<ColumnFilter cols={LAUNCH_COLUMNS} filter={columns} suggest={suggestions}/>}
-      summary={<div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm"><p role="status" className="font-semibold">{result.length.toLocaleString('pt-BR')} linhas</p><p className="border-l border-border pl-3 text-muted-foreground">Planejamento <b className="text-foreground">{totals.plannedCount.toLocaleString('pt-BR')}</b> · Efetivação <b className="text-foreground">{totals.actualCount.toLocaleString('pt-BR')}</b></p></div>}
-      summaryBand={<div className="rounded-md border border-border bg-accent/50 px-3 py-2 text-sm"><div className="grid gap-2 md:grid-cols-2 md:divide-x md:divide-border">
-        <div className="min-w-0 md:pr-3"><p className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1"><span>Planejamento remanescente:</span><b className="num text-base">{fmtBRL(totals.remaining)}</b></p>{totals.unavailable>0 && <p className="text-xs text-warning-foreground">{totals.unavailable} sem valor distribuído</p>}{totals.plannedCancelled!==0 && <p className="text-xs text-muted-foreground">Planejamento cancelado (valor original): {fmtBRL(totals.plannedCancelled)}</p>}</div>
-        <div className="min-w-0 md:pl-3"><p className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1"><span>Efetivação — obrigação vigente:</span><b className="num text-base">{fmtBRL(totals.obligation)}</b></p><p className="text-xs text-muted-foreground">Pago: {fmtBRL(totals.paid)} · Saldo em aberto: {fmtBRL(totals.open)}</p><p className="text-xs text-muted-foreground">Valores registrados: {fmtBRL(totals.original)} (inclui originais cancelados)</p></div>
-      </div><p className="mt-1 text-[11px] text-muted-foreground">Totais separados por etapa; não representam a soma líquida de documentos vinculados.</p></div>}/>
+      summary={<div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm"><p role="status" className="font-semibold">{result.length.toLocaleString('pt-BR')} linhas</p><p className="border-l border-border pl-3 text-muted-foreground">Planejamento <b className="text-foreground">{totals.plannedCount.toLocaleString('pt-BR')}</b> · Efetivação <b className="text-foreground">{totals.actualCount.toLocaleString('pt-BR')}</b></p></div>}/>
     {afterFilters}
     <div className="mb-2 flex flex-wrap items-center gap-2 text-sm" role="status"><span className="text-muted-foreground">Seleção em massa: somente parcelas de Efetivação.</span>
       {!!bulk.length && <><b>{bulk.length} parcela(s) marcada(s)</b>{hidden>0 && <span className="text-warning-foreground">· {hidden} fora do filtro atual continuam marcadas</span>}<Button size="sm" disabled={!canEdit} onClick={launchBulk}>Editar selecionadas</Button><Button size="sm" variant="outline" onClick={()=>setBulk(()=>[])}>Limpar seleção</Button></>}

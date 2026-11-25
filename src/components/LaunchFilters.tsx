@@ -28,9 +28,9 @@ function Amount({ value, onChange }: { value: number | null; onChange: (v: numbe
   const valid = raw.trim() === '' || /^-?(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{0,2})?$/.test(raw.trim());
   return <><input inputMode="decimal" className="inp h-9 w-full num" value={raw} aria-invalid={!valid} onChange={e => { const s = e.target.value; setRaw(s); if (s.trim() === '' || /^-?(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{0,2})?$/.test(s.trim())) onChange(parseBRL(s)); }} />{!valid && <span role="alert" className="text-xs text-destructive">Use valor em R$, como 1.234,56.</span>}</>;
 }
-export function LaunchFilterPanel({ state, suppliers, categories, situations, payments, count, total, onExport, extra, stageControl, summary, summaryBand }: {
+export function LaunchFilterPanel({ state, suppliers, categories, situations, payments, count, total, onExport, extra, stageControl, summary }: {
   state: ReturnType<typeof useLaunchFilters>; suppliers: Pick<LaunchFacets, 'supplier' | 'supplierName' | 'supplierText'>[];
-  categories: Category[]; situations: string[]; payments?: string[] | undefined; count: number; total: number; onExport: () => void; extra: ReactNode; stageControl?: ReactNode; summary?: ReactNode; summaryBand?: ReactNode;
+  categories: Category[]; situations: string[]; payments?: string[] | undefined; count: number; total: number; onExport: () => void; extra: ReactNode; stageControl?: ReactNode; summary?: ReactNode;
 }) {
   const { filters: f, setFilters, query, setQuery, order, setOrder } = state;
   const [more, setMore] = useState(false), [supplierQuery, setSupplierQuery] = useState(''), [suggest, setSuggest] = useState(false);
@@ -78,6 +78,5 @@ export function LaunchFilterPanel({ state, suppliers, categories, situations, pa
     {launchFilterErrors(f).map(error => <p key={error} role="alert" className="text-sm text-destructive">{error} O intervalo inválido não foi aplicado.</p>)}
     {!!chips.length && <div className="flex flex-wrap gap-1.5" aria-label="Critérios ativos">{chips.map(c => <span key={c.key} className="inline-flex max-w-full items-center gap-1 rounded border border-border bg-secondary pl-2 text-xs"><span className="break-words">{c.label}</span><Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" aria-label={`Remover ${c.label}`} onClick={c.remove}><X size={14} /></Button></span>)}</div>}
     <div className="flex flex-col gap-2 border-t border-border pt-2 lg:flex-row lg:items-end lg:justify-between"><div>{summary ?? <><p role="status" className="font-semibold">{count.toLocaleString('pt-BR')} parcelas encontradas</p><p className="text-sm text-muted-foreground">Valor das parcelas filtradas: <b className="text-foreground">{fmtBRL(total)}</b></p></>}</div><div className="flex flex-wrap items-end gap-2"><Field label="Ordenar por"><select className="inp h-9 w-full sm:w-52" value={order} onChange={e => setOrder(e.target.value as LaunchOrder)}><option value="created">Últimos cadastrados</option><option value="updated">Últimas alterações</option><option value="due">Próximos vencimentos</option><option value="value">Maior valor</option></select></Field><Button variant="outline" size="sm" onClick={onExport}><Download size={16} />Exportar CSV</Button></div></div>
-    {summaryBand}
   </section>;
 }

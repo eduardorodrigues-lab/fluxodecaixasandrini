@@ -67,6 +67,7 @@ export function launchSummary(rows: UnifiedLaunchRow[]) {
     return s;
   },{plannedCount:0,actualCount:0,remaining:0,plannedCancelled:0,unavailable:0,original:0,obligation:0,paid:0,open:0});
 }
+export type LaunchTotals = ReturnType<typeof launchSummary>;
 export function eligibleLaunchKeys(rows: UnifiedLaunchRow[]) { return rows.flatMap(r=>r.bulkKey ? [r.bulkKey] : []); }
 export function validatedLaunchSelection(rows: UnifiedLaunchRow[], keys: string[]) {
   const allowed = new Set(eligibleLaunchKeys(rows));

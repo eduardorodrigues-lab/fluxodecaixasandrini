@@ -33,7 +33,30 @@ async def main():
     assert await rows.evaluate_all('(rs)=>new Set(rs.map(r=>r.dataset.launchKey)).size')==14
     assert await rows.first.locator('td').nth(1).inner_text() in ['Planejamento','Efetivação']
     assert 'Etapa' in await page.get_by_role('region',name='Tabela de Lançamentos',exact=True).locator('th').nth(1).inner_text()
-    for cell in ['Planejamento remanescente:','obrigação vigente:','Saldo em aberto:']:assert await page.get_by_text(cell,exact=False).count()>0
+    # resumo financeiro no cabeçalho: dois indicadores compactos, imediatamente à esquerda de "+ Novo lançamento"
+    header=page.locator('header.page-header')
+    chipre=re.compile('^(Planejamento remanescente|Efetivação — obrigação vigente): ')
+    chips=header.get_by_role('button',name=chipre)
+    await chips.nth(1).wait_for()
+    assert await chips.count()==2
+    names=[await chips.nth(i).get_attribute('aria-label') for i in range(2)]
+    assert names[0].startswith('Planejamento remanescente:') and names[1].startswith('Efetivação — obrigação vigente:')
+    assert 'R$' in names[0] and 'R$' in names[1]
+    for i in range(2):
+        box=await chips.nth(i).bounding_box()
+        assert 48<=box['height']<=56,(i,box['height'])
+    order=await header.evaluate("(h)=>[...h.querySelectorAll('button')].map(b=>b.getAttribute('aria-label')||b.textContent.trim())")
+    assert order==[names[0],names[1],'+ Novo lançamento'],order
+    assert 'obrigação vigente' not in await page.get_by_role('region',name='Filtros de lançamentos',exact=True).inner_text()
+    await chips.nth(0).click()
+    menu=page.get_by_role('menu');await menu.wait_for()
+    assert await chips.nth(0).get_attribute('aria-expanded')=='true'
+    for cell in ['Parcelas em planejamento','Saldo planejado remanescente','Totais separados por etapa']:assert await menu.get_by_text(cell,exact=False).count()>0
+    await page.screenshot(path=str(OUT/'0b_resumo_cabecalho.png'))
+    await page.keyboard.press('Escape');await menu.wait_for(state='hidden')
+    await chips.nth(1).click();await menu.wait_for()
+    for cell in ['Parcelas efetivadas','Obrigação vigente','Pago','Saldo em aberto','Valores registrados']:assert await menu.get_by_text(cell,exact=False).count()>0
+    await page.keyboard.press('Escape');await menu.wait_for(state='hidden')
     primary=page.locator('[data-filter-row="primary"]');secondary=page.locator('[data-filter-row="secondary"]')
     for label in ['Busca rápida','Fornecedor','Etapa','Situação do lançamento']:assert await primary.get_by_label(label,exact=True).count()==1
     for label in ['Categoria','Subgrupo','Período','De','Até']:assert await secondary.get_by_label(label,exact=True).count()==1
@@ -161,6 +184,10 @@ async def main():
     ctx,page=await setup(b,mobile=True);await count(page,14)
     assert await page.get_by_label('Etapa',exact=True).is_visible()
     assert await page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+    mbox=[await c.bounding_box() for c in await page.get_by_role('button',name=chipre).all()]
+    assert len(mbox)==2,mbox
+    m1,m2=mbox
+    assert not (m1['x']<m2['x']+m2['width'] and m2['x']<m1['x']+m1['width'] and m1['y']<m2['y']+m2['height'] and m2['y']<m1['y']+m1['height']),'indicadores sobrepostos no celular'
     await page.screenshot(path=str(OUT/'4_mobile.png'))
     region=page.get_by_role('region',name='Tabela de Lançamentos',exact=True)
     await region.screenshot(path=str(OUT/'4_mobile_tabela.png'))

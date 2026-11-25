@@ -1,5 +1,7 @@
 import { UnifiedLaunchList } from "@/components/UnifiedLaunchList";
+import { LaunchSummaryChips } from "@/components/LaunchSummaryChips";
 import { launchLocation } from "@/lib/unifiedLaunch";
+import type { LaunchTotals } from "@/lib/unifiedLaunch";
 import { applyNewLaunch } from "@/lib/newLaunch";
 import { useOperationSave } from "@/components/useOperationSave";
 import { LaunchFilterPanel, useLaunchFilters } from "@/components/LaunchFilters";
@@ -162,9 +164,14 @@ function Page() {
     {target.etapa !== "planned" && <AmbiguousDocuments d={d} groups={model.groups} onManage={setManaged} />}
   </div></details>;
 
+  // Resumo financeiro lido da própria listagem filtrada; a chave evita exibir totais de outra organização/cenário.
+  const listKey = `${official.orgId}:${active.id}`;
+  const [totals, setTotals] = useState<{ t: LaunchTotals; k: string } | null>(null);
+
   return (
     <div>
       <PageHeader title="Lançamentos" sub={active.isBase ? "" : "Simulação: alterações imediatas e apenas visuais."}>
+        {tab === "launches" && <LaunchSummaryChips totals={totals?.k === listKey ? totals.t : null} />}
         {tab === "launches" && <Button disabled={!canEdit} onClick={() => {operation.reset();setPanel({ t: "new" });}}>+ Novo lançamento</Button>}
       </PageHeader>
       {operation.error && <p role="alert" className="text-destructive">{operation.error}</p>}
@@ -174,7 +181,7 @@ function Page() {
       {(consultasVisited || tab === "consultas") && <div hidden={tab !== "consultas"}><CachedConsultas d={consultasData} onManage={setManaged} /></div>}
       {(pvaVisited || tab === "pva") && <div hidden={tab !== "pva"}><CachedPva key={`${official.orgId}:${active.id}`} d={pvaData} /></div>}
       {bulkOpen && <BulkEditPanel d={d} keys={bulk} by={user?.email ?? ""} canEdit={canEdit} isBase={active.isBase} saving={operation.saving} saveLabel={operation.saveLabel} saveError={operation.error} onSave={async (fn) => { const ok = await operation.saveMutation(d, fn); if (ok) setBulk([]); return ok; }} onClose={() => setBulkOpen(false)} />}
-      {(launchVisited || tab === "launches") && <div hidden={tab !== "launches"}><UnifiedLaunchList key={`${official.orgId}:${active.id}`} d={launchData} model={launchModel} stage={target.etapa ?? ''} onStage={etapa=>void navigate({search:prev=>({...prev,tab:"launches",etapa,focus:undefined}),resetScroll:false})} focus={target.focus} onManage={setManaged} canEdit={canEdit} bulk={bulk} setBulk={setBulk} onBulk={keys=>{setBulk(keys);operation.reset();setBulkOpen(true);}} afterFilters={launchReview}/></div>}
+      {(launchVisited || tab === "launches") && <div hidden={tab !== "launches"}><UnifiedLaunchList key={listKey} d={launchData} model={launchModel} stage={target.etapa ?? ''} onStage={etapa=>void navigate({search:prev=>({...prev,tab:"launches",etapa,focus:undefined}),resetScroll:false})} focus={target.focus} onManage={setManaged} canEdit={canEdit} bulk={bulk} setBulk={setBulk} onBulk={keys=>{setBulk(keys);operation.reset();setBulkOpen(true);}} afterFilters={launchReview} onTotals={t=>setTotals({t,k:listKey})}/></div>}
       {tab === "payments" && <div className="card overflow-auto launch-table">
         {tab === "payments" && (
           <table className="tbl"><thead><tr><SortHead label="Data" column={0} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><SortHead label="Título" column={1} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><SortHead label="Conta" column={2} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><SortHead label="Valor" column={3} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={true} /><SortHead label="Obs." column={4} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><SortHead label="Situação" column={5} sort={paymentsReport.sort} onSort={paymentsReport.toggle} numeric={false} /><th>Ações</th></tr></thead>
