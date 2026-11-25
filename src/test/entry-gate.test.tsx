@@ -11,7 +11,7 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 import { AppShell } from "@/components/AppShell";
 
-const base = { orgs: [], setOrgId: () => {}, signOut: async () => {}, sims: [], setActive: () => {}, draft: null, changes: [], conflicts: [], protectErr: "", saveState: "idle", saveMsg: "", baseMoved: false, draftBaseVersion: null,
+const base = { orgs: [], setOrgId: () => {}, signOut: async () => {}, sims: [], setActive: () => {}, draft: null, changes: [], pendingOperations: [], conflicts: [], protectErr: "", saveState: "idle", saveMsg: "", baseMoved: false, draftBaseVersion: null,
   base: { id: "base", name: "", isBase: true, data: { suppliers: [], planned: [], committed: [], expenses: [], receipts: [], targets: {} } }, active: { id: "base", isBase: true, name: "" } };
 const DATA = "SALDO-SECRETO";
 

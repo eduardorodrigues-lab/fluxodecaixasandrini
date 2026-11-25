@@ -15,3 +15,5 @@ async function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBReq
 export const loadDraft = <T,>(key: string) => tx<T | undefined>("readonly", (s) => s.get(key));
 export const saveDraftLocal = (key: string, v: unknown) => tx<void>("readwrite", (s) => s.put(v, key));
 export const clearDraftLocal = (key: string) => tx<void>("readwrite", (s) => s.delete(key));
+/** All stored keys (used to enumerate per-request operation packets of one scope). */
+export const listDraftKeys = () => tx<IDBValidKey[]>("readonly", (s) => s.getAllKeys()).then((k) => k.map(String));

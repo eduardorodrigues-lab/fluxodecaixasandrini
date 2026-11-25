@@ -3,10 +3,22 @@ export { DateInput } from "@/components/DateField";
 import { fmtNum, parseBRL } from "@/lib/money";
 import type { Warning } from "@/lib/engine/types";
 
+/** Money cell: commits once on Enter or blur (Enter blurs, so no double save); unchanged values are not resent.
+ *  Empty = null (not informed), "0" = explicit zero; invalid text stays in the field, marked, and is never saved. */
 export function MoneyInput({ value, onChange, className = "w-28" }: { value: number | null; onChange: (v: number | null) => void; className?: string }) {
   const [t, setT] = useState(fmtNum(value));
-  useEffect(() => setT(fmtNum(value)), [value]);
-  return <input className={`inp num ${className}`} value={t} placeholder="vazio" onChange={(e) => setT(e.target.value)} onBlur={() => { const v = parseBRL(t); onChange(v); setT(fmtNum(v)); }} />;
+  const [invalid, setInvalid] = useState(false);
+  useEffect(() => { setT(fmtNum(value)); setInvalid(false); }, [value]);
+  const commit = () => {
+    const blank = t.trim() === "";
+    const v = parseBRL(t);
+    if (!blank && v === null) { setInvalid(true); return; }
+    setInvalid(false); setT(fmtNum(v));
+    if (v !== value) onChange(v);
+  };
+  return <input className={`inp num ${className} ${invalid ? "border-destructive" : ""}`} value={t} placeholder="vazio" aria-invalid={invalid || undefined} title={invalid ? "Valor inválido: corrija para salvar (vazio = não informado; 0 = zero)." : undefined}
+    onChange={(e) => { setT(e.target.value); if (invalid) setInvalid(false); }} onBlur={commit}
+    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } else if (e.key === "Escape") { setT(fmtNum(value)); setInvalid(false); } }} />;
 }
 export function IntInput({ value, onChange, className = "w-12" }: { value: number | null; onChange: (v: number | null) => void; className?: string }) {
   return <input className={`inp num ${className}`} value={value ?? ""} placeholder="—" onChange={(e) => { const s = e.target.value.trim(); if (s === "") return onChange(null); const n = Number(s); if (Number.isFinite(n)) onChange(Math.trunc(n)); }} />;

@@ -4,8 +4,8 @@ export const operationPhaseLabel: Record<OperationPhase, string> = {
   confirmed: 'Confirmado — atualizando a tela', conflict: 'Conflito',
   failed: 'Falha recuperável — envio recusado', unknown: 'Resultado desconhecido — preenchimento preservado',
 };
-export function confirmationAction(saving: boolean, phase: OperationPhase | undefined, submitted: boolean, initial = 'Confirmar e salvar') {
-  if (saving) return phase === 'checking' ? 'Consultando confirmação…' : phase === 'confirmed' ? 'Confirmado — atualizando…' : 'Enviando…';
+export function confirmationAction(saving: boolean, phase: OperationPhase | undefined, submitted: boolean, initial = 'Salvar') {
+  if (saving) return phase === 'checking' ? 'Conferindo gravação…' : phase === 'confirmed' ? 'Salvo — atualizando…' : 'Salvando…';
   return submitted ? 'Consultar resultado' : initial;
 }
 /** Timeouts never cancel/authorize another write: the original packet stays protected. */

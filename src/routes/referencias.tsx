@@ -79,7 +79,7 @@ function NewSupplier({ recordId, onDone }: { recordId: string; onDone: (createdI
   const protection = useFormDraft({ user: app.user?.id ?? "", org: app.official.orgId, mode: app.active.id, form: "novo-fornecedor", record: recordId }, v, (x) => { setV({ ...emptySupplierInput(), ...x }); });
   const dirty = JSON.stringify(v) !== JSON.stringify(emptySupplierInput());
   const cancel = async () => {
-    if (saving.saving || app.pendingOperation) { protection.flush(); onDone(null); return; }
+    if (saving.protected) { protection.flush(); onDone(null); return; }
     if (!dirty) { protection.clear(); onDone(null); return; }
     const choice = await askCloseDraft();
     if (choice === "keep") { protection.flush(); onDone(null); } else if (choice === "discard" && protection.clear()) onDone(null);

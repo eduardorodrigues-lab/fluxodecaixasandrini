@@ -35,7 +35,7 @@ function Page() {
       if (arr.some((i) => (b.id ? i.id === b.id : i.date === b.date))) throw new Error("Registro já existe na base atual.");
       arr.push(JSON.parse(JSON.stringify(before)));
     });
-    await showMessage(e ?? (entity==='Recebimento' && active.isBase ? 'Recebimento recuperado somente no rascunho. Revise e confirme na página Recebimentos; nada foi gravado ainda.' : active.isBase ? 'Registro recuperado somente no rascunho. Ainda é necessário salvar; nada foi gravado.' : 'Registro recuperado na simulação local. Nada foi gravado nos dados reais.'));
+    await showMessage(e ?? (active.isBase ? 'Registro recuperado e enviado para gravação. A barra superior mostra "Salvo" somente após a confirmação do servidor.' : 'Registro recuperado na simulação local. Nada foi gravado nos dados reais.'));
   };
   const [simId, setSimId] = useState<string | null>(null);
   const sim = tab === "sims" ? sims.find((s) => s.id === simId) : undefined;

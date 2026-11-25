@@ -2,7 +2,6 @@ import { supplierIdentity } from "@/lib/supplierIdentity";
 import { ReportSearch, SortHead, useReportState } from "@/components/ReportControls";
 import { dateValue, parcelValue, queryReport, reportCSV, type ReportSort } from "@/lib/reportTable";
 import { Button } from "@/components/ui/button";
-import { askConfirm } from "@/lib/decisions";
 // Relatório de Pagamentos do Dia: baixas realizadas (base real), uma linha por baixa; estornos à parte.
 import { useMemo, useState } from "react";
 import { DateInput } from "@/components/kit";
@@ -71,7 +70,6 @@ export function PagamentosDia() {
   const editable = canEdit && active.isBase;
   const saveNote = async () => {
     if (!edit) return;
-    if (!await askConfirm("Confirmar a alteração da observação? Ela ficará registrada no histórico.")) return;
     const e = update((x) => { const p = x.payments.find((y) => y.id === edit.id); if (p) p.note = edit.v; });
     setErr(e ?? ""); if (!e) setEdit(null);
   };

@@ -9,6 +9,7 @@ import { NORMALIZATION_REVISION } from './commitReceipt';
 import { prepareCommit, settleAfterRecheck } from './commitCore';
 import { encodeAudit } from './auditTransport';
 import { encodeLargeJson } from './largeJsonTransport';
+import { currentValueOf, samePayload } from './operationQueue';
 
 // Base OFICIAL compartilhada: leitura sob RLS do próprio usuário; gravação apenas via servidor
 // (verifica papel, versão esperada, idempotência e grava auditoria antes/depois).
@@ -34,9 +35,9 @@ async function readOfficialDoc(orgId: string) {
   return data;
 }
 async function auditedRequest(sb: { from: (t: string) => any }, orgId: string, requestId: string) { // eslint-disable-line @typescript-eslint/no-explicit-any
-  const { data, error } = await sb.from("audit_log").select("version_to").eq("org_id", orgId).eq("request_id", requestId).maybeSingle();
+  const { data, error } = await sb.from("audit_log").select("version_to, changes").eq("org_id", orgId).eq("request_id", requestId).maybeSingle();
   if (error) throw new Error("Não foi possível conferir o envio anterior. Nenhuma nova escrita.");
-  return data as { version_to: number } | null;
+  return data as { version_to: number; changes: Change[] } | null;
 }
 const orgIn = (i: { orgId?: string | null } | undefined) => { const o = i?.orgId ?? null; if (o !== null && !/^[0-9a-f-]{36}$/i.test(o)) throw new Error("Entrada inválida."); return { orgId: o }; };
 
@@ -119,10 +120,15 @@ export const commitOps = createServerFn({ method: "POST" })
   .handler(async ({ data: input, context }) => {
     const m = await myOrg(context.supabase, context.userId, input.orgId);
     if (!canCommitRole(m.role)) return { status: "forbidden" as const, version: -1, conflictsJson: "[]" };
-    const done = await auditedRequest(context.supabase, m.org_id, input.requestId);
-    if (done) return { status: "duplicate" as const, version: done.version_to, conflictsJson: "[]" };
     let ops: Change[];
     try { ops = JSON.parse(input.opsJson) as Change[]; if (!Array.isArray(ops)) throw new Error(); } catch { throw new Error("Dados inválidos."); }
+    const done = await auditedRequest(context.supabase, m.org_id, input.requestId);
+    if (done) {
+      // Same organization+requestId must carry the same payload; a different content under a reused ID is refused.
+      const cur = await readOfficialDoc(m.org_id); const curData = normalizeData(cur.data);
+      if (!samePayload(done.changes ?? [], ops, c => currentValueOf(curData, c))) return { status: "payload_mismatch" as const, version: done.version_to, conflictsJson: "[]" };
+      return { status: "duplicate" as const, version: done.version_to, conflictsJson: "[]" };
+    }
     const dependencies = input.dependenciesJson ? JSON.parse(input.dependenciesJson) as ReviewedOperation['dependencies'] : undefined;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const email = typeof context.claims?.email === "string" ? context.claims.email : null;

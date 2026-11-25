@@ -28,21 +28,16 @@ const NAV = [
 const NAV_KEY = "fluxo.nav.hidden";
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { orgs, user, authReady, signOut, official, base, active, sims, setActive, draft, saveState, saveMsg, canEdit, changes, commitDraft, discardDraft, conflicts, resolveConflict, protectErr, pendingOperation, saveOperation, abandonOperation, resendPendingOperation, globalReview, closeGlobalReview, checkPendingOperation, confirmationChecking } = useApp();
-  const [viewPacket,setViewPacket] = useState(false);
-  const [confirming,setConfirming] = useState(false);
-  const [reviewError,setReviewError] = useState('');
+  const { orgs, user, authReady, signOut, official, base, active, sims, setActive, draft, saveState, saveMsg, canEdit, commitDraft, discardDraft, conflicts, resolveConflict, protectErr, pendingOperations, saveOperation, abandonOperation, resendPendingOperation, checkPendingOperation, confirmationChecking } = useApp();
+  const [viewPacket,setViewPacket] = useState<string | null>(null);
   const [retryError,setRetryError] = useState('');
   const simMode = !active.isBase;
-  const otherChanges=changes.filter(c=>c.entity!=='Recebimento');
-  const receiptCount=changes.length-otherChanges.length;
   const [online, setOnline] = useState(true);
   useEffect(() => { const sync = () => setOnline(navigator.onLine); sync(); window.addEventListener('online',sync); window.addEventListener('offline',sync); return () => { window.removeEventListener('online',sync); window.removeEventListener('offline',sync); }; }, []);
-  const checkReason = pendingOperation ? confirmationBlockReason(pendingOperation, {authenticated:!!user, authorized:official.status==='ready' && canEdit && active.isBase && pendingOperation.orgId===official.orgId, busy:saveState==='saving' || confirmationChecking, online}) : '';
-  const exportPacket = () => {
-    if (!pendingOperation) return;
-    const url=URL.createObjectURL(new Blob([JSON.stringify(pendingOperation,null,2)],{type:'application/json'}));
-    const link=document.createElement('a');link.href=url;link.download='operacao-preservada.json';link.click();URL.revokeObjectURL(url);
+  const viewedPacket = pendingOperations.find((o) => o.requestId === viewPacket) ?? null;
+  const exportPacket = (op: (typeof pendingOperations)[number]) => {
+    const url=URL.createObjectURL(new Blob([JSON.stringify(op,null,2)],{type:'application/json'}));
+    const link=document.createElement('a');link.href=url;link.download=`operacao-preservada-${op.requestId}.json`;link.click();URL.revokeObjectURL(url);
   };
   // Barra lateral ocultável: a preferência fica só neste navegador (não é dado da organização).
   const [navHidden, setNavHidden] = useState(false);
@@ -100,34 +95,29 @@ export function AppShell({ children }: { children: ReactNode }) {
         {official.status === "ready" && isEmpty(base.data) && active.isBase && <div className="border-b border-border bg-muted px-4 py-2 text-xs">Nenhum dado cadastrado em {official.orgName}. Comece pelo cadastro inicial em <Link to="/referencias" className="underline">Cadastros</Link> (fornecedores e categorias; saldos em Bancos).</div>}
         {!active.isBase && <div className="sticky top-0 z-30 border-b-2 border-destructive bg-destructive px-4 py-1.5 text-xs font-semibold text-destructive-foreground">SIMULAÇÃO "{active.name}" — exclusivamente visual, local a este navegador. Nada aqui é gravado nos dados reais, marca pagamentos ou é promovido.</div>}
         {active.isBase && canEdit && (draft || saveMsg || protectErr) && (
-          <div className={`sticky top-0 z-30 flex flex-wrap items-center gap-2 border-b px-4 py-2 text-xs ${saveState === "error" || saveState === "conflict" ? "border-destructive/30 bg-card text-destructive" : saveState === "saved" ? "border-border bg-muted" : "border-warning/30 bg-warning-soft"}`} role="status">
-            <b>{pendingOperation ? operationPhaseLabel[pendingOperation.phase ?? 'unknown'] : saveState === "saving" ? "Aguardando confirmação" : saveState === "error" ? "Conferência pendente" : saveState === "conflict" ? "Conflito" : draft ? "Alterações não salvas" : saveState === "saved" ? "Salvo" : ""}</b>
-            <span>{draft && saveState === "dirty" && !saveMsg ? `${otherChanges.length} registro(s) de outros módulos alterado(s).` : saveMsg}</span>
-            {receiptCount>0 && <Link to="/recebimentos" className="underline">{receiptCount} recebimento(s): revisar na página Recebimentos</Link>}
+          <div className={`sticky top-0 z-30 flex flex-wrap items-center gap-2 border-b px-4 py-1.5 text-xs ${saveState === "error" || saveState === "conflict" ? "border-destructive/30 bg-card text-destructive" : saveState === "saved" ? "border-border bg-muted" : "border-border bg-card"}`} role="status" aria-live="polite">
+            <b>{saveState === "error" ? "Conferência pendente" : saveState === "conflict" || conflicts.length ? "Conflito" : saveState === "saving" || draft ? "Salvando…" : saveState === "saved" ? "Salvo" : ""}</b>
+            <span>{saveMsg}</span>
             {protectErr && <span className="font-semibold">{protectErr}</span>}
-            {draft && <span className="ml-auto flex gap-1">
-              <button className="btn" disabled={saveState === "saving" || !!pendingOperation} onClick={async () => { if (await askConfirm("Todas as alterações não salvas serão descartadas.", { title: "Descartar alterações?", action: "Descartar", destructive: true })) discardDraft(); }}>Descartar</button>
-              <Button size="sm" disabled={saveState === "saving" || saveState === "conflict" || !otherChanges.length || !!pendingOperation} onClick={() => void commitDraft()}>{receiptCount?'Salvar outros módulos':'Salvar'}</Button>
+            {draft && saveState === "error" && <span className="ml-auto flex gap-1">
+              <button className="btn" onClick={async () => { if (await askConfirm("As alterações ainda não enviadas serão descartadas. Envios já capturados continuam em conferência.", { title: "Descartar alterações não enviadas?", action: "Descartar", destructive: true })) discardDraft(); }}>Descartar não enviadas</button>
+              <Button size="sm" variant="outline" onClick={() => void commitDraft()}>Conferir e gravar</Button>
             </span>}
           </div>
         )}
-        {active.isBase && pendingOperation && <div role="status" className="flex flex-wrap items-center gap-2 border-b border-border bg-card px-4 py-2 text-sm">
-          <span>{operationPhaseLabel[pendingOperation.phase ?? 'unknown']}: {pendingOperation.ops.length} registro(s). Outras pendências continuam separadas.</span>
-          <span className="text-xs text-muted-foreground">Identificação do envio: <span className="font-mono select-all">{pendingOperation.requestId}</span>{pendingOperation.submittedAt ? ` · enviado ${new Date(pendingOperation.submittedAt).toLocaleString('pt-BR')}` : ''}</span>
-          <Button size="sm" variant="outline" onClick={()=>setViewPacket(true)}>Ver alterações</Button>
-          <Button size="sm" variant="outline" disabled={!!checkReason} onClick={() => void checkPendingOperation()}>{confirmationChecking ? 'Consultando resultado…' : 'Consultar resultado'}</Button>
-          {checkReason && <p className="basis-full text-xs">{checkReason}</p>}
-          {pendingOperation.legacyUncertain || !pendingOperation.ops.length ? <p className="basis-full text-xs">Pacote legado: faltam dados suficientes para comprovar o envio ou sua captura original. Exporte os dados preservados para recuperação; nenhuma nova gravação será autorizada por ausência de confirmação.</p> : null}
-          <Button size="sm" variant="outline" onClick={exportPacket}>Exportar pacote preservado</Button>
-          {definitiveRejection(pendingOperation) && <><Button size="sm" variant="outline" disabled={saveState === 'saving' || confirmationChecking} onClick={async () => { if(await askConfirm("O servidor recusou esta operação. As alterações serão mantidas no rascunho para comparar com o atual; a auditoria não será apagada. Nenhuma gravação ocorrerá agora.", {title:"Revisar operação recusada?",action:pendingOperation.phase==='conflict'?'Revisar conflito':'Voltar à edição da alteração recusada'})) await abandonOperation(); }}>{pendingOperation.phase==='conflict'?'Revisar conflito':'Voltar à edição da alteração recusada'}</Button><Button size="sm" disabled={saveState === 'saving' || confirmationChecking} onClick={async () => { setRetryError(''); try { await saveOperation({...pendingOperation}); } catch (e) { setRetryError((e as Error).message); } }}>Salvar novamente sobre a versão atual</Button>{retryError && <p role="alert" className="basis-full text-xs text-destructive">{retryError}</p>}<p className="basis-full text-xs">Somente a recusa comprovada permite nova revisão. O histórico permanece; rascunhos e outras pendências não são descartados.</p></>}
-          {!definitiveRejection(pendingOperation) && !pendingOperation.confirmation && !!pendingOperation.lastNotFoundAt && !pendingOperation.legacyUncertain && pendingOperation.ops.length > 0 && <Button size="sm" disabled={!!checkReason} onClick={async () => { if (await askConfirm("O mesmo pacote será reenviado com a MESMA identificação. Se ele já tiver sido gravado, o servidor apenas confirma a gravação existente — nada é duplicado. Se outra pessoa alterou os mesmos registros, nada é sobrescrito e o conflito aparece para revisão.", { title: "Reenviar o mesmo pacote?", action: "Reenviar o mesmo pacote" })) await resendPendingOperation(); }}>Reenviar o mesmo pacote</Button>}
-          {!definitiveRejection(pendingOperation) && <p className="basis-full text-xs">Você pode continuar navegando e fechar janelas. O pacote permanece protegido; descarte e nova revisão ficam bloqueados até o resultado ser confirmado. O reenvio usa somente o mesmo pacote e a mesma identificação.</p>}
-        </div>}
-        {globalReview && !pendingOperation && <DecisionWindow wide title="Revisar alterações não salvas" description="Somente as alterações abaixo serão enviadas. Recebimentos e edições posteriores permanecem separados." footer={<>
-          <Button variant="outline" disabled={confirming} onClick={closeGlobalReview}>Voltar à edição</Button>
-          <Button disabled={confirming} onClick={async()=>{if(confirming)return;setConfirming(true);setReviewError('');try{await saveOperation(globalReview);}catch(e){setReviewError((e as Error).message);}finally{setConfirming(false);closeGlobalReview();}}}>Confirmar e salvar</Button>
-        </>}><OperationReviewTable rows={globalReview.reviewRows ?? operationReview(globalReview.ops,active.data)} />{reviewError && <p role="alert">{reviewError}</p>}</DecisionWindow>}
-        {viewPacket && pendingOperation && <DecisionWindow wide title="Alterações do pacote enviado" description="Somente leitura. Este é o pacote capturado; abrir esta janela não envia nem altera informações." footer={<><Button variant="outline" onClick={exportPacket}>Exportar pacote preservado</Button><Button variant="outline" onClick={()=>setViewPacket(false)}>Fechar</Button></>}><OperationReviewTable rows={pendingOperation.reviewRows ?? operationReview(pendingOperation.ops,active.data)} /></DecisionWindow>}
+        {active.isBase && pendingOperations.map((op) => { const reason = confirmationBlockReason(op, {authenticated:!!user, authorized:official.status==='ready' && canEdit && active.isBase && op.orgId===official.orgId, busy:confirmationChecking, online}); return <div key={op.requestId} role="status" className="flex flex-wrap items-center gap-2 border-b border-border bg-card px-4 py-2 text-sm">
+          <span>{operationPhaseLabel[op.phase ?? 'unknown']}: {op.ops.length} registro(s). Operações em outros registros continuam sendo salvas normalmente.</span>
+          <span className="text-xs text-muted-foreground">Identificação do envio: <span className="font-mono select-all">{op.requestId}</span>{op.submittedAt ? ` · enviado ${new Date(op.submittedAt).toLocaleString('pt-BR')}` : ''}</span>
+          <Button size="sm" variant="outline" onClick={()=>setViewPacket(op.requestId)}>Ver alterações</Button>
+          <Button size="sm" variant="outline" disabled={!!reason} onClick={() => void checkPendingOperation(op.requestId)}>{confirmationChecking ? 'Consultando resultado…' : 'Consultar resultado'}</Button>
+          {reason && <p className="basis-full text-xs">{reason}</p>}
+          {op.legacyUncertain || !op.ops.length ? <p className="basis-full text-xs">Pacote legado: faltam dados suficientes para comprovar o envio ou sua captura original. Exporte os dados preservados para recuperação; nenhuma nova gravação será autorizada por ausência de confirmação.</p> : null}
+          <Button size="sm" variant="outline" onClick={() => exportPacket(op)}>Exportar pacote preservado</Button>
+          {definitiveRejection(op) && <><Button size="sm" variant="outline" disabled={saveState === 'saving' || confirmationChecking} onClick={async () => { if(await askConfirm("O servidor recusou esta operação. As alterações voltam para a tela para comparar com o atual; a auditoria não será apagada. Nenhuma gravação ocorrerá agora.", {title:"Revisar operação recusada?",action:op.phase==='conflict'?'Revisar conflito':'Voltar à edição'})) await abandonOperation(op.requestId); }}>{op.phase==='conflict'?'Revisar conflito':'Voltar à edição'}</Button><Button size="sm" disabled={saveState === 'saving' || confirmationChecking} onClick={async () => { setRetryError(''); try { await saveOperation({...op}); } catch (e) { setRetryError((e as Error).message); } }}>Salvar novamente sobre a versão atual</Button>{retryError && <p role="alert" className="basis-full text-xs text-destructive">{retryError}</p>}</>}
+          {!definitiveRejection(op) && !op.confirmation && !!op.lastNotFoundAt && !op.legacyUncertain && op.ops.length > 0 && <Button size="sm" disabled={!!reason} onClick={async () => { if (await askConfirm("O mesmo pacote será reenviado com a MESMA identificação. Se ele já tiver sido gravado, o servidor apenas confirma a gravação existente — nada é duplicado. Se outra pessoa alterou os mesmos registros, nada é sobrescrito e o conflito aparece para revisão.", { title: "Reenviar o mesmo pacote?", action: "Reenviar o mesmo pacote" })) await resendPendingOperation(op.requestId); }}>Reenviar o mesmo pacote</Button>}
+          {!definitiveRejection(op) && <p className="basis-full text-xs">A conferência automática continua com intervalos maiores e é retomada ao reconectar ou recarregar. Somente alterações destes mesmos registros aguardam este resultado.</p>}
+        </div>; })}
+        {viewedPacket && <DecisionWindow wide title="Alterações do pacote enviado" description="Somente leitura. Este é o pacote capturado; abrir esta janela não envia nem altera informações." footer={<><Button variant="outline" onClick={()=>exportPacket(viewedPacket)}>Exportar pacote preservado</Button><Button variant="outline" onClick={()=>setViewPacket(null)}>Fechar</Button></>}><OperationReviewTable rows={viewedPacket.reviewRows ?? operationReview(viewedPacket.ops,active.data)} /></DecisionWindow>}
         {conflicts.length > 0 && <DecisionWindow wide title="Conflito na mesma informação" description="Outra pessoa salvou alterações nestes registros depois que você começou. Escolha, para cada um, qual versão manter. Nada foi sobrescrito." footer={<span className="text-xs text-muted-foreground">{conflicts.length} pendente(s)</span>}>
           {conflicts.map((c) => { return (
             <div key={c.change.entity + c.change.id} className="rounded border border-border p-2">
@@ -135,7 +125,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <h3 className="font-semibold">Anterior → solicitado</h3><OperationReviewTable rows={operationReview([c.change],active.data)} />
               <h3 className="font-semibold">Atual no banco → solicitado</h3>
               <OperationReviewTable rows={operationReview([{...c.change,before:c.server}],active.data)} />
-              <div className="mt-1 flex justify-end gap-1"><button className="btn" disabled={!!pendingOperation} onClick={() => resolveConflict(c, "server")}>Manter a do banco</button><button className="btn btn-primary" disabled={!!pendingOperation} onClick={() => resolveConflict(c, "mine")}>Manter a minha</button></div>
+              <div className="mt-1 flex justify-end gap-1"><button className="btn" disabled={false} onClick={() => resolveConflict(c, "server")}>Manter a do banco</button><button className="btn btn-primary" disabled={false} onClick={() => resolveConflict(c, "mine")}>Manter a minha</button></div>
             </div>); })}
         </DecisionWindow>}
         <main className="p-4">{children}</main>

@@ -17,7 +17,6 @@ export function SaldoAdjustments({ onClose }: { onClose: () => void }) {
     try {
       if (!date || value === null) throw new Error("Informe a data, o valor e a justificativa.");
       saveBalanceAdjustment(structuredClone(active.data), old, date, value, note);
-      if (!await askConfirm(`Em ${fmtDate(date)}, o saldo inicial será substituído por ${fmtBRL(value)}. ${note}`, { title: "Salvar ajuste de saldo?", action: "Salvar ajuste" })) return;
       const e = update((x) => saveBalanceAdjustment(x, old, date, value, note)); if (e) setError(e); else setEditing(false);
     } catch (e) { setError((e as Error).message); }
   };

@@ -16,12 +16,14 @@ export function useOperationSave() {
   const request = useRef<ReviewedOperation | null>(null);
   const mutation = useRef<{before:ScenarioData; after:ScenarioData} | null>(null);
   const lock = useRef(false);
+  // Only this form's own captured packet matters; other pending packets never block or relabel this form.
+  const own = (app.pendingOperations ?? []).find(o => o.requestId === request.current?.requestId) ?? null;
   const [saving, setSaving] = useState(false), [error, setError] = useState('');
   const save = async (before: ScenarioData, after: ScenarioData, supplierIds: string[] = [], reviewed?: ReturnType<typeof supplierOperation>, directInclusion = false): Promise<boolean> => {
     if (lock.current) return false;
     if (context.current.org !== app.official.orgId || context.current.mode !== app.active.id || context.current.scope !== `${app.user?.id}:${app.official.orgId}`) { setError('Organização, conta ou modo mudou. Volte ao contexto original; preenchimento preservado.'); return false; }
     lock.current = true; setSaving(true); setError('');
-    if(request.current?.rejected && !app.pendingOperation) request.current=null;
+    if(request.current?.rejected && !own) request.current=null;
     try {
       if (!app.active.isBase) {
         const ops = diffData(before, after);
@@ -49,11 +51,11 @@ export function useOperationSave() {
     }
     finally { lock.current = false; setSaving(false); }
   };
-  return { save, saving, error, retrying: !!request.current, protected: saving || !!app.pendingOperation,
-    saveLabel: confirmationAction(saving, app.pendingOperation?.phase, !!request.current?.submittedAt),
+  return { save, saving, error, retrying: !!request.current, protected: saving || !!own,
+    saveLabel: confirmationAction(saving, own?.phase, !!request.current?.submittedAt),
     saveMutation: async (before: ScenarioData, fn: (d:ScenarioData)=>void, supplierIds: string[] = [], directInclusion = false) => {
-      try { if(request.current?.rejected && !app.pendingOperation) mutation.current=null; if (!mutation.current || !request.current) { const after=produce(before,(draft)=>{ fn(draft); }); /* producers never return a value: helpers like applyBulk return reports */ mutation.current={before,after}; } /* frozen only once captured */ return await save(mutation.current.before,mutation.current.after,supplierIds,undefined,directInclusion); }
+      try { if(request.current?.rejected && !own) mutation.current=null; if (!mutation.current || !request.current) { const after=produce(before,(draft)=>{ fn(draft); }); /* producers never return a value: helpers like applyBulk return reports */ mutation.current={before,after}; } /* frozen only once captured */ return await save(mutation.current.before,mutation.current.after,supplierIds,undefined,directInclusion); }
       catch(e) { setError((e as Error).message); return false; }
     },
-    reset: () => { if (!saving && !app.pendingOperation) { request.current = null; mutation.current = null; setError(''); return true; } return false; } };
+    reset: () => { if (!saving && !own) { request.current = null; mutation.current = null; setError(''); return true; } return false; } };
 }

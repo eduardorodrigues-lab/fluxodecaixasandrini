@@ -17,7 +17,7 @@ describe('proteção compartilhada da confirmação', () => {
   });
   it('ACK confirmado fecha com sucesso mesmo quando a atualização falha', async () => {
     const before=emptyData(), after={...before,bankAccounts:[]};
-    const send=vi.fn(async op=>{op.confirmation={status:'ok',version:2};op.phase='confirmed';state.app['pendingOperation']=op;throw new Error('Atualização pendente');});
+    const send=vi.fn(async op=>{op.confirmation={status:'ok',version:2};op.phase='confirmed';state.app['pendingOperation']=op;state.app['pendingOperations']=[op];throw new Error('Atualização pendente');});
     state.app={user:{id:'u'},official:{orgId:'o'},active:{id:'base',isBase:true},changes:[],pendingOperation:null,saveOperation:send};
     const {result}=renderHook(()=>useOperationSave());
     await act(async()=>{expect(await result.current.save(before,after)).toBe(true);});
@@ -28,7 +28,7 @@ describe('proteção compartilhada da confirmação', () => {
     before.suppliers = [{ id: 's', name: 'Antes', terms: [], group: '' }];
     const after = { ...before, suppliers: [{ ...before.suppliers[0], id: 's', name: 'Depois', terms: [], group: '' }] };
     const send = vi.fn(async (op) => {
-      op.submittedAt = '2026-11-18T17:55:00Z'; op.phase = 'unknown'; state.app['pendingOperation'] = op;
+      op.submittedAt = '2026-11-18T17:55:00Z'; op.phase = 'unknown'; state.app['pendingOperation'] = op; state.app['pendingOperations'] = [op];
       throw new Error('Resultado desconhecido');
     });
     state.app = { user: { id: 'u' }, official: { orgId: 'o' }, active: { id: 'base', isBase: true }, changes: [], pendingOperation: null, saveOperation: send };

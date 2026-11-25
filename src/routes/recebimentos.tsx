@@ -14,13 +14,6 @@ import { uid, useApp } from "@/lib/store";
 import { pendingSearch } from "@/lib/pendencias";
 import { usePendingFocus } from "@/components/PendingFocus";
 import { receiptPlatformEntries } from "@/lib/receiptMigration";
-import { DecisionWindow } from '@/components/DecisionDialog';
-import { Button } from '@/components/ui/button';
-import type { ReviewedOperation } from '@/lib/operationSave';
-import { measureSavePhase } from '@/lib/saveTiming';
-import { OperationReviewTable } from '@/components/OperationReviewTable';
-import { operationReview } from '@/lib/operationReview';
-import { confirmationAction } from '@/lib/saveRecovery';
 
 export const Route = createFileRoute("/recebimentos")({
   validateSearch: pendingSearch,
@@ -46,33 +39,9 @@ function Page() {
   const { active, update, ui } = app;
   const d = active.data;
   const [err, setErr] = useState("");
-  const [review, setReview] = useState<ReviewedOperation | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const receiptChanges=app.changes.filter(p=>p.entity==='Recebimento');
-  const revise=async()=>{
-    setErr(''); setSaving(true); setSaved(false);
-    try {
-      if(active.isBase && await app.reconcileReceiptDraft()) {
-        setErr('Confirmação anterior conferida. Os valores salvos foram atualizados; revise as edições que ainda restam.'); return;
-      }
-      const started=performance.now();
-      const prepared=app.prepareReceiptOperation();
-      if(!prepared.ops.length)return;
-      setReview({...prepared,scope:`${app.user?.id}:${app.official.orgId}`,orgId:app.official.orgId,requestId:crypto.randomUUID()});
-      measureSavePhase('prepare',started);
-    } catch(e){setErr((e as Error).message);} finally{setSaving(false);}
-  };
-  const confirm=async()=>{
-    if(!review || saving)return;
-    setSaving(true);setErr('');
-    try{await app.saveOperation(review);setReview(null);setSaved(true);}
-    catch(e){
-      // Server ACK verified, only the screen refresh failed: the receipts ARE saved (the strip offers a refresh, never a resend).
-      if(review.confirmation){setReview(null);setSaved(true);setErr('Gravação confirmada; a atualização da tela está pendente. Use Consultar resultado na faixa superior, sem reenviar.');return;}
-      setErr((e as Error).message);setReview(null);}finally{setSaving(false);}
-  };
-  const act = (fn: Parameters<typeof update>[0]) => { setSaved(false); const e = update(fn); setErr(e ?? ""); return !e; };
+  // Each completed cell edit is saved on its own (Enter/blur); the shared status shows Salvando…/Salvo only after the server confirms.
+  const act = (fn: Parameters<typeof update>[0]) => { const e = update(fn); setErr(e ?? ""); return !e; };
+  const receiptPending = app.changes.filter((p) => p.entity === 'Recebimento').length;
   const [pStart, setPStart] = useState<string | null>(ui.start);
   const [pEnd, setPEnd] = useState<string | null>(ui.end);
   const [dir, setDir] = useState<"todos" | "acima" | "abaixo">("todos");
@@ -110,19 +79,11 @@ function Page() {
       <PageHeader title="Recebimentos" sub="Vazio (não informado) usa estimativa; ZERO confirmado é valor informado. Linha com valor só grava com data.">
         <button className="btn" onClick={() => setShowPf(true)}>Plataformas</button><button className="btn btn-primary" onClick={() => act((x) => { x.receipts.push({ id: uid(), date: "", platforms: {}, general: null, notes: "", residual: {} }); })}>+ Recebimento</button>
       </PageHeader>
-      {active.isBase && app.canEdit && <div className="flex flex-wrap items-center gap-2 border-y border-border py-2 text-xs" role="status">
-        <span>{saving ? 'Conferindo salvamento…' : saved ? 'Recebimentos salvos após confirmação.' : receiptChanges.length ? `${receiptChanges.length} recebimento(s) com alterações não salvas; proteção local pelo navegador.` : 'Nenhuma alteração de recebimentos.'}</span>
-        <Button variant="outline" size="sm" disabled={saving || !receiptChanges.length || !!app.pendingOperation} onClick={()=>void revise()}>Revisar e salvar recebimentos</Button>
+      {active.isBase && app.canEdit && <div className="flex flex-wrap items-center gap-2 border-y border-border py-2 text-xs" role="status" aria-live="polite">
+        <span>{receiptPending ? `Salvando ${receiptPending} recebimento(s)…` : app.saveState === "saved" ? "Recebimentos salvos." : "Cada valor é salvo ao concluir a edição (Enter ou sair do campo)."}</span>
+        {err && <span role="alert" className="text-destructive">{err}</span>}
         {app.protectErr && <span className="text-destructive">{app.protectErr}</span>}
       </div>}
-      {review && <DecisionWindow wide title="Revisar recebimentos" description="Somente os recebimentos abaixo serão salvos. Outras alterações permanecem separadas." footer={<div className="flex gap-2">
-        <Button variant="outline" disabled={saving || !!app.pendingOperation} onClick={()=>setReview(null)}>Voltar à edição</Button>
-        <Button disabled={saving || (!!app.pendingOperation && app.pendingOperation.requestId!==review.requestId)} onClick={()=>void confirm()}>{confirmationAction(saving,app.pendingOperation?.phase,!!review.submittedAt)}</Button>
-      </div>}>
-        {err && <p role="alert" className="text-sm text-destructive">{err}</p>}
-        <OperationReviewTable rows={operationReview(review.ops,d)} />
-        <p className="mt-2 text-xs text-warning-foreground">Plataformas + Geral seguem somados. Vazio usa estimativa; zero informado permanece zero.</p>
-      </DecisionWindow>}
       {err && <div className="rounded border border-destructive p-2 text-xs text-destructive">{err}</div>}
       {targetOutside && <p className="text-xs text-warning-foreground">O recebimento selecionado foi destacado fora dos filtros atuais. Os filtros foram mantidos.</p>}
       <div className="rounded border border-warning bg-warning-soft p-2 text-xs text-warning-foreground">Valores das plataformas e do campo Geral são somados no total do dia. Quando ambos estão preenchidos na mesma data, o sistema exibe alerta de possível duplicidade; nada é corrigido automaticamente.</div>
