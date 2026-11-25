@@ -103,6 +103,11 @@ function ExistingLaunchPanel({ launch, onClose }: { launch: LaunchRef; onClose: 
   const prepare = () => {
     try { const started=performance.now(); const next = produce(d, build); setReview({ before:d, data: next }); measureSavePhase('review',started); setError(""); } catch (e) { setError((e as Error).message); }
   };
+  // One click: build the change and save it; the before/after stays in the audit history (no extra review screen).
+  const saveNow = async () => {
+    try { const started = performance.now(); const next = produce(d, (x) => { build(x); }); measureSavePhase('review', started); setError(""); if (await saving.save(d, next)) { protection.clear(); onClose(); } }
+    catch (e) { setError((e as Error).message); }
+  };
   const confirm = async () => { if(review && await saving.save(review.before,review.data)) { protection.clear(); onClose(); } };
   const changeSelection = (keys: string[]) => { setSelected(keys); setRemaining(null); setChecked(false); };
   const labels = ["Lançamento", "Resumo", "Parcelas", "Dados do documento", "Histórico"];
@@ -113,7 +118,7 @@ function ExistingLaunchPanel({ launch, onClose }: { launch: LaunchRef; onClose: 
     const ok = await saving.saveMutation(d, x => r.origin === "conta" ? registerPaymentBatch(x, { batchId: uid(), titleKind: kind, titleId: pay.id, lines: r.lines, note: r.note, form: r.form }) : coverTitleWithCard(x, { id: uid(), at: new Date().toISOString(), by: user?.email ?? "", titleKind: kind, titleId: pay.id, cardId: r.cardId, date: r.date, amount: r.amount, fee: r.fee, installments: r.installments, form: "boleto" }));
     if(ok){protection.clear();onClose();} return ok;
   }} />;
-  return <SidePanel expanded wide centered={!!review} title={review ? "Revisar lançamento" : "Gerenciar lançamento"} sub={`${supplierIdentity(d, initial.record).name} · Documento ${initial.fields.document || "Não informado"} · Pedido ${initial.fields.purchaseCode || "Não informado"}`} onClose={()=>void close()} dirty={false} footer={review ? <><Button variant="outline" disabled={saving.saving} onClick={() => {if(saving.reset())setReview(null);}}>Voltar</Button><Button variant="outline" onClick={()=>void close()}>{saving.protected ? "Fechar (acompanhamento continua)" : "Cancelar"}</Button><Button disabled={!canEdit || saving.saving} onClick={confirm}>{active.isBase ? saving.saveLabel : saving.saving ? "Salvando…" : "Confirmar na simulação"}</Button></> : <><Button variant="outline" disabled={saving.saving} onClick={()=>void close()}>Cancelar</Button><Button disabled={!canEdit || !dirty} onClick={prepare}>Revisar antes de salvar</Button></>}>
+  return <SidePanel expanded wide centered={!!review} title={review ? "Revisar lançamento" : "Gerenciar lançamento"} sub={`${supplierIdentity(d, initial.record).name} · Documento ${initial.fields.document || "Não informado"} · Pedido ${initial.fields.purchaseCode || "Não informado"}`} onClose={()=>void close()} dirty={false} footer={review ? <><Button variant="outline" disabled={saving.saving} onClick={() => {if(saving.reset())setReview(null);}}>Voltar</Button><Button variant="outline" onClick={()=>void close()}>{saving.protected ? "Fechar (acompanhamento continua)" : "Cancelar"}</Button><Button disabled={!canEdit || saving.saving} onClick={confirm}>{active.isBase ? saving.saveLabel : saving.saving ? "Salvando…" : "Confirmar na simulação"}</Button></> : <><Button variant="outline" disabled={saving.saving} onClick={()=>void close()}>Cancelar</Button><Button disabled={!canEdit || !dirty || saving.saving} onClick={() => void saveNow()}>{active.isBase ? saving.saveLabel : saving.saving ? "Salvando…" : "Salvar na simulação"}</Button></>}>
     {saving.error && <p role="alert" className="text-destructive">{saving.error}</p>}
     {error && <p role="alert" className="text-destructive">{error}</p>}
     {review ? <>

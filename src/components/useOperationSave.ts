@@ -4,7 +4,6 @@ import { diffData } from '@/lib/diff';
 import type { ScenarioData } from '@/lib/engine/types';
 import { type ReviewedOperation } from '@/lib/operationSave';
 import { supplierOperation } from '@/lib/supplierOperation';
-import { askConfirm } from '@/lib/decisions';
 import { produce } from 'immer';
 import { measureSavePhase } from '@/lib/saveTiming';
 import { confirmationAction } from '@/lib/saveRecovery';
@@ -34,7 +33,7 @@ export function useOperationSave() {
           const started=performance.now();
           const prepared=reviewed ?? supplierOperation(before,after,app.changes,supplierIds);
           measureSavePhase('prepare',started);
-          if(!directInclusion && !reviewed && prepared.recovered.length && !await askConfirm(`Esta operação inclui somente o fornecedor e suas condições necessários: ${prepared.recovered.map(p=>{const s=after.suppliers.find(s=>s.id===p.id);return s?.name ?? "Fornecedor não identificado";}).join('; ')}. Outras pendências permanecem separadas. Valores e datas do lançamento não serão gerados novamente.`,{title:'Revisar cadastros necessários',action:'Confirmar cadastros e operação'})) return false;
+          // Required supplier/condition records travel atomically with the operation; no extra confirmation window.
           request.current = { scope: context.current.scope, orgId: app.official.orgId, requestId: crypto.randomUUID(), ops:prepared.ops, recoveredPending:prepared.recovered, dependencies:prepared.dependencies };
         }
         await app.saveOperation(request.current);

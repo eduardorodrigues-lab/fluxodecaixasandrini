@@ -93,7 +93,7 @@ export function FornecedorManager({ supplierId, onClose, initialOp, inline = fal
   const Wrap = inline ? InlineCard : SidePanel;
   return <Wrap centered={review} title={review ? `${action}?` : "Gerenciar fornecedor"} sub={s.name} onClose={()=>void close()} dirty={false} footer={<>
     {review ? <Button variant="outline" disabled={saving.saving} onClick={() => {if(saving.reset())setReview(false);}}>Cancelar</Button> : editing && op ? <Button variant="outline" onClick={guardClose(dirty, () => { setOp(null); setError(""); })}>Cancelar edição</Button> : <Button variant="outline" onClick={close}>Fechar</Button>}
-    {editing && <Button variant={review && destructive ? "destructive" : "default"} disabled={!valid || !canEdit || saving.saving} onClick={() => review ? void saveChanges() : setReview(true)}>{saving.saving || review && saving.retrying ? saving.saveLabel : review ? action : "Revisar e confirmar"}</Button>}
+    {editing && <Button variant={review && destructive ? "destructive" : "default"} disabled={!valid || !canEdit || saving.saving} onClick={() => review || !destructive ? void saveChanges() : setReview(true)}>{saving.saving || saving.retrying ? saving.saveLabel : review || !destructive ? action : `${action}…`}</Button>}
   </>}>
     <div className="min-w-0 space-y-4 break-words [overflow-wrap:anywhere]">
       {protection.recovered && <p role="status">Preenchimento recuperado; revise novamente antes de salvar.</p>}{protection.warning && <p role="alert" className="text-destructive">{protection.warning}</p>}

@@ -1,4 +1,4 @@
-import { requiresLaunchReview, savedNewLaunch } from "@/lib/newLaunch";
+import { savedNewLaunch } from "@/lib/newLaunch";
 import { SupplierCreateCard } from "./SupplierForm";
 import { buildSupplier, emptySupplierInput, type SupplierInput } from "@/lib/fornecedores";
 import { requestDecision } from "@/lib/decisions";
@@ -182,7 +182,7 @@ export function NovaNota({ d: source, isBase, onCancel, onConfirm, onManagePlann
   const diff = (n.total ?? 0) - tot;
   const errs = validateNote(n);
   const alreadySaved = savedNewLaunch(source, draftId);
-  const needsReview = requiresLaunchReview(source, n, draftId);
+
   const sub = d.categories.find((c) => c.id === n.categoryId)?.name ?? "—";
   const stageL = stage === "planned" ? "Planejada" : "Efetivado";
   // Previsões ativas e conciliadas que podem ser substituídas (mesmas regras do motor de efetivação).
@@ -216,16 +216,16 @@ export function NovaNota({ d: source, isBase, onCancel, onConfirm, onManagePlann
       });
       return;
     }
-    if (needsReview) setReview(true); else void submit();
+    void submit(); // one click: new and linked launches save directly (duplicates are refused by the stable creation ID)
   };
   const err = (m: string) => tried && errs.includes(m) ? <span data-launch-error role="alert" className="text-[11px] text-destructive">{m}</span> : null;
   const title = review ? stage === "planned" ? "Revisar novo planejamento" : `Revisar · Novo lançamento · ${stageL}` : "Novo lançamento";
   const cancel = () => void discard();
   const footer = !chosen ? <button className="btn" onClick={cancel}>Cancelar</button> : review
     ? <><button className="btn" disabled={saving} onClick={() => { setReview(false); setChecked(false); }}>Voltar</button><button className="btn btn-primary" disabled={saving || (stage === "committed" && !checked)} title={stage === "committed" && !checked ? "Confirme a conferência dos valores e vencimentos" : ""} onClick={() => void submit()}>{saveLabel ?? (saving ? "Salvando…" : isBase ? "Confirmar e salvar" : "Confirmar na simulação")}</button></>
-    : <><p className="mr-auto hidden text-xs text-muted-foreground md:block">Você poderá corrigir o lançamento após salvar.</p><Button variant="outline" className="launch-foot-btn" onClick={cancel}>Cancelar</Button><Button className="launch-foot-btn launch-foot-main" disabled={saving || !app.canEdit || !!alreadySaved} onClick={next}><Check className="h-4 w-4" />{saving ? "Salvando..." : needsReview ? "Revisar e confirmar" : "Salvar"}</Button></>;
+    : <><p className="mr-auto hidden text-xs text-muted-foreground md:block">Você poderá corrigir o lançamento após salvar.</p><Button variant="outline" className="launch-foot-btn" onClick={cancel}>Cancelar</Button><Button className="launch-foot-btn launch-foot-main" disabled={saving || !app.canEdit || !!alreadySaved} onClick={next}><Check className="h-4 w-4" />{saving ? "Salvando…" : "Salvar"}</Button></>;
   return (
-    <SidePanel expanded centered={review} wide title={title} sub={!isBase ? "Simulação — não altera o fluxo real" : needsReview ? "Grava no fluxo real ao confirmar" : undefined} onClose={cancel} dirty={false} footer={footer} headerContent={!review ? <>
+    <SidePanel expanded centered={review} wide title={title} sub={!isBase ? "Simulação — não altera o fluxo real" : undefined} onClose={cancel} dirty={false} footer={footer} headerContent={!review ? <>
       <div className="launch-stage-switch" role="group" aria-label="Tipo de lançamento">{([["committed", "Efetivado"], ["planned", "Planejado"]] as const).map(([k, l]) => <button key={k} type="button" aria-pressed={stage === k} onClick={() => { if (stage !== k) void (async () => { if (n.plannedId && !await askConfirm("O vínculo com a previsão será descartado ao trocar o tipo. Continuar?")) return; pick(k); })(); }}>{stage === k ? "✓ " : ""}{l}</button>)}</div>
       {stage === "committed" && <label className="launch-header-link"><span className="flex items-center gap-1 whitespace-nowrap text-xs font-medium"><Link2 className="h-4 w-4 shrink-0" />Vínculo com previsão</span><select aria-label="Vínculo com previsão" className="inp h-9" value={n.plannedId ?? ""} onChange={(e) => linkTo(e.target.value)}><option value="">Cadastrar sem previsão</option>{prevs.map(({ p, rem }) => <option key={p.id} value={p.id}>{supplierIdentity(d, p).name} · {p.purchaseCode || p.document || "sem código"} · pendente {fmtBRL(rem)}</option>)}</select></label>}
     </> : undefined}>
@@ -254,7 +254,7 @@ export function NovaNota({ d: source, isBase, onCancel, onConfirm, onManagePlann
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <CatSubFields d={d} kind={n.kind} categoryId={n.categoryId} onChange={(kind, categoryId) => up({ kind, categoryId })} />
                 <div>{err("Selecione o subgrupo.")}</div>
-                <Field l="Fornecedor" full><SupplierSearch stageLocally={!needsReview} d={d} allowCreate={!n.plannedId} onCreate={s=>setN(n=>({...n,localSuppliers:[...(n.localSuppliers??[]),s]}))} existing={!!n.plannedId} value={n.supplierId} onChange={(supplierId) => { setN(n=>({...n,supplierId})); setChecked(false); setSaveAs(null); }} />{err("Selecione o fornecedor.")}</Field>
+                <Field l="Fornecedor" full><SupplierSearch stageLocally d={d} allowCreate={!n.plannedId} onCreate={s=>setN(n=>({...n,localSuppliers:[...(n.localSuppliers??[]),s]}))} existing={!!n.plannedId} value={n.supplierId} onChange={(supplierId) => { setN(n=>({...n,supplierId})); setChecked(false); setSaveAs(null); }} />{err("Selecione o fornecedor.")}</Field>
                 <Field l={stage === "planned" ? "Código do pedido (opcional)" : "Código do pedido"}><input className="inp h-8" value={n.purchaseCode} onChange={(e) => up({ purchaseCode: e.target.value })} /></Field>
                 <Field l={stage === "planned" ? "Documento (opcional)" : "Documento"}><input className="inp h-8" value={n.document} onChange={(e) => up({ document: e.target.value })} />{err("Informe o documento.")}</Field>
                 <Field l="Descrição" full><input className="inp h-8" value={n.description} onChange={(e) => up({ description: e.target.value })} /></Field>
@@ -284,14 +284,14 @@ export function NovaNota({ d: source, isBase, onCancel, onConfirm, onManagePlann
                       <p className="col-span-full text-xs text-muted-foreground">Divisão em centavos; informe os vencimentos abaixo.</p>
                     </div>}
                     {how === "condicao" && <div className="mt-3">
-                      <ConditionPicker compact stageLocally={!needsReview} key={sup.id} d={d} supplierId={sup.id} baseDate={n.baseDate} hint={`Sugestão para preenchimento — a condição vigente não é aplicada automaticamente.${link?.p.condition ? ` Condição usada na previsão: ${link.p.condition.name} (${termsTxt(link.p.condition.terms)} dias).` : ""}`}
+                      <ConditionPicker compact stageLocally key={sup.id} d={d} supplierId={sup.id} baseDate={n.baseDate} hint={`Sugestão para preenchimento — a condição vigente não é aplicada automaticamente.${link?.p.condition ? ` Condição usada na previsão: ${link.p.condition.name} (${termsTxt(link.p.condition.terms)} dias).` : ""}`}
                         disabled={n.total === null || !n.baseDate} disabledHint="Informe valor total e data base"
                         onConfirm={async (c, save) => { if (n.parcels.length && !await askConfirm("As parcelas atuais serão substituídas pelas geradas pela condição.", { title: "Gerar parcelas?", action: "Gerar parcelas", destructive: true })) return; setSaveAs(save); up({ condition: c, parcels: generateParcels(n.total ?? 0, n.baseDate ?? "", c.terms) }); }} />
                     </div>}
                   </>}
                 </> : <>
                   {!sup ? <p className="text-muted-foreground">Selecione o fornecedor para ver as condições cadastradas.</p>
-                    : <ConditionPicker compact stageLocally={!needsReview} key={sup.id} d={d} supplierId={sup.id} baseDate={n.baseDate} hint={link?.p.condition ? `Condição usada na previsão: ${link.p.condition.name} (${termsTxt(link.p.condition.terms)} dias)` : undefined}
+                    : <ConditionPicker compact stageLocally key={sup.id} d={d} supplierId={sup.id} baseDate={n.baseDate} hint={link?.p.condition ? `Condição usada na previsão: ${link.p.condition.name} (${termsTxt(link.p.condition.terms)} dias)` : undefined}
                       disabled={n.total === null || !n.baseDate} disabledHint="Informe valor total e data base"
                       onConfirm={(c, save) => { setSaveAs(save); up({ condition: c, parcels: generateParcels(n.total ?? 0, n.baseDate ?? "", c.terms) }); }} />}
                 </>}

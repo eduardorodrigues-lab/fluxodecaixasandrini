@@ -66,7 +66,7 @@ export function SupplierCreateCard({ d, id, value, onChange, dirty, onCancel, on
     {error && <p role="alert" className="text-destructive">{error}</p>}
     <footer className="flex flex-wrap justify-end gap-2 border-t border-border pt-3">
       {review ? <Button variant="outline" disabled={saving} onClick={() => setReview(false)}>Voltar e editar</Button> : <Button variant="outline" onClick={onCancel}>Cancelar</Button>}
-      <Button disabled={!valid || saving} onClick={() => (stageLocally || review ? onConfirm() : setReview(true))}>{stageLocally ? confirmLabel : review ? saveLabel ?? (saving ? "Salvando…" : confirmLabel) : "Revisar e confirmar"}</Button>
+      <Button disabled={!valid || saving} onClick={() => onConfirm()}>{stageLocally ? confirmLabel : saveLabel ?? (saving ? "Salvando…" : confirmLabel)}</Button>
     </footer>
   </section>;
 }
